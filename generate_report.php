@@ -1,4 +1,9 @@
 <?php
+// Add these lines at the very top of the file
+ob_start();
+error_reporting(0); // Disable error reporting for production
+// ini_set('display_errors', 0); // Uncomment this line for production
+
 session_start();
 require_once 'functions.php';
 require('fpdf.php');
@@ -282,9 +287,33 @@ $parameters = array(
 
 foreach($parameters as $key => $label) {
     $rating = round($metrics[$key] ?? 0, 2);
+    
+    // Add status and remarks based on rating
+    $status = '';
+    $remarks = '';
+    
+    if ($rating >= 4.5) {
+        $status = 'Excellent';
+        $remarks = 'Outstanding performance';
+    } elseif ($rating >= 4.0) {
+        $status = 'Very Good';
+        $remarks = 'Above expectations';
+    } elseif ($rating >= 3.5) {
+        $status = 'Good';
+        $remarks = 'Meets expectations';
+    } elseif ($rating >= 3.0) {
+        $status = 'Satisfactory';
+        $remarks = 'Room for improvement';
+    } else {
+        $status = 'Needs Improvement';
+        $remarks = 'Requires attention';
+    }
+    
     $metrics_data[] = array(
         'Parameter' => $label,
-        'Rating' => $rating
+        'Rating' => $rating,
+        'Status' => $status,
+        'Remarks' => $remarks
     );
 }
 
@@ -318,8 +347,8 @@ while($row = mysqli_fetch_assoc($subjects_result)) {
 // Prepare headers for tables
 $metrics_headers = array(
     'Parameter' => 60,
-    'Rating' => 30,
-    'Status' => 40,
+    'Rating' => 25,
+    'Status' => 35,
     'Remarks' => 60
 );
 
@@ -387,6 +416,9 @@ if (mysqli_num_rows($comments_result) > 0) {
         );
     }
 }
+
+// Make sure there's no output before PDF generation
+ob_clean();
 
 // Output PDF
 $pdf->Output('Faculty_Analysis_Report.pdf', 'D');

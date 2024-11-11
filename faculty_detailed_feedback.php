@@ -2,27 +2,27 @@
 session_start();
 include 'functions.php';
 
+// Check if user is logged in and is faculty
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'faculty') {
     header('Location: login.php');
     exit();
 }
 
+if (!isset($_GET['subject_id'])) {
+    die("Error: No subject selected.");
+}
+
+$subject_id = intval($_GET['subject_id']);
 $faculty_id = $_SESSION['user_id'];
-$subject_id = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : 0;
 
-// Fetch subject details
-$subject_query = "SELECT s.name, s.code, 
-                 ay.year_range as academic_year,
-                 CASE 
-                    WHEN s.semester % 2 = 0 THEN s.semester / 2
-                    ELSE (s.semester + 1) / 2
-                 END as year_of_study,
-                 s.semester,
-                 s.section
+// Fetch subject and faculty details
+$subject_query = "SELECT s.*, f.name AS faculty_name, f.faculty_id AS faculty_code,
+                 f.designation, f.qualification, f.experience, f.specialization,
+                 d.name AS department_name 
                  FROM subjects s
-                 JOIN academic_years ay ON s.academic_year_id = ay.id 
-                 WHERE s.id = ? AND s.faculty_id = ?";
-
+                 JOIN faculty f ON s.faculty_id = f.id
+                 JOIN departments d ON f.department_id = d.id
+                 WHERE s.id = ? AND f.id = ?";
 $subject_stmt = mysqli_prepare($conn, $subject_query);
 mysqli_stmt_bind_param($subject_stmt, "ii", $subject_id, $faculty_id);
 mysqli_stmt_execute($subject_stmt);
@@ -30,11 +30,11 @@ $subject_result = mysqli_stmt_get_result($subject_stmt);
 $subject = mysqli_fetch_assoc($subject_result);
 
 if (!$subject) {
-    die("Error: Invalid subject ID or you don't have permission to view this subject.");
+    die("Error: Invalid subject ID or unauthorized access.");
 }
 
 // Get current academic year
-$current_year_query = "SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1";
+$current_year_query = "SELECT id, year_range FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $current_year_result = mysqli_query($conn, $current_year_query);
 $current_year = mysqli_fetch_assoc($current_year_result);
 
@@ -42,9 +42,101 @@ if (!$current_year) {
     die("Error: No active academic year found.");
 }
 
-// Fetch feedback statistics
+// Fetch feedback statements and organize by section
+$feedback_statements_query = "SELECT id, statement, section 
+                            FROM feedback_statements 
+                            WHERE is_active = TRUE 
+                            ORDER BY section, id";
+$stmt = mysqli_prepare($conn, $feedback_statements_query);
+mysqli_stmt_execute($stmt);
+$feedback_statements_result = mysqli_stmt_get_result($stmt);
+
+$feedback_statements = [
+    'COURSE_EFFECTIVENESS' => [],
+    'TEACHING_EFFECTIVENESS' => [],
+    'RESOURCES_ADMIN' => [],
+    'ASSESSMENT_LEARNING' => [],
+    'COURSE_OUTCOMES' => []
+];
+
+while ($row = mysqli_fetch_assoc($feedback_statements_result)) {
+    $feedback_statements[$row['section']][] = [
+        'id' => $row['id'],
+        'statement' => $row['statement']
+    ];
+}
+
+// Section information
+$section_info = [
+    'COURSE_EFFECTIVENESS' => [
+        'title' => 'Course Effectiveness',
+        'icon' => 'fas fa-book',
+        'description' => 'Evaluation of course content and delivery effectiveness',
+        'count' => count($feedback_statements['COURSE_EFFECTIVENESS'])
+    ],
+    'TEACHING_EFFECTIVENESS' => [
+        'title' => 'Teaching Effectiveness',
+        'icon' => 'fas fa-chalkboard-teacher',
+        'description' => 'Assessment of teaching methods and instructor effectiveness',
+        'count' => count($feedback_statements['TEACHING_EFFECTIVENESS'])
+    ],
+    'RESOURCES_ADMIN' => [
+        'title' => 'Resources & Administration',
+        'icon' => 'fas fa-tools',
+        'description' => 'Evaluation of learning resources and administrative support',
+        'count' => count($feedback_statements['RESOURCES_ADMIN'])
+    ],
+    'ASSESSMENT_LEARNING' => [
+        'title' => 'Assessment & Learning',
+        'icon' => 'fas fa-tasks',
+        'description' => 'Analysis of assessment methods and learning outcomes',
+        'count' => count($feedback_statements['ASSESSMENT_LEARNING'])
+    ],
+    'COURSE_OUTCOMES' => [
+        'title' => 'Course Outcomes',
+        'icon' => 'fas fa-graduation-cap',
+        'description' => 'Achievement of intended course outcomes',
+        'count' => count($feedback_statements['COURSE_OUTCOMES'])
+    ]
+];
+
+// Fetch feedback data with ratings
+$feedback_query = "SELECT 
+    fr.rating, 
+    f.comments, 
+    fs.statement,
+    fs.section,
+    f.submitted_at,
+    f.course_effectiveness_avg,
+    f.teaching_effectiveness_avg,
+    f.resources_admin_avg,
+    f.assessment_learning_avg,
+    f.course_outcomes_avg,
+    f.cumulative_avg
+FROM feedback f
+JOIN feedback_ratings fr ON f.id = fr.feedback_id
+JOIN feedback_statements fs ON fr.statement_id = fs.id
+WHERE f.subject_id = ? 
+AND f.academic_year_id = ?
+ORDER BY fs.section, fs.id";
+
+$stmt = mysqli_prepare($conn, $feedback_query);
+mysqli_stmt_bind_param($stmt, "ii", $subject_id, $current_year['id']);
+mysqli_stmt_execute($stmt);
+$feedback_result = mysqli_stmt_get_result($stmt);
+
+// Organize feedback by section
+$feedback_by_section = [];
+while ($row = mysqli_fetch_assoc($feedback_result)) {
+    if (!isset($feedback_by_section[$row['section']])) {
+        $feedback_by_section[$row['section']] = [];
+    }
+    $feedback_by_section[$row['section']][] = $row;
+}
+
+// Fetch overall statistics
 $stats_query = "SELECT 
-    COUNT(DISTINCT f.id) as total_responses,
+    COUNT(DISTINCT f.id) as feedback_count,
     AVG(f.course_effectiveness_avg) as course_effectiveness,
     AVG(f.teaching_effectiveness_avg) as teaching_effectiveness,
     AVG(f.resources_admin_avg) as resources_admin,
@@ -62,144 +154,7 @@ mysqli_stmt_bind_param($stats_stmt, "ii", $subject_id, $current_year['id']);
 mysqli_stmt_execute($stats_stmt);
 $stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stats_stmt));
 
-// First, let's get the correct statement IDs and sections from the database structure
-$feedback_statements_query = "SELECT id, statement, section 
-                            FROM feedback_statements 
-                            WHERE is_active = TRUE
-                            ORDER BY section, id";
-$stmt = mysqli_prepare($conn, $feedback_statements_query);
-mysqli_stmt_execute($stmt);
-$all_statements = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
-
-// Now modify the ratings query to ensure we get all statements
-$ratings_query = "SELECT 
-    fs.section,
-    fs.statement,
-    fs.id as statement_id,
-    AVG(COALESCE(fr.rating, 0)) as avg_rating,
-    COUNT(DISTINCT f.id) as response_count,
-    SUM(CASE WHEN fr.rating = 1 THEN 1 ELSE 0 END) as rating_1,
-    SUM(CASE WHEN fr.rating = 2 THEN 1 ELSE 0 END) as rating_2,
-    SUM(CASE WHEN fr.rating = 3 THEN 1 ELSE 0 END) as rating_3,
-    SUM(CASE WHEN fr.rating = 4 THEN 1 ELSE 0 END) as rating_4,
-    SUM(CASE WHEN fr.rating = 5 THEN 1 ELSE 0 END) as rating_5
-FROM feedback_statements fs
-LEFT JOIN feedback_ratings fr ON fr.statement_id = fs.id
-LEFT JOIN feedback f ON fr.feedback_id = f.id 
-    AND f.subject_id = ? 
-    AND f.academic_year_id = ?
-WHERE fs.is_active = TRUE
-GROUP BY fs.id, fs.section, fs.statement
-ORDER BY fs.section, fs.id";
-
-// Define the correct statements for each section based on give_feedback.php
-$section_statements = [
-    'COURSE_EFFECTIVENESS' => [
-        "Does the course stimulate self-interest?",
-        "The course was delivered as outlined in the syllabus.",
-        "The syllabus was explained at the beginning of the course.",
-        "Well-organized presentations.",
-        "Given good examples and illustrations.",
-        "Encouraged questions and class participation.",
-        "Learnt new techniques and methods from this course.",
-        "Understood the relevance of the course for real-world application.",
-        "Course assignments and lectures complemented each other for design development/Projects.",
-        "Course will help in competitive examinations.",
-        "Course objectives mapped with outcomes.",
-        "Course outcomes help to attain Program Educational Objectives (PEOs)."
-    ],
-    'TEACHING_EFFECTIVENESS' => [
-        "Deliverance by course instructor stimulates interest.",
-        "The instructor managed classroom time and place well.",
-        "Instructor meets students' expectations.",
-        "Instructor demonstrates thorough preparation for the course.",
-        "Instructor encourages discussions and responds to questions.",
-        "Instructor appeared enthusiastic and interested.",
-        "Instructor was accessible outside the classroom."
-    ],
-    'RESOURCES_ADMIN' => [
-        "Course supported by adequate library resources.",
-        "Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).",
-        "Instructor provided guidance on finding resources.",
-        "Course material/Lecture notes were effective."
-    ],
-    'ASSESSMENT_LEARNING' => [
-        "Exams measure the knowledge acquired in the course.",
-        "Problems set help in understanding the course.",
-        "Feedback on assignments was useful.",
-        "Tutorial sessions help in understanding course concepts."
-    ],
-    'COURSE_OUTCOMES' => [
-        "COURSE OUTCOME 1",
-        "COURSE OUTCOME 2",
-        "COURSE OUTCOME 3",
-        "COURSE OUTCOME 4",
-        "COURSE OUTCOME 5",
-        "COURSE OUTCOME 6"
-    ]
-];
-
-// Update section info with correct counts
-$section_info = [
-    'COURSE_EFFECTIVENESS' => [
-        'title' => 'Course Effectiveness',
-        'icon' => 'fas fa-book',
-        'description' => 'Evaluation of course content and delivery effectiveness',
-        'count' => 12
-    ],
-    'TEACHING_EFFECTIVENESS' => [
-        'title' => 'Teaching Effectiveness',
-        'icon' => 'fas fa-chalkboard-teacher',
-        'description' => 'Assessment of teaching methods and instructor effectiveness',
-        'count' => 7
-    ],
-    'RESOURCES_ADMIN' => [
-        'title' => 'Resources & Administration',
-        'icon' => 'fas fa-tools',
-        'description' => 'Evaluation of learning resources and administrative support',
-        'count' => 4
-    ],
-    'ASSESSMENT_LEARNING' => [
-        'title' => 'Assessment & Learning',
-        'icon' => 'fas fa-tasks',
-        'description' => 'Analysis of assessment methods and learning outcomes',
-        'count' => 4
-    ],
-    'COURSE_OUTCOMES' => [
-        'title' => 'Course Outcomes',
-        'icon' => 'fas fa-graduation-cap',
-        'description' => 'Achievement of intended course outcomes',
-        'count' => 6
-    ]
-];
-
-// Execute the ratings query
-$ratings_stmt = mysqli_prepare($conn, $ratings_query);
-mysqli_stmt_bind_param($ratings_stmt, "ii", $subject_id, $current_year['id']);
-mysqli_stmt_execute($ratings_stmt);
-$ratings_result = mysqli_stmt_get_result($ratings_stmt);
-
-// Organize ratings by section
-$ratings_by_section = [];
-while ($row = mysqli_fetch_assoc($ratings_result)) {
-    $ratings_by_section[$row['section']][] = $row;
-}
-
-// Calculate section averages
-$section_averages = [];
-foreach ($ratings_by_section as $section => $ratings) {
-    $total_rating = 0;
-    $valid_ratings = 0;
-    foreach ($ratings as $rating) {
-        if ($rating['avg_rating'] > 0) {
-            $total_rating += $rating['avg_rating'];
-            $valid_ratings++;
-        }
-    }
-    $section_averages[$section] = $valid_ratings > 0 ? $total_rating / $valid_ratings : 0;
-}
-
-// Fetch comments
+// Fetch student comments
 $comments_query = "SELECT comments, submitted_at
                   FROM feedback
                   WHERE subject_id = ? 
@@ -212,6 +167,8 @@ $comments_stmt = mysqli_prepare($conn, $comments_query);
 mysqli_stmt_bind_param($comments_stmt, "ii", $subject_id, $current_year['id']);
 mysqli_stmt_execute($comments_stmt);
 $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSOC);
+
+// Include the same HTML/CSS from view_faculty_feedback.php
 ?>
 
 <!DOCTYPE html>
@@ -219,9 +176,10 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Detailed Feedback - <?php echo htmlspecialchars($subject['name']); ?></title>
+    <title>Subject Feedback Analysis - <?php echo htmlspecialchars($subject['name']); ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <!-- Include the same CSS from view_faculty_feedback.php -->
     <style>
         :root {
             --primary-color: #3498db;
@@ -248,6 +206,7 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             background: var(--bg-color);
             color: var(--text-color);
             line-height: 1.6;
+            min-height: 100vh;
         }
 
         .container {
@@ -256,7 +215,8 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             padding: 0 1.5rem;
         }
 
-        .subject-header {
+        /* Faculty Header Section */
+        .faculty-header {
             background: var(--card-bg);
             padding: 2.5rem;
             border-radius: 25px;
@@ -265,14 +225,14 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             text-align: center;
         }
 
-        .subject-header h1 {
+        .faculty-header h1 {
             font-size: 2.2rem;
             margin-bottom: 1.5rem;
             color: var(--primary-color);
             text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
         }
 
-        .subject-meta {
+        .faculty-meta {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: 1.5rem;
@@ -292,140 +252,183 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             transform: translateY(-5px);
         }
 
-        .meta-card h3 {
-            font-size: 0.9rem;
-            color: #666;
-            margin-bottom: 0.5rem;
+        .faculty-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: var(--bg-color);
+            border-radius: 20px;
+            box-shadow: var(--inner-shadow);
         }
 
-        .meta-card p {
+        .faculty-details p {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--card-bg);
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+        }
+
+        .faculty-details p:hover {
+            transform: translateY(-3px);
+        }
+
+        .faculty-details i {
+            color: var(--primary-color);
             font-size: 1.2rem;
-            font-weight: 600;
-            color: var(--text-color);
         }
 
-        .stats-container {
+        /* Stats Section */
+        .stats-section {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 25px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2.5rem;
+        }
+
+        .stats-section h2 {
+            color: var(--text-color);
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid var(--primary-color);
+            font-size: 1.8rem;
+        }
+
+        .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 2rem;
-            margin: 2rem 0;
         }
 
-        .stat-card {
+        .subject-card {
             background: var(--bg-color);
             padding: 2rem;
             border-radius: 20px;
             box-shadow: var(--shadow);
-            text-align: center;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
+            transition: transform 0.3s ease;
         }
 
-        .stat-card:hover {
+        .subject-card:hover {
             transform: translateY(-5px);
         }
 
-        .stat-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 5px;
-            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
-        }
-
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: 700;
+        .subject-card h3 {
             color: var(--primary-color);
-            margin: 1rem 0;
+            margin-bottom: 1rem;
+            font-size: 1.3rem;
         }
 
-        .stat-label {
-            font-size: 1rem;
-            color: #666;
-        }
-
-        .rating-distribution {
-            background: var(--bg-color);
-            padding: 2rem;
-            border-radius: 20px;
-            box-shadow: var(--shadow);
-            margin: 2rem 0;
-        }
-
-        .rating-bar-container {
-            display: flex;
-            align-items: center;
-            margin: 1rem 0;
-            padding: 0.5rem;
-            background: var(--bg-color);
-            border-radius: 10px;
-            box-shadow: var(--inner-shadow);
-        }
-
-        .rating-label {
-            width: 50px;
-            text-align: center;
-            font-weight: 600;
-        }
-
-        .progress-bar {
-            flex-grow: 1;
+        /* Rating Bars */
+        .rating-bar {
             height: 25px;
-            margin: 0 1rem;
             background: var(--bg-color);
             border-radius: 12.5px;
             box-shadow: var(--inner-shadow);
             overflow: hidden;
-            position: relative;
+            margin: 0.8rem 0;
         }
 
-        .progress-fill {
+        .rating-fill {
             height: 100%;
-            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
-            border-radius: 12.5px;
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            color: white;
+            font-weight: 500;
             transition: width 0.8s ease-in-out;
         }
 
-        .rating-count {
-            width: 80px;
-            text-align: right;
-            font-weight: 500;
-            color: #666;
-        }
-
+        /* Section Cards */
         .section-card {
             background: var(--card-bg);
-            padding: 2rem;
-            border-radius: 20px;
+            padding: 2.5rem;
+            border-radius: 25px;
             box-shadow: var(--shadow);
-            margin: 2rem 0;
+            margin-bottom: 2.5rem;
         }
 
         .section-title {
-            font-size: 1.5rem;
-            color: var(--text-color);
-            margin-bottom: 1.5rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid var(--primary-color);
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 1rem;
+            margin-bottom: 2rem;
         }
 
         .section-title i {
             color: var(--primary-color);
+            font-size: 1.8rem;
+        }
+
+        .section-title h2 {
+            color: var(--text-color);
+            font-size: 1.8rem;
+        }
+
+        .rating-item {
+            background: var(--bg-color);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .rating-item:hover {
+            transform: translateY(-3px);
+        }
+
+        .rating-item h3 {
+            color: var(--text-color);
+            margin-bottom: 1.5rem;
+            font-size: 1.2rem;
+        }
+
+        .rating-distribution {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8rem;
+        }
+
+        .rating-bar-row {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .rating-label {
+            min-width: 60px;
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        /* Comments Section */
+        .comments-section {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 25px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2.5rem;
+        }
+
+        .comments-section h2 {
+            color: var(--text-color);
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
         }
 
         .comment-card {
             background: var(--bg-color);
-            padding: 1.5rem;
-            border-radius: 15px;
+            padding: 2rem;
+            border-radius: 20px;
             box-shadow: var(--shadow);
-            margin: 1rem 0;
+            margin-bottom: 1.5rem;
             transition: transform 0.3s ease;
         }
 
@@ -433,274 +436,141 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             transform: translateY(-3px);
         }
 
-        .comment-text {
-            font-size: 1rem;
-            line-height: 1.6;
-            color: var(--text-color);
-            margin-bottom: 1rem;
-        }
-
-        .comment-meta {
+        .comment-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-top: 1rem;
-            border-top: 1px solid rgba(0,0,0,0.1);
-            font-size: 0.9rem;
-            color: #666;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
         }
 
-        .chart-container {
-            position: relative;
-            width: 100%;
-            height: 300px;
-            margin: 2rem 0;
+        .comment-text {
+            color: var(--text-color);
+            line-height: 1.8;
+            padding: 1rem;
+            background: var(--card-bg);
+            border-radius: 15px;
+            box-shadow: var(--inner-shadow);
         }
 
-        .average-circle {
-            width: 150px;
-            height: 150px;
-            border-radius: 50%;
-            background: var(--bg-color);
-            box-shadow: var(--shadow);
+        /* Action Buttons */
+        .actions {
             display: flex;
-            flex-direction: column;
+            gap: 1.5rem;
+            margin-top: 2.5rem;
             justify-content: center;
+        }
+
+        .btn {
+            display: inline-flex;
             align-items: center;
-            margin: 0 auto;
-            transition: transform 0.3s ease;
+            gap: 0.8rem;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow);
         }
 
-        .average-circle:hover {
-            transform: scale(1.05);
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
-        .average-number {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--primary-color);
+        .btn-primary {
+            background: linear-gradient(45deg, var(--primary-color), #2980b9);
+            color: white;
         }
 
-        .average-label {
-            font-size: 0.9rem;
-            color: #666;
+        .btn-secondary {
+            background: linear-gradient(45deg, var(--secondary-color), #27ae60);
+            color: white;
         }
 
+        /* Responsive Design */
         @media (max-width: 768px) {
-            .stats-container {
+            .container {
+                padding: 1rem;
+            }
+
+            .faculty-header {
+                padding: 1.5rem;
+            }
+
+            .faculty-meta {
                 grid-template-columns: 1fr;
             }
 
-            .rating-bar-container {
+            .faculty-details {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .actions {
                 flex-direction: column;
-                gap: 0.5rem;
             }
 
-            .progress-bar {
+            .btn {
                 width: 100%;
-                margin: 0.5rem 0;
+                justify-content: center;
             }
 
-            .rating-count {
-                width: 100%;
+            .rating-bar-row {
+                flex-direction: column;
+                align-items: stretch;
+            }
+
+            .rating-label {
                 text-align: center;
+                margin-bottom: 0.5rem;
             }
         }
 
-        .rating-item {
-            background: var(--bg-color);
-            padding: 1.5rem;
-            border-radius: 15px;
-            box-shadow: var(--shadow);
-            margin: 1rem 0;
-        }
-
-        .rating-item h3 {
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-            color: var(--text-color);
-        }
-
-        .detailed-ratings {
-            margin-top: 1rem;
-            padding: 1rem;
-            background: var(--bg-color);
-            border-radius: 10px;
-            box-shadow: var(--inner-shadow);
-        }
-
-        .mini-rating-bar {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin: 0.5rem 0;
-        }
-
-        .rating-number {
-            width: 20px;
-            text-align: center;
-        }
-
-        .mini-progress {
-            flex-grow: 1;
-            height: 15px;
-            background: var(--bg-color);
-            border-radius: 7.5px;
-            box-shadow: var(--inner-shadow);
-            overflow: hidden;
-        }
-
-        .mini-fill {
-            height: 100%;
-            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
-            transition: width 0.8s ease-in-out;
-        }
-
-        .mini-count {
-            width: 40px;
-            text-align: right;
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        .section-card {
-            background: var(--card-bg);
-            padding: 2rem;
-            border-radius: 20px;
-            box-shadow: var(--shadow);
-            margin: 2rem 0;
-        }
-
-        .section-title {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            font-size: 1.5rem;
-            color: var(--text-color);
-            margin-bottom: 1rem;
-        }
-
-        .section-title i {
-            color: var(--primary-color);
-        }
-
+        /* Additional Neumorphic Elements */
         .section-description {
-            color: #666;
-            margin-bottom: 2rem;
-            font-size: 0.9rem;
-        }
-
-        .section-summary {
-            background: var(--bg-color);
             padding: 1.5rem;
+            background: var(--bg-color);
             border-radius: 15px;
             box-shadow: var(--inner-shadow);
             margin-bottom: 2rem;
-        }
-
-        .summary-stats {
-            display: flex;
-            justify-content: space-around;
-            gap: 2rem;
-        }
-
-        .stat {
-            text-align: center;
-        }
-
-        .stat-value {
-            display: block;
-            font-size: 2rem;
-            font-weight: 600;
-            color: var(--primary-color);
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
             color: #666;
         }
 
-        .rating-item {
+        .feedback-count {
+            display: inline-block;
+            padding: 0.8rem 1.5rem;
             background: var(--bg-color);
-            padding: 1.5rem;
-            border-radius: 15px;
+            border-radius: 50px;
             box-shadow: var(--shadow);
-            margin: 1.5rem 0;
-        }
-
-        .rating-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-        }
-
-        .rating-header h3 {
-            font-size: 1.1rem;
-            color: var(--text-color);
-            flex: 1;
-            margin-right: 1rem;
-        }
-
-        .rating-summary {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-        }
-
-        .avg-rating {
-            font-size: 1.2rem;
-            font-weight: 600;
+            margin-top: 1.5rem;
             color: var(--primary-color);
-        }
-
-        .response-count {
-            font-size: 0.9rem;
-            color: #666;
-        }
-
-        .rating-bar-row {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin: 0.5rem 0;
-        }
-
-        .rating-bar {
-            flex: 1;
-            height: 20px;
-            background: var(--bg-color);
-            border-radius: 10px;
-            box-shadow: var(--inner-shadow);
-            overflow: hidden;
-        }
-
-        .rating-fill {
-            height: 100%;
-            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
-            display: flex;
-            align-items: center;
-            padding: 0 0.5rem;
-            transition: width 0.3s ease;
-        }
-
-        .rating-percentage {
-            color: white;
-            font-size: 0.8rem;
             font-weight: 500;
         }
 
-        @media (max-width: 768px) {
-            .rating-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 1rem;
-            }
+        .no-data {
+            text-align: center;
+            padding: 3rem;
+            background: var(--bg-color);
+            border-radius: 20px;
+            box-shadow: var(--inner-shadow);
+            color: #666;
+            font-style: italic;
+        }
 
-            .summary-stats {
-                flex-direction: column;
-                gap: 1rem;
-            }
+        /* Hover Effects */
+        .rating-item:hover .rating-fill {
+            filter: brightness(1.1);
+        }
+
+        .meta-card:hover i {
+            transform: scale(1.2);
+            color: var(--primary-color);
         }
     </style>
 </head>
@@ -708,17 +578,10 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
     <?php include 'header.php'; ?>
 
     <div class="container">
-        <div class="subject-header">
+        <!-- Subject Header -->
+        <div class="faculty-header">
             <h1><?php echo htmlspecialchars($subject['name']); ?> (<?php echo htmlspecialchars($subject['code']); ?>)</h1>
-            <div class="meta-card">
-                <h3>Academic Year</h3>
-                <p><?php echo htmlspecialchars($subject['academic_year']); ?></p>
-            </div>
-            <div class="subject-meta">
-                <div class="meta-card">
-                    <h3>Year</h3>
-                    <p><?php echo htmlspecialchars($subject['year_of_study']); ?></p>
-                </div>
+            <div class="faculty-meta">
                 <div class="meta-card">
                     <h3>Semester</h3>
                     <p><?php echo htmlspecialchars($subject['semester']); ?></p>
@@ -727,167 +590,135 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                     <h3>Section</h3>
                     <p><?php echo htmlspecialchars($subject['section']); ?></p>
                 </div>
-            </div>
-        </div>
-
-        <div class="stats-container">
-            <div class="stat-card">
-                <i class="fas fa-users fa-2x" style="color: var(--primary-color)"></i>
-                <div class="stat-value"><?php echo $stats['total_responses']; ?></div>
-                <div class="stat-label">Total Responses</div>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-star fa-2x" style="color: var(--primary-color)"></i>
-                <div class="stat-value"><?php echo number_format($stats['overall_avg'], 2); ?></div>
-                <div class="stat-label">Average Rating</div>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-chart-line fa-2x" style="color: var(--primary-color)"></i>
-                <div class="stat-value"><?php echo number_format($stats['min_rating'], 1); ?> - <?php echo number_format($stats['max_rating'], 1); ?></div>
-                <div class="stat-label">Rating Range</div>
-            </div>
-        </div>
-
-        <div class="rating-distribution">
-            <?php
-            // Calculate overall rating distribution across all sections
-            $rating_counts = array_fill(1, 5, 0);
-            $total_responses = 0;
-
-            foreach ($ratings_by_section as $section_ratings) {
-                foreach ($section_ratings as $rating) {
-                    $rating_counts[1] += $rating['rating_1'];
-                    $rating_counts[2] += $rating['rating_2'];
-                    $rating_counts[3] += $rating['rating_3'];
-                    $rating_counts[4] += $rating['rating_4'];
-                    $rating_counts[5] += $rating['rating_5'];
-                    $total_responses += $rating['response_count'];
-                }
-            }
-
-            // Display rating distribution
-            for ($i = 5; $i >= 1; $i--): 
-                $count = $rating_counts[$i];
-                $percentage = ($total_responses > 0) ? ($count / $total_responses) * 100 : 0;
-            ?>
-                <div class="rating-bar-container">
-                    <div class="rating-label">
-                        <?php echo $i; ?> <i class="fas fa-star" style="color: var(--primary-color)"></i>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: <?php echo $percentage; ?>%"></div>
-                    </div>
-                    <div class="rating-count">
-                        <?php echo $count; ?> votes
-                    </div>
+                <div class="meta-card">
+                    <h3>Department</h3>
+                    <p><?php echo htmlspecialchars($subject['department_name']); ?></p>
                 </div>
-            <?php endfor; ?>
+            </div>
         </div>
 
-        <!-- Section-wise Ratings -->
-        <?php foreach ($ratings_by_section as $section => $ratings): ?>
-            <div class="section-card">
-                <h2 class="section-title">
-                    <i class="<?php echo $section_info[$section]['icon']; ?>"></i>
-                    <?php echo $section_info[$section]['title']; ?>
-                </h2>
-                <p class="section-description"><?php echo $section_info[$section]['description']; ?></p>
-                
-                <div class="section-summary">
-                    <div class="summary-stats">
-                        <div class="stat">
-                            <span class="stat-value">
-                                <?php echo number_format($section_averages[$section], 2); ?>
-                            </span>
-                            <span class="stat-label">Section Average</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-value">
-                                <?php 
-                                $total_responses = max(array_column($ratings, 'response_count'));
-                                echo $total_responses;
-                                ?>
-                            </span>
-                            <span class="stat-label">Total Responses</span>
-                        </div>
-                    </div>
-                </div>
-
-                <?php foreach ($ratings as $rating): ?>
-                    <div class="rating-item">
-                        <div class="rating-header">
-                            <h3><?php echo htmlspecialchars($rating['statement']); ?></h3>
-                            <div class="rating-summary">
-                                <span class="avg-rating">
-                                    <i class="fas fa-star"></i>
-                                    <?php echo number_format($rating['avg_rating'], 2); ?>
-                                </span>
-                                <span class="response-count">
-                                    <?php echo $rating['response_count']; ?> responses
-                                </span>
-                            </div>
-                        </div>
-
-                        <div class="rating-distribution">
-                            <?php 
-                            $total_ratings = array_sum([
-                                $rating['rating_1'],
-                                $rating['rating_2'],
-                                $rating['rating_3'],
-                                $rating['rating_4'],
-                                $rating['rating_5']
-                            ]);
-                            
-                            for ($i = 5; $i >= 1; $i--): 
-                                $count = $rating["rating_$i"];
-                                $percentage = ($total_ratings > 0) ? 
-                                    ($count / $total_ratings) * 100 : 0;
-                            ?>
-                                <div class="rating-bar-row">
-                                    <div class="rating-label">
-                                        <?php echo $i; ?> <i class="fas fa-star"></i>
-                                    </div>
-                                    <div class="rating-bar">
-                                        <div class="rating-fill" style="width: <?php echo $percentage; ?>%">
-                                            <?php if ($percentage >= 10): ?>
-                                                <span class="rating-percentage">
-                                                    <?php echo round($percentage); ?>%
-                                                </span>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                    <div class="rating-count">
-                                        <?php echo $count; ?> vote<?php echo $count !== 1 ? 's' : ''; ?>
+        <!-- Overall Statistics -->
+        <div class="stats-section">
+            <h2>Overall Performance (<?php echo htmlspecialchars($current_year['year_range']); ?>)</h2>
+            <div class="stats-grid">
+                <div class="subject-card">
+                    <h3>Feedback Summary</h3>
+                    <div class="rating-summary">
+                        <?php
+                        $metrics = [
+                            'Course Effectiveness' => $stats['course_effectiveness'],
+                            'Teaching Effectiveness' => $stats['teaching_effectiveness'],
+                            'Resources & Admin' => $stats['resources_admin'],
+                            'Assessment & Learning' => $stats['assessment_learning'],
+                            'Course Outcomes' => $stats['course_outcomes']
+                        ];
+                        
+                        foreach ($metrics as $label => $value):
+                            $percentage = $value * 20; // Convert to percentage
+                        ?>
+                            <div class="rating-item">
+                                <span class="label"><?php echo $label; ?></span>
+                                <div class="rating-bar">
+                                    <div class="rating-fill" style="width: <?php echo $percentage; ?>%">
+                                        <?php echo number_format($value, 2); ?>
                                     </div>
                                 </div>
-                            <?php endfor; ?>
-                        </div>
+                            </div>
+                        <?php endforeach; ?>
                     </div>
-                <?php endforeach; ?>
+                    <div class="feedback-count">
+                        <span><?php echo $stats['feedback_count']; ?> responses</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section-wise Analysis -->
+        <?php foreach ($section_info as $section_code => $info): ?>
+            <div class="section-card">
+                <div class="section-title">
+                    <i class="<?php echo $info['icon']; ?>"></i>
+                    <h2><?php echo $info['title']; ?></h2>
+                </div>
+                <p class="section-description"><?php echo $info['description']; ?></p>
+
+                <?php if (isset($feedback_by_section[$section_code])): ?>
+                    <?php foreach ($feedback_statements[$section_code] as $statement): ?>
+                        <div class="rating-item">
+                            <h3><?php echo htmlspecialchars($statement['statement']); ?></h3>
+                            <div class="rating-distribution">
+                                <?php
+                                // Find ratings for this statement
+                                $statement_ratings = array_filter($feedback_by_section[$section_code], function($rating) use ($statement) {
+                                    return $rating['statement'] === $statement['statement'];
+                                });
+
+                                // Calculate rating distribution
+                                $rating_counts = array_fill(1, 5, 0);
+                                foreach ($statement_ratings as $rating) {
+                                    $rating_counts[$rating['rating']]++;
+                                }
+                                $total_ratings = array_sum($rating_counts);
+
+                                // Display rating bars
+                                for ($i = 5; $i >= 1; $i--):
+                                    $count = $rating_counts[$i];
+                                    $percentage = $total_ratings > 0 ? ($count / $total_ratings * 100) : 0;
+                                ?>
+                                    <div class="rating-bar-row">
+                                        <div class="rating-label">
+                                            <?php echo $i; ?> <i class="fas fa-star"></i>
+                                        </div>
+                                        <div class="rating-bar">
+                                            <div class="rating-fill" style="width: <?php echo $percentage; ?>%">
+                                                <?php if ($percentage >= 10): ?>
+                                                    <span class="rating-percentage">
+                                                        <?php echo round($percentage); ?>%
+                                                    </span>
+                                                <?php endif; ?>
+                                            </div>
+                                        </div>
+                                        <div class="rating-count">
+                                            <?php echo $count; ?> vote<?php echo $count !== 1 ? 's' : ''; ?>
+                                        </div>
+                                    </div>
+                                <?php endfor; ?>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                <?php else: ?>
+                    <p class="no-data">No feedback data available for this section.</p>
+                <?php endif; ?>
             </div>
         <?php endforeach; ?>
 
-        <div class="section-card">
-            <h2 class="section-title">
-                <i class="fas fa-comments"></i>
-                Student Comments
-            </h2>
-            <?php foreach ($comments as $comment): ?>
-                <div class="comment-card">
-                    <div class="comment-text">
-                        <?php echo nl2br(htmlspecialchars($comment['comments'])); ?>
+        <!-- Student Comments -->
+        <div class="comments-section">
+            <h2>Student Comments</h2>
+            <?php if (!empty($comments)): ?>
+                <?php foreach ($comments as $comment): ?>
+                    <div class="comment-card">
+                        <div class="comment-header">
+                            <span class="date"><?php echo date('F j, Y', strtotime($comment['submitted_at'])); ?></span>
+                        </div>
+                        <div class="comment-text">
+                            <?php echo nl2br(htmlspecialchars($comment['comments'])); ?>
+                        </div>
                     </div>
-                    <div class="comment-meta">
-                        <span>
-                            <i class="far fa-clock"></i>
-                            <?php echo date('F j, Y, g:i a', strtotime($comment['submitted_at'])); ?>
-                        </span>
-                    </div>
-                </div>
-            <?php endforeach; ?>
+                <?php endforeach; ?>
+            <?php else: ?>
+                <p class="no-data">No comments available.</p>
+            <?php endif; ?>
         </div>
 
-        <a href="dashboard.php" class="btn-back">Back to Dashboard</a>
+        <div class="actions">
+            <a href="generate_report.php?subject_id=<?php echo $subject_id; ?>" class="btn btn-primary">
+                <i class="fas fa-file-pdf"></i> Generate Report
+            </a>
+            <a href="dashboard.php" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to Dashboard
+            </a>
+        </div>
     </div>
 </body>
 </html>
