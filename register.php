@@ -218,31 +218,33 @@ function register_faculty($conn, $data, $hashed_password) {
     $name = htmlspecialchars(trim($data['name']), ENT_QUOTES, 'UTF-8');
     $email = filter_var($data['email'], FILTER_SANITIZE_EMAIL);
     $department_id = filter_var($data['department'], FILTER_VALIDATE_INT);
+    $faculty_id = htmlspecialchars(trim($data['faculty_id']), ENT_QUOTES, 'UTF-8');
     $designation = isset($data['designation']) ? htmlspecialchars(trim($data['designation']), ENT_QUOTES, 'UTF-8') : '';
     $experience = isset($data['experience']) ? filter_var($data['experience'], FILTER_VALIDATE_INT) : null;
     $qualification = isset($data['qualification']) ? htmlspecialchars(trim($data['qualification']), ENT_QUOTES, 'UTF-8') : '';
     $specialization = isset($data['specialization']) ? htmlspecialchars(trim($data['specialization']), ENT_QUOTES, 'UTF-8') : '';
 
     // Validate required fields
-    if (empty($name) || empty($email) || !$department_id) {
+    if (empty($name) || empty($email) || !$department_id || empty($faculty_id)) {
         throw new Exception("All required fields must be filled");
     }
 
-    // Validate email format
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        throw new Exception("Invalid email format");
+    // Validate faculty ID format (adjust pattern as needed)
+    if (!preg_match('/^[A-Z0-9]{5,10}$/', $faculty_id)) {
+        throw new Exception("Invalid faculty ID format");
     }
 
-    // Check if email already exists
-    $check_stmt = mysqli_prepare($conn, "SELECT id FROM faculty WHERE email = ?");
-    mysqli_stmt_bind_param($check_stmt, "s", $email);
+    // Check if faculty ID already exists
+    $check_stmt = mysqli_prepare($conn, "SELECT id FROM faculty WHERE faculty_id = ?");
+    mysqli_stmt_bind_param($check_stmt, "s", $faculty_id);
     mysqli_stmt_execute($check_stmt);
     if (mysqli_stmt_get_result($check_stmt)->num_rows > 0) {
-        throw new Exception("Email already exists");
+        throw new Exception("Faculty ID already exists");
     }
 
     // Insert faculty record
     $insert_query = "INSERT INTO faculty (
+        faculty_id,
         name, 
         email, 
         password, 
@@ -252,10 +254,11 @@ function register_faculty($conn, $data, $hashed_password) {
         qualification, 
         specialization, 
         is_active
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, TRUE)";
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)";
 
     $stmt = mysqli_prepare($conn, $insert_query);
-    mysqli_stmt_bind_param($stmt, "sssissss", 
+    mysqli_stmt_bind_param($stmt, "ssssissss", 
+        $faculty_id,
         $name, 
         $email, 
         $hashed_password, 
@@ -518,10 +521,15 @@ $batches = mysqli_fetch_all($batches_result, MYSQLI_ASSOC);
             const studentFields = document.getElementById('studentFields');
             const facultyFields = document.getElementById('facultyFields');
             const hodFields = document.getElementById('hodFields');
+            const registerNumberField = document.getElementById('register_number');
             
             studentFields.style.display = role === 'student' ? 'block' : 'none';
             facultyFields.style.display = role === 'faculty' ? 'block' : 'none';
             hodFields.style.display = role === 'hod' ? 'block' : 'none';
+
+            // Toggle required attribute for register number
+            registerNumberField.required = role === 'student';
+            registerNumberField.parentElement.style.display = role === 'student' ? 'block' : 'none';
 
             // Reset required attributes based on role
             const studentInputs = studentFields.querySelectorAll('input, select');
@@ -529,7 +537,13 @@ $batches = mysqli_fetch_all($batches_result, MYSQLI_ASSOC);
             const hodInputs = hodFields.querySelectorAll('input, select');
 
             studentInputs.forEach(input => input.required = (role === 'student'));
-            facultyInputs.forEach(input => input.required = false); // Faculty fields are optional
+            facultyInputs.forEach(input => {
+                if (input.id === 'faculty_id') {
+                    input.required = (role === 'faculty');
+                } else {
+                    input.required = false; // Other faculty fields remain optional
+                }
+            });
             hodInputs.forEach(input => input.required = (role === 'hod'));
         }
 
@@ -559,6 +573,18 @@ $batches = mysqli_fetch_all($batches_result, MYSQLI_ASSOC);
                 const section = document.getElementById('section').value;
                 if (!batchId || !section) {
                     alert('Please fill all required fields for student registration');
+                    return false;
+                }
+            } else if (role === 'faculty') {
+                const facultyId = document.getElementById('faculty_id').value;
+                if (!facultyId) {
+                    alert('Faculty ID is required');
+                    return false;
+                }
+                // Add any specific faculty ID format validation if needed
+                const facultyIdRegex = /^[A-Z0-9]{5,10}$/; // Adjust pattern as per your requirements
+                if (!facultyIdRegex.test(facultyId)) {
+                    alert('Invalid Faculty ID format');
                     return false;
                 }
             }
@@ -673,6 +699,15 @@ $batches = mysqli_fetch_all($batches_result, MYSQLI_ASSOC);
             <!-- Faculty Specific Fields -->
             <div id="facultyFields" style="display:none;">
                 <div class="form-group">
+                    <label for="faculty_id" class="required">Faculty ID</label>
+                    <input type="text" 
+                           id="faculty_id" 
+                           name="faculty_id" 
+                           class="input-field">
+                    <div class="validation-hint">Enter your faculty identification number</div>
+                </div>
+
+                <div class="form-group">
                     <label for="designation">Designation</label>
                     <input type="text" id="designation" name="designation" class="input-field">
                 </div>
@@ -708,8 +743,8 @@ $batches = mysqli_fetch_all($batches_result, MYSQLI_ASSOC);
                        id="register_number" 
                        name="register_number" 
                        class="input-field" 
-                       required>
-                <div class="validation-hint">Enter your university register number</div>
+                       <?php echo ($_POST['role'] ?? '') === 'student' ? 'required' : ''; ?>>
+                <div class="validation-hint">Enter your university register number (Only for students)</div>
             </div>
 
             <button type="submit" class="submit-btn">Register</button>

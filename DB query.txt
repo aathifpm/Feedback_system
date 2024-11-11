@@ -79,6 +79,7 @@ CREATE TABLE hods (
 -- Create faculty table
 CREATE TABLE faculty (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    faculty_id VARCHAR(20) NOT NULL UNIQUE,  -- Added this line
     name VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
@@ -94,6 +95,8 @@ CREATE TABLE faculty (
     FOREIGN KEY (department_id) REFERENCES departments(id)
 );
 
+-- Add index for faculty_id
+CREATE INDEX idx_faculty_id ON faculty(faculty_id);
 -- Create students table
 -- Create students table
 CREATE TABLE students (

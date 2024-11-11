@@ -210,8 +210,10 @@ switch ($role) {
         $data['overall_stats'] = [
             'total_subjects' => count($data['feedback_summary']),
             'total_feedback' => array_sum(array_column($data['feedback_summary'], 'feedback_count')),
-            'average_rating' => array_sum(array_filter(array_column($data['feedback_summary'], 'avg_rating'))) / 
-                              count(array_filter(array_column($data['feedback_summary'], 'avg_rating')))
+            'average_rating' => !empty(array_filter(array_column($data['feedback_summary'], 'avg_rating'))) 
+                ? array_sum(array_filter(array_column($data['feedback_summary'], 'avg_rating'))) / 
+                  count(array_filter(array_column($data['feedback_summary'], 'avg_rating')))
+                : 0
         ];
         break;
 
