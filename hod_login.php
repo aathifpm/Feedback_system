@@ -59,8 +59,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             );
             mysqli_stmt_execute($log_stmt);
 
-            header('Location: dashboard.php');
-            exit();
+            // Debug information
+            error_log("HOD Login Successful - Redirecting to dashboard.php");
+            error_log("Session variables: " . print_r($_SESSION, true));
+            
+            // Make sure headers haven't been sent
+            if (headers_sent($file, $line)) {
+                error_log("Headers already sent in $file on line $line");
+            } else {
+                header('Location: dashboard.php');
+                exit();
+            }
         } else {
             throw new Exception("Invalid email or password.");
         }

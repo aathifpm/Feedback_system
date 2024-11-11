@@ -12,6 +12,21 @@ if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
 $user_id = $_SESSION['user_id'];
 $role = $_SESSION['role'];
 
+// Add role validation
+$allowed_roles = ['admin', 'faculty', 'hod', 'student'];
+if (!in_array($_SESSION['role'], $allowed_roles)) {
+    header('Location: logout.php');
+    exit();
+}
+
+// Add error handling for database queries
+function handleDatabaseError($stmt, $error_message) {
+    if (!$stmt) {
+        error_log("Database error: " . mysqli_error($GLOBALS['conn']));
+        die($error_message);
+    }
+}
+
 // Get current academic year
 $academic_year_query = "SELECT * FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $academic_year_result = mysqli_query($conn, $academic_year_query);
@@ -99,6 +114,12 @@ switch ($role) {
                     JOIN departments d ON h.department_id = d.id
                     WHERE h.id = ? AND h.is_active = TRUE";
 
+        $stmt = mysqli_prepare($conn, $user_query);
+        mysqli_stmt_bind_param($stmt, "iii", 
+            $current_academic_year['id'],
+            $current_academic_year['id'],
+            $user_id
+        );
         break;
 
     default:
@@ -219,28 +240,153 @@ switch ($role) {
 
     case 'hod':
         // Get department exit survey summary
-        $stmt = mysqli_prepare($conn, "CALL GetDepartmentExitSurveySummary(?, ?)");
-        mysqli_stmt_bind_param($stmt, "ii", $user['department_id'], $current_academic_year['id']);
-        mysqli_stmt_execute($stmt);
-        $data['exit_survey_summary'] = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+        $exit_survey_query = "SELECT 
+            COUNT(*) as total_surveys,
+            AVG(
+                CASE 
+                    WHEN po_ratings IS NOT NULL 
+                    THEN (
+                        SELECT CAST(REPLACE(REPLACE(po_ratings, '[', ''), ']', '') AS DECIMAL(10,2))
+                    )
+                    ELSE 0 
+                END
+            ) as po_avg,
+            AVG(
+                CASE 
+                    WHEN pso_ratings IS NOT NULL 
+                    THEN (
+                        SELECT CAST(REPLACE(REPLACE(pso_ratings, '[', ''), ']', '') AS DECIMAL(10,2))
+                    )
+                    ELSE 0 
+                END
+            ) as pso_avg,
+            SUM(
+                CASE 
+                    WHEN employment_status LIKE '%\"status\":\"employed\"%' THEN 1 
+                    ELSE 0 
+                END
+            ) as employed_count,
+            SUM(
+                CASE 
+                    WHEN employment_status LIKE '%\"status\":\"higher_studies\"%' THEN 1 
+                    ELSE 0 
+                END
+            ) as higher_studies_count
+        FROM exit_surveys
+        WHERE department_id = ? 
+        AND academic_year_id = ?";
         
-        // Fetch faculty feedback summary
-        $faculty_query = "SELECT f.id, f.name, f.designation,
-                         COUNT(DISTINCT s.id) as total_subjects,
-                         COUNT(DISTINCT fb.id) as total_feedback,
-                         AVG(fb.cumulative_avg) as avg_rating
-                         FROM faculty f
-                         LEFT JOIN subjects s ON s.faculty_id = f.id
-                         LEFT JOIN feedback fb ON fb.subject_id = s.id 
-                         WHERE f.department_id = ? 
-                         AND f.is_active = TRUE
-                         AND (fb.academic_year_id = ? OR fb.academic_year_id IS NULL)
-                         GROUP BY f.id
-                         ORDER BY f.name";
-        $stmt = mysqli_prepare($conn, $faculty_query);
-        mysqli_stmt_bind_param($stmt, "ii", $user['department_id'], $current_academic_year['id']);
-        mysqli_stmt_execute($stmt);
-        $data['faculty'] = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+        $exit_survey_stmt = mysqli_prepare($conn, $exit_survey_query);
+        if (!$exit_survey_stmt) {
+            error_log("Error preparing exit survey query: " . mysqli_error($conn));
+            $data['exit_survey_summary'] = [
+                'total_surveys' => 0,
+                'po_avg' => 0,
+                'pso_avg' => 0,
+                'employed_count' => 0,
+                'higher_studies_count' => 0
+            ];
+        } else {
+            mysqli_stmt_bind_param($exit_survey_stmt, "ii", 
+                $user['department_id'], 
+                $current_academic_year['id']
+            );
+            
+            if (!mysqli_stmt_execute($exit_survey_stmt)) {
+                error_log("Error executing exit survey query: " . mysqli_stmt_error($exit_survey_stmt));
+                $data['exit_survey_summary'] = [
+                    'total_surveys' => 0,
+                    'po_avg' => 0,
+                    'pso_avg' => 0,
+                    'employed_count' => 0,
+                    'higher_studies_count' => 0
+                ];
+            } else {
+                $result = mysqli_stmt_get_result($exit_survey_stmt);
+                $data['exit_survey_summary'] = mysqli_fetch_assoc($result);
+                
+                // Ensure we have numeric values
+                $data['exit_survey_summary']['po_avg'] = 
+                    number_format($data['exit_survey_summary']['po_avg'] ?? 0, 2);
+                $data['exit_survey_summary']['pso_avg'] = 
+                    number_format($data['exit_survey_summary']['pso_avg'] ?? 0, 2);
+                $data['exit_survey_summary']['employed_count'] = 
+                    intval($data['exit_survey_summary']['employed_count'] ?? 0);
+                $data['exit_survey_summary']['higher_studies_count'] = 
+                    intval($data['exit_survey_summary']['higher_studies_count'] ?? 0);
+            }
+        }
+
+        // Fetch faculty feedback summary with detailed metrics
+        $faculty_query = "SELECT 
+            f.id, 
+            f.name,
+            f.faculty_id,  -- Added faculty_id from DB structure
+            f.designation,
+            f.experience,  -- Added experience from DB structure
+            f.qualification,  -- Added qualification from DB structure
+            f.specialization,  -- Added specialization from DB structure
+            d.name as department_name,
+            COUNT(DISTINCT s.id) as total_subjects,
+            COUNT(DISTINCT fb.id) as total_feedback,
+            AVG(fb.course_effectiveness_avg) as course_effectiveness,
+            AVG(fb.teaching_effectiveness_avg) as teaching_effectiveness,
+            AVG(fb.resources_admin_avg) as resources_admin,
+            AVG(fb.assessment_learning_avg) as assessment_learning,
+            AVG(fb.course_outcomes_avg) as course_outcomes,
+            AVG(fb.cumulative_avg) as overall_avg,
+            MIN(fb.cumulative_avg) as min_rating,
+            MAX(fb.cumulative_avg) as max_rating
+        FROM faculty f
+        JOIN departments d ON f.department_id = d.id
+        LEFT JOIN subjects s ON s.faculty_id = f.id 
+            AND s.academic_year_id = ?
+            AND s.is_active = TRUE
+        LEFT JOIN feedback fb ON fb.subject_id = s.id 
+            AND fb.academic_year_id = ?
+        WHERE f.department_id = ? 
+        AND f.is_active = TRUE
+        GROUP BY f.id, f.name, f.faculty_id, f.designation, f.experience, 
+                 f.qualification, f.specialization, d.name
+        ORDER BY f.name";
+        
+        $faculty_stmt = mysqli_prepare($conn, $faculty_query);
+        if (!$faculty_stmt) {
+            error_log("Error preparing faculty query: " . mysqli_error($conn));
+            $data['faculty'] = [];
+        } else {
+            mysqli_stmt_bind_param($faculty_stmt, "iii", 
+                $current_academic_year['id'],
+                $current_academic_year['id'], 
+                $user['department_id']
+            );
+            
+            if (!mysqli_stmt_execute($faculty_stmt)) {
+                error_log("Error executing faculty query: " . mysqli_stmt_error($faculty_stmt));
+                $data['faculty'] = [];
+            } else {
+                $data['faculty'] = mysqli_fetch_all(mysqli_stmt_get_result($faculty_stmt), MYSQLI_ASSOC);
+                
+                // Format the ratings and handle NULL values
+                foreach ($data['faculty'] as &$faculty) {
+                    $faculty['overall_avg'] = number_format($faculty['overall_avg'] ?? 0, 2);
+                    $faculty['course_effectiveness'] = number_format($faculty['course_effectiveness'] ?? 0, 2);
+                    $faculty['teaching_effectiveness'] = number_format($faculty['teaching_effectiveness'] ?? 0, 2);
+                    $faculty['resources_admin'] = number_format($faculty['resources_admin'] ?? 0, 2);
+                    $faculty['assessment_learning'] = number_format($faculty['assessment_learning'] ?? 0, 2);
+                    $faculty['course_outcomes'] = number_format($faculty['course_outcomes'] ?? 0, 2);
+                    $faculty['min_rating'] = number_format($faculty['min_rating'] ?? 0, 2);
+                    $faculty['max_rating'] = number_format($faculty['max_rating'] ?? 0, 2);
+                    $faculty['total_subjects'] = intval($faculty['total_subjects']);
+                    $faculty['total_feedback'] = intval($faculty['total_feedback']);
+                }
+            }
+        }
+
+        // Add debug information
+        error_log("Number of faculty members found: " . count($data['faculty']));
+        error_log("Faculty Query: " . $faculty_query);
+        error_log("Department ID: " . $user['department_id']);
         break;
 }
 ?>
@@ -662,6 +808,180 @@ switch ($role) {
             box-shadow: var(--inner-shadow);
             color: #666;
         }
+
+        .analysis-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .analysis-card {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            text-align: center;
+        }
+
+        .faculty-stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-top: 0.8rem;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .btn-secondary {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        .faculty-card {
+            background: var(--bg-color);
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .faculty-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .faculty-header {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .faculty-id {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .faculty-details {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+
+        .faculty-details p {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .faculty-details i {
+            color: var(--primary-color);
+        }
+
+        .feedback-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .stat-group {
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            display: block;
+        }
+
+        .stat-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .rating-categories {
+            margin-bottom: 1.5rem;
+        }
+
+        .rating-item {
+            margin-bottom: 1rem;
+        }
+
+        .rating-label {
+            margin-bottom: 0.5rem;
+            color: var(--text-color);
+        }
+
+        .rating-bar {
+            background: var(--bg-color);
+            height: 25px;
+            border-radius: 12.5px;
+            box-shadow: var(--inner-shadow);
+            overflow: hidden;
+        }
+
+        .rating-fill {
+            height: 100%;
+            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+            display: flex;
+            align-items: center;
+            padding: 0 1rem;
+            color: white;
+            font-weight: 500;
+            transition: width 0.3s ease;
+        }
+
+        .rating-range {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            margin: 1.5rem 0;
+            color: #666;
+        }
+
+        .range-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .faculty-actions {
+            text-align: center;
+            margin-top: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .faculty-card {
+                padding: 1.5rem;
+            }
+
+            .stat-group {
+                flex-direction: column;
+            }
+
+            .rating-range {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -865,49 +1185,192 @@ switch ($role) {
                 <?php endif; ?>
             </div>
 
-        <?php elseif ($role == 'hod' || $role == 'hods'): ?>
+        <?php elseif ($role === 'hod'): ?>
             <!-- HOD Dashboard Content -->
             <div class="stats-container">
                 <div class="stat-card">
                     <i class="fas fa-users icon"></i>
-                    <div class="number"><?php echo $data['dept_stats']['total_faculty']; ?></div>
+                    <div class="number"><?php echo $user['total_faculty']; ?></div>
                     <div class="label">Total Faculty</div>
                 </div>
                 <div class="stat-card">
                     <i class="fas fa-book icon"></i>
-                    <div class="number"><?php echo $data['dept_stats']['total_subjects']; ?></div>
+                    <div class="number"><?php echo $user['total_subjects']; ?></div>
                     <div class="label">Total Subjects</div>
                 </div>
                 <div class="stat-card">
                     <i class="fas fa-star icon"></i>
-                    <div class="number"><?php echo number_format($data['dept_stats']['dept_avg_rating'], 2); ?></div>
+                    <div class="number"><?php echo number_format($user['dept_avg_rating'], 2); ?></div>
                     <div class="label">Department Average Rating</div>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-poll icon"></i>
+                    <div class="number"><?php echo $data['exit_survey_summary']['total_surveys'] ?? 0; ?></div>
+                    <div class="label">Exit Surveys Completed</div>
                 </div>
             </div>
 
             <div class="content-section">
-                <h2 class="section-title">Faculty Feedback Summary</h2>
+                <h2 class="section-title">
+                    <i class="fas fa-chalkboard-teacher"></i>
+                    Faculty Performance Analysis
+                </h2>
                 <?php if (!empty($data['faculty'])): ?>
                     <?php foreach ($data['faculty'] as $faculty): ?>
-                        <div class="subject-card">
-                            <div class="subject-info">
+                        <div class="faculty-card">
+                            <div class="faculty-header">
                                 <h3><?php echo htmlspecialchars($faculty['name']); ?></h3>
-                                <p>Designation: <?php echo htmlspecialchars($faculty['designation']); ?></p>
-                                <p>Subjects: <?php echo $faculty['total_subjects']; ?> | 
-                                   Total Feedback: <?php echo $faculty['total_feedback']; ?></p>
+                                <p class="faculty-id">Faculty ID: <?php echo htmlspecialchars($faculty['faculty_id']); ?></p>
+                                <p class="designation">
+                                    <i class="fas fa-user-tag"></i> 
+                                    <?php echo htmlspecialchars($faculty['designation']); ?>
+                                </p>
+                                <div class="faculty-details">
+                                    <p><i class="fas fa-graduation-cap"></i> <?php echo htmlspecialchars($faculty['qualification']); ?></p>
+                                    <p><i class="fas fa-briefcase"></i> <?php echo htmlspecialchars($faculty['experience']); ?> years experience</p>
+                                    <p><i class="fas fa-book"></i> <?php echo htmlspecialchars($faculty['specialization']); ?></p>
+                                </div>
                             </div>
-                            <div class="subject-actions">
-                                <span class="status-badge">
-                                    Avg Rating: <?php echo number_format($faculty['avg_rating'], 2); ?>/5
+
+                            <div class="feedback-stats">
+                                <div class="stat-group">
+                                    <div class="stat-item">
+                                        <i class="fas fa-book"></i>
+                                        <span class="stat-value"><?php echo $faculty['total_subjects']; ?></span>
+                                        <span class="stat-label">Subjects</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <i class="fas fa-comments"></i>
+                                        <span class="stat-value"><?php echo $faculty['total_feedback']; ?></span>
+                                        <span class="stat-label">Feedbacks</span>
+                                    </div>
+                                    <div class="stat-item">
+                                        <i class="fas fa-star"></i>
+                                        <span class="stat-value"><?php echo $faculty['overall_avg']; ?></span>
+                                        <span class="stat-label">Overall Rating</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rating-categories">
+                                <div class="rating-item">
+                                    <div class="rating-label">Course Effectiveness</div>
+                                    <div class="rating-bar">
+                                        <div class="rating-fill" style="width: <?php echo ($faculty['course_effectiveness'] * 20); ?>%">
+                                            <?php echo $faculty['course_effectiveness']; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rating-item">
+                                    <div class="rating-label">Teaching Effectiveness</div>
+                                    <div class="rating-bar">
+                                        <div class="rating-fill" style="width: <?php echo ($faculty['teaching_effectiveness'] * 20); ?>%">
+                                            <?php echo $faculty['teaching_effectiveness']; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rating-item">
+                                    <div class="rating-label">Resources & Administration</div>
+                                    <div class="rating-bar">
+                                        <div class="rating-fill" style="width: <?php echo ($faculty['resources_admin'] * 20); ?>%">
+                                            <?php echo $faculty['resources_admin']; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rating-item">
+                                    <div class="rating-label">Assessment & Learning</div>
+                                    <div class="rating-bar">
+                                        <div class="rating-fill" style="width: <?php echo ($faculty['assessment_learning'] * 20); ?>%">
+                                            <?php echo $faculty['assessment_learning']; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rating-item">
+                                    <div class="rating-label">Course Outcomes</div>
+                                    <div class="rating-bar">
+                                        <div class="rating-fill" style="width: <?php echo ($faculty['course_outcomes'] * 20); ?>%">
+                                            <?php echo $faculty['course_outcomes']; ?>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="rating-range">
+                                <span class="range-item">
+                                    <i class="fas fa-arrow-down"></i>
+                                    Min: <?php echo $faculty['min_rating']; ?>
                                 </span>
-                                <a href="view_faculty_feedback.php?faculty_id=<?php echo $faculty['id']; ?>" class="btn btn-primary">
-                                    <i class="fas fa-chart-line"></i> View Analysis
+                                <span class="range-item">
+                                    <i class="fas fa-arrow-up"></i>
+                                    Max: <?php echo $faculty['max_rating']; ?>
+                                </span>
+                            </div>
+
+                            <div class="faculty-actions">
+                                <a href="view_faculty_feedback.php?faculty_id=<?php echo $faculty['id']; ?>" 
+                                   class="btn btn-primary">
+                                    <i class="fas fa-chart-line"></i> View Detailed Analysis
                                 </a>
                             </div>
                         </div>
                     <?php endforeach; ?>
                 <?php else: ?>
-                    <p>No faculty members found in the department.</p>
+                    <div class="no-data">
+                        <i class="fas fa-info-circle"></i>
+                        <p>No faculty feedback data available for the current academic year.</p>
+                    </div>
+                <?php endif; ?>
+            </div>
+
+            <div class="content-section">
+                <h2 class="section-title">
+                    <i class="fas fa-graduation-cap"></i>
+                    Exit Survey Analysis
+                </h2>
+                <?php if (isset($data['exit_survey_summary']) && !empty($data['exit_survey_summary'])): ?>
+                    <div class="analysis-grid">
+                        <div class="analysis-card">
+                            <h4>Program Outcomes</h4>
+                            <div class="rating-circle">
+                                <?php echo number_format($data['exit_survey_summary']['po_avg'], 2); ?>
+                            </div>
+                            <p>Average PO Rating</p>
+                        </div>
+                        <div class="analysis-card">
+                            <h4>Program Specific Outcomes</h4>
+                            <div class="rating-circle">
+                                <?php echo number_format($data['exit_survey_summary']['pso_avg'], 2); ?>
+                            </div>
+                            <p>Average PSO Rating</p>
+                        </div>
+                        <div class="analysis-card">
+                            <h4>Employment Status</h4>
+                            <div class="stat-value">
+                                <?php echo $data['exit_survey_summary']['employed_count']; ?>
+                            </div>
+                            <p>Students Employed</p>
+                        </div>
+                        <div class="analysis-card">
+                            <h4>Higher Studies</h4>
+                            <div class="stat-value">
+                                <?php echo $data['exit_survey_summary']['higher_studies_count']; ?>
+                            </div>
+                            <p>Pursuing Higher Studies</p>
+                        </div>
+                    </div>
+                    <div class="action-buttons">
+                        <a href="survey_analytics.php" class="btn btn-primary">
+                            <i class="fas fa-chart-bar"></i> View Detailed Analysis
+                        </a>
+                        <a href="generate_report.php?type=exit_survey" class="btn btn-secondary">
+                            <i class="fas fa-file-pdf"></i> Generate Report
+                        </a>
+                    </div>
+                <?php else: ?>
+                    <div class="no-data">
+                        <i class="fas fa-info-circle"></i>
+                        <p>No exit survey data available for the current academic year.</p>
+                    </div>
                 <?php endif; ?>
             </div>
         <?php endif; ?>

@@ -1,7 +1,7 @@
 <?php
 session_start();
 include 'functions.php';
-require('fpdf/fpdf.php');
+require('fpdf.php');
 
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'hod' && $_SESSION['role'] != 'hods')) {
     header('Location: login.php');
