@@ -26,15 +26,36 @@ if ($academic_year_id != $current_year['id']) {
 // Fetch faculty details if faculty_id is provided
 $faculty_data = null;
 if ($faculty_id) {
-    $faculty_query = "SELECT f.name, d.name AS department_name, f.email, f.experience
-                      FROM faculty f
-                      JOIN departments d ON f.department_id = d.id
-                      WHERE f.id = ?";
+    $faculty_query = "SELECT 
+        f.name, f.faculty_id, f.designation, f.experience, f.qualification,
+        f.specialization, d.name AS department_name, f.email,
+        COUNT(DISTINCT s.id) as total_subjects,
+        COUNT(DISTINCT fb.id) as total_feedback,
+        AVG(fb.course_effectiveness_avg) as course_effectiveness,
+        AVG(fb.teaching_effectiveness_avg) as teaching_effectiveness,
+        AVG(fb.resources_admin_avg) as resources_admin,
+        AVG(fb.assessment_learning_avg) as assessment_learning,
+        AVG(fb.course_outcomes_avg) as course_outcomes,
+        AVG(fb.cumulative_avg) as overall_avg,
+        MIN(fb.cumulative_avg) as min_rating,
+        MAX(fb.cumulative_avg) as max_rating
+    FROM faculty f
+    JOIN departments d ON f.department_id = d.id
+    LEFT JOIN subjects s ON s.faculty_id = f.id 
+        AND s.academic_year_id = ?
+    LEFT JOIN feedback fb ON fb.subject_id = s.id 
+        AND fb.academic_year_id = ?
+    WHERE f.id = ?
+    GROUP BY f.id";
+    
     $faculty_stmt = mysqli_prepare($conn, $faculty_query);
-    mysqli_stmt_bind_param($faculty_stmt, "i", $faculty_id);
+    mysqli_stmt_bind_param($faculty_stmt, "iii", 
+        $academic_year_id, 
+        $academic_year_id, 
+        $faculty_id
+    );
     mysqli_stmt_execute($faculty_stmt);
-    $faculty_result = mysqli_stmt_get_result($faculty_stmt);
-    $faculty_data = mysqli_fetch_assoc($faculty_result);
+    $faculty_data = mysqli_fetch_assoc(mysqli_stmt_get_result($faculty_stmt));
 
     if (!$faculty_data) {
         die("Error: Invalid faculty ID.");

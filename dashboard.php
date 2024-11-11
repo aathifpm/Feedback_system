@@ -982,6 +982,510 @@ switch ($role) {
                 align-items: center;
             }
         }
+
+        .search-filter-container {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+
+        .search-filter-form {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .search-input-group {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .search-input-group .input-field {
+            flex: 1;
+        }
+
+        .filter-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+        }
+
+        .btn-search {
+            padding: 0.8rem 1.5rem;
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .faculty-results {
+            margin-top: 2rem;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 2rem;
+            background: var(--bg-color);
+            border-radius: 15px;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .faculty-analysis-section {
+            background: var(--bg-color);
+            border-radius: 25px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow);
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.8rem;
+            color: var(--text-color);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .section-title i {
+            color: var(--primary-color);
+            font-size: 2rem;
+        }
+
+        .section-description {
+            color: #666;
+            font-size: 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .search-filter-container {
+            background: var(--bg-color);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--inner-shadow);
+            margin-bottom: 2rem;
+        }
+
+        .search-filter-form {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .search-box {
+            margin-bottom: 1.5rem;
+        }
+
+        .search-input-group {
+            position: relative;
+            margin-top: 0.5rem;
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--primary-color);
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 1rem;
+            padding-left: 3rem;
+            border: none;
+            border-radius: 50px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            font-size: 1rem;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+            outline: none;
+            box-shadow: var(--shadow);
+        }
+
+        .filter-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .filter-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .filter-item label {
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        .select-wrapper {
+            position: relative;
+        }
+
+        .select-wrapper select {
+            appearance: none;
+            padding-right: 2.5rem;
+            cursor: pointer;
+        }
+
+        .select-icon {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--primary-color);
+            pointer-events: none;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 1rem;
+        }
+
+        .btn {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 50px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow);
+        }
+
+        .btn-primary {
+            background: linear-gradient(145deg, var(--primary-color), #2980b9);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(145deg, var(--secondary-color), #27ae60);
+            color: white;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
+        }
+
+        .faculty-results {
+            margin-top: 2rem;
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .no-results {
+            text-align: center;
+            padding: 3rem;
+            background: var(--bg-color);
+            border-radius: 15px;
+            box-shadow: var(--inner-shadow);
+            color: #666;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .faculty-analysis-section {
+                padding: 1.5rem;
+            }
+
+            .filter-group {
+                grid-template-columns: 1fr;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Hover Effects */
+        .input-field:hover {
+            box-shadow: var(--shadow);
+        }
+
+        .select-wrapper:hover .input-field {
+            box-shadow: var(--shadow);
+        }
+
+        .select-wrapper:hover .select-icon {
+            transform: translateY(-50%) scale(1.1);
+        }
+
+        /* Loading State */
+        .loading {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading i {
+            font-size: 2rem;
+            color: var(--primary-color);
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Overview Stats */
+        .overview-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            transition: transform 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .stat-card.primary { --stat-color: var(--primary-color); }
+        .stat-card.success { --stat-color: var(--secondary-color); }
+        .stat-card.warning { --stat-color: var(--warning-color); }
+        .stat-card.info { --stat-color: #3498db; }
+
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--stat-color);
+            font-size: 1.5rem;
+        }
+
+        .stat-info {
+            flex: 1;
+        }
+
+        .stat-info h3 {
+            font-size: 0.9rem;
+            color: #666;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 600;
+            color: var(--stat-color);
+        }
+
+        /* Quick Actions */
+        .quick-actions {
+            background: var(--bg-color);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .action-btn {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            text-decoration: none;
+            color: var(--text-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-5px);
+            color: var(--primary-color);
+        }
+
+        .action-btn i {
+            font-size: 2rem;
+        }
+
+        /* Survey Metrics */
+        .survey-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+
+        .metric-card {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .metric-header {
+            margin-bottom: 1rem;
+        }
+
+        .metric-header i {
+            font-size: 2rem;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin: 1rem 0;
+        }
+
+        .metric-label {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        /* Survey Actions */
+        .survey-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+        }
+
+        .btn-primary {
+            background: linear-gradient(145deg, var(--primary-color), #2980b9);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: linear-gradient(145deg, var(--secondary-color), #27ae60);
+            color: white;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .dashboard-container {
+                padding: 1rem;
+            }
+
+            .stat-card {
+                padding: 1rem;
+            }
+
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .survey-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* Additional Neumorphic Effects */
+        .section-title {
+            position: relative;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 50px;
+            height: 4px;
+            background: var(--primary-color);
+            border-radius: 2px;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 3rem;
+            background: var(--bg-color);
+            border-radius: 20px;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .no-data i {
+            font-size: 3rem;
+            color: #666;
+            margin-bottom: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -1187,219 +1691,327 @@ switch ($role) {
 
         <?php elseif ($role === 'hod'): ?>
             <!-- HOD Dashboard Content -->
-            <div class="stats-container">
-                <div class="stat-card">
-                    <i class="fas fa-users icon"></i>
-                    <div class="number"><?php echo $user['total_faculty']; ?></div>
-                    <div class="label">Total Faculty</div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-book icon"></i>
-                    <div class="number"><?php echo $user['total_subjects']; ?></div>
-                    <div class="label">Total Subjects</div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-star icon"></i>
-                    <div class="number"><?php echo number_format($user['dept_avg_rating'], 2); ?></div>
-                    <div class="label">Department Average Rating</div>
-                </div>
-                <div class="stat-card">
-                    <i class="fas fa-poll icon"></i>
-                    <div class="number"><?php echo $data['exit_survey_summary']['total_surveys'] ?? 0; ?></div>
-                    <div class="label">Exit Surveys Completed</div>
-                </div>
-            </div>
-
-            <div class="content-section">
-                <h2 class="section-title">
-                    <i class="fas fa-chalkboard-teacher"></i>
-                    Faculty Performance Analysis
-                </h2>
-                <?php if (!empty($data['faculty'])): ?>
-                    <?php foreach ($data['faculty'] as $faculty): ?>
-                        <div class="faculty-card">
-                            <div class="faculty-header">
-                                <h3><?php echo htmlspecialchars($faculty['name']); ?></h3>
-                                <p class="faculty-id">Faculty ID: <?php echo htmlspecialchars($faculty['faculty_id']); ?></p>
-                                <p class="designation">
-                                    <i class="fas fa-user-tag"></i> 
-                                    <?php echo htmlspecialchars($faculty['designation']); ?>
-                                </p>
-                                <div class="faculty-details">
-                                    <p><i class="fas fa-graduation-cap"></i> <?php echo htmlspecialchars($faculty['qualification']); ?></p>
-                                    <p><i class="fas fa-briefcase"></i> <?php echo htmlspecialchars($faculty['experience']); ?> years experience</p>
-                                    <p><i class="fas fa-book"></i> <?php echo htmlspecialchars($faculty['specialization']); ?></p>
-                                </div>
-                            </div>
-
-                            <div class="feedback-stats">
-                                <div class="stat-group">
-                                    <div class="stat-item">
-                                        <i class="fas fa-book"></i>
-                                        <span class="stat-value"><?php echo $faculty['total_subjects']; ?></span>
-                                        <span class="stat-label">Subjects</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <i class="fas fa-comments"></i>
-                                        <span class="stat-value"><?php echo $faculty['total_feedback']; ?></span>
-                                        <span class="stat-label">Feedbacks</span>
-                                    </div>
-                                    <div class="stat-item">
-                                        <i class="fas fa-star"></i>
-                                        <span class="stat-value"><?php echo $faculty['overall_avg']; ?></span>
-                                        <span class="stat-label">Overall Rating</span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="rating-categories">
-                                <div class="rating-item">
-                                    <div class="rating-label">Course Effectiveness</div>
-                                    <div class="rating-bar">
-                                        <div class="rating-fill" style="width: <?php echo ($faculty['course_effectiveness'] * 20); ?>%">
-                                            <?php echo $faculty['course_effectiveness']; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="rating-item">
-                                    <div class="rating-label">Teaching Effectiveness</div>
-                                    <div class="rating-bar">
-                                        <div class="rating-fill" style="width: <?php echo ($faculty['teaching_effectiveness'] * 20); ?>%">
-                                            <?php echo $faculty['teaching_effectiveness']; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="rating-item">
-                                    <div class="rating-label">Resources & Administration</div>
-                                    <div class="rating-bar">
-                                        <div class="rating-fill" style="width: <?php echo ($faculty['resources_admin'] * 20); ?>%">
-                                            <?php echo $faculty['resources_admin']; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="rating-item">
-                                    <div class="rating-label">Assessment & Learning</div>
-                                    <div class="rating-bar">
-                                        <div class="rating-fill" style="width: <?php echo ($faculty['assessment_learning'] * 20); ?>%">
-                                            <?php echo $faculty['assessment_learning']; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="rating-item">
-                                    <div class="rating-label">Course Outcomes</div>
-                                    <div class="rating-bar">
-                                        <div class="rating-fill" style="width: <?php echo ($faculty['course_outcomes'] * 20); ?>%">
-                                            <?php echo $faculty['course_outcomes']; ?>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="rating-range">
-                                <span class="range-item">
-                                    <i class="fas fa-arrow-down"></i>
-                                    Min: <?php echo $faculty['min_rating']; ?>
-                                </span>
-                                <span class="range-item">
-                                    <i class="fas fa-arrow-up"></i>
-                                    Max: <?php echo $faculty['max_rating']; ?>
-                                </span>
-                            </div>
-
-                            <div class="faculty-actions">
-                                <a href="view_faculty_feedback.php?faculty_id=<?php echo $faculty['id']; ?>" 
-                                   class="btn btn-primary">
-                                    <i class="fas fa-chart-line"></i> View Detailed Analysis
-                                </a>
-                            </div>
+            <div class="dashboard-container">
+                <!-- Overview Stats -->
+                <div class="overview-stats">
+                    <div class="stat-card primary">
+                        <div class="stat-icon">
+                            <i class="fas fa-users"></i>
                         </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="no-data">
-                        <i class="fas fa-info-circle"></i>
-                        <p>No faculty feedback data available for the current academic year.</p>
-                    </div>
-                <?php endif; ?>
-            </div>
-
-            <div class="content-section">
-                <h2 class="section-title">
-                    <i class="fas fa-graduation-cap"></i>
-                    Exit Survey Analysis
-                </h2>
-                <?php if (isset($data['exit_survey_summary']) && !empty($data['exit_survey_summary'])): ?>
-                    <div class="analysis-grid">
-                        <div class="analysis-card">
-                            <h4>Program Outcomes</h4>
-                            <div class="rating-circle">
-                                <?php echo number_format($data['exit_survey_summary']['po_avg'], 2); ?>
-                            </div>
-                            <p>Average PO Rating</p>
-                        </div>
-                        <div class="analysis-card">
-                            <h4>Program Specific Outcomes</h4>
-                            <div class="rating-circle">
-                                <?php echo number_format($data['exit_survey_summary']['pso_avg'], 2); ?>
-                            </div>
-                            <p>Average PSO Rating</p>
-                        </div>
-                        <div class="analysis-card">
-                            <h4>Employment Status</h4>
-                            <div class="stat-value">
-                                <?php echo $data['exit_survey_summary']['employed_count']; ?>
-                            </div>
-                            <p>Students Employed</p>
-                        </div>
-                        <div class="analysis-card">
-                            <h4>Higher Studies</h4>
-                            <div class="stat-value">
-                                <?php echo $data['exit_survey_summary']['higher_studies_count']; ?>
-                            </div>
-                            <p>Pursuing Higher Studies</p>
+                        <div class="stat-info">
+                            <h3>Total Faculty</h3>
+                            <div class="stat-value"><?php echo $user['total_faculty']; ?></div>
                         </div>
                     </div>
+
+                    <div class="stat-card success">
+                        <div class="stat-icon">
+                            <i class="fas fa-book"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Total Subjects</h3>
+                            <div class="stat-value"><?php echo $user['total_subjects']; ?></div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card warning">
+                        <div class="stat-icon">
+                            <i class="fas fa-star"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Department Rating</h3>
+                            <div class="stat-value"><?php echo number_format($user['dept_avg_rating'], 2); ?></div>
+                        </div>
+                    </div>
+
+                    <div class="stat-card info">
+                        <div class="stat-icon">
+                            <i class="fas fa-poll"></i>
+                        </div>
+                        <div class="stat-info">
+                            <h3>Exit Surveys</h3>
+                            <div class="stat-value"><?php echo $data['exit_survey_summary']['total_surveys'] ?? 0; ?></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="quick-actions">
+                    <h2 class="section-title">Quick Actions</h2>
                     <div class="action-buttons">
-                        <a href="survey_analytics.php" class="btn btn-primary">
-                            <i class="fas fa-chart-bar"></i> View Detailed Analysis
+                        <a href="view_department_report.php" class="action-btn">
+                            <i class="fas fa-chart-bar"></i>
+                            <span>Department Report</span>
                         </a>
-                        <a href="generate_report.php?type=exit_survey" class="btn btn-secondary">
-                            <i class="fas fa-file-pdf"></i> Generate Report
+                        <a href="manage_faculty.php" class="action-btn">
+                            <i class="fas fa-user-tie"></i>
+                            <span>Manage Faculty</span>
+                        </a>
+                        <a href="view_feedback_summary.php" class="action-btn">
+                            <i class="fas fa-comments"></i>
+                            <span>Feedback Summary</span>
+                        </a>
+                        <a href="generate_report.php" class="action-btn">
+                            <i class="fas fa-file-pdf"></i>
+                            <span>Generate Report</span>
                         </a>
                     </div>
-                <?php else: ?>
-                    <div class="no-data">
-                        <i class="fas fa-info-circle"></i>
-                        <p>No exit survey data available for the current academic year.</p>
+                </div>
+
+                <!-- Faculty Performance Analysis Section -->
+                <div class="content-section faculty-analysis-section">
+                    <div class="section-header">
+                        <h2 class="section-title">
+                            <i class="fas fa-chalkboard-teacher"></i>
+                            Faculty Performance Analysis
+                        </h2>
+                        <p class="section-description">
+                            Comprehensive analysis of faculty performance based on student feedback
+                        </p>
                     </div>
-                <?php endif; ?>
+
+                    <!-- Search and Filter Form -->
+                    <div class="search-filter-container">
+                        <form id="facultySearchForm" class="search-filter-form">
+                            <!-- Search Box -->
+                            <div class="search-box">
+                                <label for="searchTerm">Search Faculty</label>
+                                <div class="search-input-group">
+                                    <i class="fas fa-search search-icon"></i>
+                                    <input type="text" 
+                                           id="searchTerm" 
+                                           name="searchTerm" 
+                                           placeholder="Enter faculty name or ID"
+                                           class="input-field">
+                                </div>
+                            </div>
+
+                            <!-- Filters -->
+                            <div class="filter-group">
+                                <div class="filter-item">
+                                    <label for="academicYear">Academic Year</label>
+                                    <div class="select-wrapper">
+                                        <select id="academicYear" name="academicYear" class="input-field" required>
+                                            <option value="">Select Academic Year</option>
+                                            <?php
+                                            $academic_years_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
+                                            $academic_years_result = mysqli_query($conn, $academic_years_query);
+                                            while ($year = mysqli_fetch_assoc($academic_years_result)) {
+                                                $selected = ($year['id'] == $current_academic_year['id']) ? 'selected' : '';
+                                                echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
+                                            }
+                                            ?>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+
+                                <div class="filter-item">
+                                    <label for="semester">Semester</label>
+                                    <div class="select-wrapper">
+                                        <select id="semester" name="semester" class="input-field">
+                                            <option value="">Select Semester</option>
+                                            <?php for($i = 1; $i <= 8; $i++): ?>
+                                                <option value="<?php echo $i; ?>">Semester <?php echo $i; ?></option>
+                                            <?php endfor; ?>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+
+                                <div class="filter-item">
+                                    <label for="section">Section</label>
+                                    <div class="select-wrapper">
+                                        <select id="section" name="section" class="input-field">
+                                            <option value="">Select Section</option>
+                                            <?php for($i = 65; $i <= 70; $i++): ?>
+                                                <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
+                                            <?php endfor; ?>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+
+                                <div class="filter-item">
+                                    <label for="subject">Subject</label>
+                                    <div class="select-wrapper">
+                                        <select id="subject" name="subject" class="input-field">
+                                            <option value="">Select Subject</option>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="button" class="btn btn-primary" onclick="searchFaculty()">
+                                    <i class="fas fa-filter"></i> Apply Filters
+                                </button>
+                                <button type="button" class="btn btn-secondary" onclick="resetFilters()">
+                                    <i class="fas fa-undo"></i> Reset
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Results Container -->
+                    <div id="facultyResults" class="faculty-results">
+                        <!-- Results will be loaded here via AJAX -->
+                    </div>
+                </div>
+
+                <!-- Exit Survey Analysis -->
+                <div class="content-section">
+                    <div class="section-header">
+                        <h2 class="section-title">
+                            <i class="fas fa-graduation-cap"></i>
+                            Exit Survey Analysis
+                        </h2>
+                    </div>
+
+                    <?php if (isset($data['exit_survey_summary']) && !empty($data['exit_survey_summary'])): ?>
+                        <div class="survey-metrics">
+                            <div class="metric-card">
+                                <div class="metric-header">
+                                    <i class="fas fa-bullseye"></i>
+                                    <h3>Program Outcomes</h3>
+                                </div>
+                                <div class="metric-value">
+                                    <?php echo number_format($data['exit_survey_summary']['po_avg'], 2); ?>
+                                </div>
+                                <div class="metric-label">Average PO Rating</div>
+                            </div>
+
+                            <div class="metric-card">
+                                <div class="metric-header">
+                                    <i class="fas fa-tasks"></i>
+                                    <h3>Program Specific Outcomes</h3>
+                                </div>
+                                <div class="metric-value">
+                                    <?php echo number_format($data['exit_survey_summary']['pso_avg'], 2); ?>
+                                </div>
+                                <div class="metric-label">Average PSO Rating</div>
+                            </div>
+
+                            <div class="metric-card">
+                                <div class="metric-header">
+                                    <i class="fas fa-briefcase"></i>
+                                    <h3>Employment Status</h3>
+                                </div>
+                                <div class="metric-value">
+                                    <?php echo $data['exit_survey_summary']['employed_count']; ?>
+                                </div>
+                                <div class="metric-label">Students Employed</div>
+                            </div>
+
+                            <div class="metric-card">
+                                <div class="metric-header">
+                                    <i class="fas fa-university"></i>
+                                    <h3>Higher Studies</h3>
+                                </div>
+                                <div class="metric-value">
+                                    <?php echo $data['exit_survey_summary']['higher_studies_count']; ?>
+                                </div>
+                                <div class="metric-label">Pursuing Higher Studies</div>
+                            </div>
+                        </div>
+
+                        <div class="survey-actions">
+                            <a href="survey_analytics.php" class="btn btn-primary">
+                                <i class="fas fa-chart-bar"></i> View Detailed Analysis
+                            </a>
+                            <a href="generate_report.php?type=exit_survey" class="btn btn-secondary">
+                                <i class="fas fa-file-pdf"></i> Generate Report
+                            </a>
+                        </div>
+                    <?php else: ?>
+                        <div class="no-data">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No exit survey data available for the current academic year.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
+
+            <script>
+                // Notification function
+                function showNotification(message, type = 'success') {
+                    const notification = document.getElementById('notification');
+                    notification.textContent = message;
+                    notification.className = `notification ${type}`;
+                    notification.style.display = 'block';
+                    
+                    setTimeout(() => {
+                        notification.style.display = 'none';
+                    }, 3000);
+                }
+
+                // Check for pending feedback
+                document.addEventListener('DOMContentLoaded', function() {
+                    <?php if ($role == 'student' && isset($data['feedback_stats'])): ?>
+                        const pendingFeedback = <?php echo $data['feedback_stats']['total_subjects'] - $data['feedback_stats']['completed_feedback']; ?>;
+                        if (pendingFeedback > 0) {
+                            showNotification(`You have ${pendingFeedback} pending feedback(s)`, 'warning');
+                        }
+                    <?php endif; ?>
+                });
+
+                document.addEventListener('DOMContentLoaded', function() {
+                    // Update subjects when academic year, semester, or section changes
+                    ['academicYear', 'semester', 'section'].forEach(id => {
+                        document.getElementById(id).addEventListener('change', updateSubjects);
+                    });
+
+                    // Initial subjects load
+                    updateSubjects();
+                });
+
+                function updateSubjects() {
+                    const academicYear = document.getElementById('academicYear').value;
+                    const semester = document.getElementById('semester').value;
+                    const section = document.getElementById('section').value;
+                    const subjectSelect = document.getElementById('subject');
+
+                    if (!academicYear || !semester || !section) {
+                        return;
+                    }
+
+                    // Fetch subjects based on selected filters
+                    fetch(`get_subjects.php?academic_year=${academicYear}&semester=${semester}&section=${section}&department_id=<?php echo $user['department_id']; ?>`)
+                        .then(response => response.json())
+                        .then(data => {
+                            subjectSelect.innerHTML = '<option value="">Select Subject</option>';
+                            data.forEach(subject => {
+                                subjectSelect.innerHTML += `<option value="${subject.id}">${subject.code} - ${subject.name}</option>`;
+                            });
+                        })
+                        .catch(error => console.error('Error:', error));
+                }
+
+                function searchFaculty() {
+                    const formData = new FormData(document.getElementById('facultySearchForm'));
+                    formData.append('department_id', '<?php echo $user['department_id']; ?>');
+
+                    fetch('search_faculty.php', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => response.text())
+                    .then(html => {
+                        document.getElementById('facultyResults').innerHTML = html;
+                    })
+                    .catch(error => console.error('Error:', error));
+                }
+
+                function resetFilters() {
+                    document.getElementById('facultySearchForm').reset();
+                    document.getElementById('facultyResults').innerHTML = '';
+                    updateSubjects();
+                }
+            </script>
         <?php endif; ?>
     </div>
 
     <div class="notification" id="notification"></div>
-
-    <script>
-        // Notification function
-        function showNotification(message, type = 'success') {
-            const notification = document.getElementById('notification');
-            notification.textContent = message;
-            notification.className = `notification ${type}`;
-            notification.style.display = 'block';
-            
-            setTimeout(() => {
-                notification.style.display = 'none';
-            }, 3000);
-        }
-
-        // Check for pending feedback
-        document.addEventListener('DOMContentLoaded', function() {
-            <?php if ($role == 'student' && isset($data['feedback_stats'])): ?>
-                const pendingFeedback = <?php echo $data['feedback_stats']['total_subjects'] - $data['feedback_stats']['completed_feedback']; ?>;
-                if (pendingFeedback > 0) {
-                    showNotification(`You have ${pendingFeedback} pending feedback(s)`, 'warning');
-                }
-            <?php endif; ?>
-        });
-    </script>
 </body>
 </html>
