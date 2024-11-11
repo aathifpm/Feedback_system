@@ -421,22 +421,50 @@ INSERT INTO batch_years (batch_name, admission_year, graduation_year) VALUES
 ('2023-27', 2023, 2027),
 ('2024-28', 2024, 2028);
 
--- Insert feedback statements
-INSERT INTO feedback_statements (statement, section) VALUES
-('Does the course stimulate self-interest?', 'COURSE_EFFECTIVENESS'),
-('The course was delivered as outlined in the syllabus.', 'COURSE_EFFECTIVENESS'),
-('The syllabus was explained at the beginning of the course.', 'COURSE_EFFECTIVENESS'),
-('Well-organized presentations.', 'COURSE_EFFECTIVENESS'),
-('Given good examples and illustrations.', 'COURSE_EFFECTIVENESS'),
-('Encouraged questions and class participation.', 'COURSE_EFFECTIVENESS'),
-('Deliverance by course instructor stimulates interest.', 'TEACHING_EFFECTIVENESS'),
-('The instructor managed classroom time and place well.', 'TEACHING_EFFECTIVENESS'),
-('Instructor meets students'' expectations.', 'TEACHING_EFFECTIVENESS'),
-('Course supported by adequate library resources.', 'RESOURCES_ADMIN'),
-('Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).', 'RESOURCES_ADMIN'),
-('Exams measure the knowledge acquired in the course.', 'ASSESSMENT_LEARNING'),
-('Problems set help in understanding the course.', 'ASSESSMENT_LEARNING');
+-- Insert feedback statements for all sections
+INSERT INTO feedback_statements (statement, section, is_active) VALUES
+-- Course Effectiveness statements
+('Does the course stimulate self-interest?', 'COURSE_EFFECTIVENESS', TRUE),
+('The course was delivered as outlined in the syllabus.', 'COURSE_EFFECTIVENESS', TRUE),
+('The syllabus was explained at the beginning of the course.', 'COURSE_EFFECTIVENESS', TRUE),
+('Well-organized presentations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Given good examples and illustrations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Encouraged questions and class participation.', 'COURSE_EFFECTIVENESS', TRUE),
+('Learnt new techniques and methods from this course.', 'COURSE_EFFECTIVENESS', TRUE),
+('Understood the relevance of the course for real-world application.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course assignments and lectures complemented each other for design development/Projects.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course will help in competitive examinations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course objectives mapped with outcomes.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course outcomes help to attain Program Educational Objectives (PEOs).', 'COURSE_EFFECTIVENESS', TRUE),
 
+-- Teaching Effectiveness statements
+('Deliverance by course instructor stimulates interest.', 'TEACHING_EFFECTIVENESS', TRUE),
+('The instructor managed classroom time and place well.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor meets students'' expectations.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor demonstrates thorough preparation for the course.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor encourages discussions and responds to questions.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor appeared enthusiastic and interested.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor was accessible outside the classroom.', 'TEACHING_EFFECTIVENESS', TRUE),
+
+-- Resources and Administration statements
+('Course supported by adequate library resources.', 'RESOURCES_ADMIN', TRUE),
+('Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).', 'RESOURCES_ADMIN', TRUE),
+('Instructor provided guidance on finding resources.', 'RESOURCES_ADMIN', TRUE),
+('Course material/Lecture notes were effective.', 'RESOURCES_ADMIN', TRUE),
+
+-- Assessment and Learning statements
+('Exams measure the knowledge acquired in the course.', 'ASSESSMENT_LEARNING', TRUE),
+('Problems set help in understanding the course.', 'ASSESSMENT_LEARNING', TRUE),
+('Feedback on assignments was useful.', 'ASSESSMENT_LEARNING', TRUE),
+('Tutorial sessions help in understanding course concepts.', 'ASSESSMENT_LEARNING', TRUE),
+
+-- Course Outcomes statements
+('COURSE OUTCOME 1', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 2', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 3', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 4', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 5', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 6', 'COURSE_OUTCOMES', TRUE);
 DELIMITER ;
 
 -- Set character set and collation

@@ -68,130 +68,100 @@ mysqli_stmt_bind_param($stats_stmt, "ii",
 mysqli_stmt_execute($stats_stmt);
 $stats_result = mysqli_stmt_get_result($stats_stmt);
 
-// Fetch feedback statements
-$statements = [
-    "COURSE_EFFECTIVENESS" => [
-        "Does the course stimulate self-interest?",
-        "The course was delivered as outlined in the syllabus.",
-        "The syllabus was explained at the beginning of the course.",
-        "Well-organized presentations.",
-        "Given good examples and illustrations.",
-        "Encouraged questions and class participation.",
-        "Learnt new techniques and methods from this course.",
-        "Understood the relevance of the course for real-world application.",
-        "Course assignments and lectures complemented each other for design development/Projects.",
-        "Course will help in competitive examinations.",
-        "Course objectives mapped with outcomes.",
-        "Course outcomes help to attain Program Educational Objectives (PEOs)."
-    ],
-    "TEACHING_EFFECTIVENESS" => [
-        "Deliverance by course instructor stimulates interest.",
-        "The instructor managed classroom time and place well.",
-        "Instructor meets students' expectations.",
-        "Instructor demonstrates thorough preparation for the course.",
-        "Instructor encourages discussions and responds to questions.",
-        "Instructor appeared enthusiastic and interested.",
-        "Instructor was accessible outside the classroom."
-    ],
-    "RESOURCES_ADMIN" => [
-        "Course supported by adequate library resources.",
-        "Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).",
-        "Instructor provided guidance on finding resources.",
-        "Course material/Lecture notes were effective."
-    ],
-    "ASSESSMENT_LEARNING" => [
-        "Exams measure the knowledge acquired in the course.",
-        "Problems set help in understanding the course.",
-        "Feedback on assignments was useful.",
-        "Tutorial sessions help in understanding course concepts."
-    ],
-    "COURSE_OUTCOMES" => [
-        "COURSE OUTCOME 1",
-        "COURSE OUTCOME 2",
-        "COURSE OUTCOME 3",
-        "COURSE OUTCOME 4",
-        "COURSE OUTCOME 5",
-        "COURSE OUTCOME 6"
-    ]
+// Fetch feedback statements from database
+$feedback_statements_query = "SELECT id, statement, section 
+                            FROM feedback_statements 
+                            WHERE is_active = TRUE 
+                            ORDER BY section, id";
+$stmt = mysqli_prepare($conn, $feedback_statements_query);
+mysqli_stmt_execute($stmt);
+$feedback_statements_result = mysqli_stmt_get_result($stmt);
+
+// Organize statements by section
+$feedback_statements = [
+    'COURSE_EFFECTIVENESS' => [],
+    'TEACHING_EFFECTIVENESS' => [],
+    'RESOURCES_ADMIN' => [],
+    'ASSESSMENT_LEARNING' => [],
+    'COURSE_OUTCOMES' => []
 ];
 
-// Section information
+while ($row = mysqli_fetch_assoc($feedback_statements_result)) {
+    $feedback_statements[$row['section']][] = [
+        'id' => $row['id'],
+        'statement' => $row['statement']
+    ];
+}
+
+// Section information with correct counts
 $section_info = [
     'COURSE_EFFECTIVENESS' => [
         'title' => 'Course Effectiveness',
         'icon' => 'fas fa-book',
-        'description' => 'Evaluation of course content and delivery effectiveness'
+        'description' => 'Evaluation of course content and delivery effectiveness',
+        'count' => count($feedback_statements['COURSE_EFFECTIVENESS']) // Should be 12
     ],
     'TEACHING_EFFECTIVENESS' => [
         'title' => 'Teaching Effectiveness',
         'icon' => 'fas fa-chalkboard-teacher',
-        'description' => 'Assessment of teaching methods and instructor effectiveness'
+        'description' => 'Assessment of teaching methods and instructor effectiveness',
+        'count' => count($feedback_statements['TEACHING_EFFECTIVENESS']) // Should be 7
     ],
     'RESOURCES_ADMIN' => [
         'title' => 'Resources & Administration',
         'icon' => 'fas fa-tools',
-        'description' => 'Evaluation of learning resources and administrative support'
+        'description' => 'Evaluation of learning resources and administrative support',
+        'count' => count($feedback_statements['RESOURCES_ADMIN']) // Should be 4
     ],
     'ASSESSMENT_LEARNING' => [
         'title' => 'Assessment & Learning',
         'icon' => 'fas fa-tasks',
-        'description' => 'Analysis of assessment methods and learning outcomes'
+        'description' => 'Analysis of assessment methods and learning outcomes',
+        'count' => count($feedback_statements['ASSESSMENT_LEARNING']) // Should be 4
     ],
     'COURSE_OUTCOMES' => [
         'title' => 'Course Outcomes',
         'icon' => 'fas fa-graduation-cap',
-        'description' => 'Achievement of intended course outcomes'
+        'description' => 'Achievement of intended course outcomes',
+        'count' => count($feedback_statements['COURSE_OUTCOMES']) // Should be 6
     ]
 ];
 
-// Fetch detailed ratings
-$ratings_query = "SELECT 
-    fs.section,
+// Update the feedback query to join with feedback_statements
+$feedback_query = "SELECT 
+    fr.rating, 
+    f.comments, 
+    s.code, 
+    s.name AS subject_name,
     fs.statement,
-    fs.id as statement_id,
-    AVG(COALESCE(fr.rating, 0)) as avg_rating,
-    COUNT(DISTINCT f.id) as response_count,
-    SUM(CASE WHEN fr.rating = 1 THEN 1 ELSE 0 END) as rating_1,
-    SUM(CASE WHEN fr.rating = 2 THEN 1 ELSE 0 END) as rating_2,
-    SUM(CASE WHEN fr.rating = 3 THEN 1 ELSE 0 END) as rating_3,
-    SUM(CASE WHEN fr.rating = 4 THEN 1 ELSE 0 END) as rating_4,
-    SUM(CASE WHEN fr.rating = 5 THEN 1 ELSE 0 END) as rating_5
-FROM feedback_statements fs
-LEFT JOIN feedback_ratings fr ON fr.statement_id = fs.id
-LEFT JOIN feedback f ON fr.feedback_id = f.id 
-    AND f.academic_year_id = ?
-LEFT JOIN subjects s ON f.subject_id = s.id 
-    AND s.faculty_id = ?
-WHERE fs.is_active = TRUE
-GROUP BY fs.id, fs.section, fs.statement
+    fs.section,
+    f.submitted_at,
+    f.course_effectiveness_avg,
+    f.teaching_effectiveness_avg,
+    f.resources_admin_avg,
+    f.assessment_learning_avg,
+    f.course_outcomes_avg,
+    f.cumulative_avg
+FROM feedback f
+JOIN subjects s ON f.subject_id = s.id
+JOIN feedback_ratings fr ON f.id = fr.feedback_id
+JOIN feedback_statements fs ON fr.statement_id = fs.id
+WHERE s.faculty_id = ? 
+AND f.academic_year_id = ?
 ORDER BY fs.section, fs.id";
 
-$ratings_stmt = mysqli_prepare($conn, $ratings_query);
-mysqli_stmt_bind_param($ratings_stmt, "ii", 
-    $current_year['id'],
-    $faculty_id
-);
-mysqli_stmt_execute($ratings_stmt);
-$ratings_result = mysqli_stmt_get_result($ratings_stmt);
+$stmt = mysqli_prepare($conn, $feedback_query);
+mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $current_year['id']);
+mysqli_stmt_execute($stmt);
+$feedback_result = mysqli_stmt_get_result($stmt);
 
-// Organize ratings by section
-$ratings_by_section = [];
-while ($row = mysqli_fetch_assoc($ratings_result)) {
-    $ratings_by_section[$row['section']][] = $row;
-}
-
-// Calculate section averages
-$section_averages = [];
-foreach ($ratings_by_section as $section => $ratings) {
-    $total = 0;
-    $count = 0;
-    foreach ($ratings as $rating) {
-        if ($rating['avg_rating'] > 0) {
-            $total += $rating['avg_rating'];
-            $count++;
-        }
+// Organize feedback by section
+$feedback_by_section = [];
+while ($row = mysqli_fetch_assoc($feedback_result)) {
+    if (!isset($feedback_by_section[$row['section']])) {
+        $feedback_by_section[$row['section']] = [];
     }
-    $section_averages[$section] = $count > 0 ? $total / $count : 0;
+    $feedback_by_section[$row['section']][] = $row;
 }
 
 // Fetch student comments
@@ -681,26 +651,45 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                     <h2><?php echo $info['title']; ?></h2>
                 </div>
                 <p class="section-description"><?php echo $info['description']; ?></p>
-                
-                <?php if (isset($ratings_by_section[$section_code])): ?>
-                    <?php foreach ($ratings_by_section[$section_code] as $rating): ?>
+
+                <?php if (isset($feedback_by_section[$section_code])): ?>
+                    <?php foreach ($feedback_statements[$section_code] as $statement): ?>
                         <div class="rating-item">
-                            <h3><?php echo htmlspecialchars($rating['statement']); ?></h3>
+                            <h3><?php echo htmlspecialchars($statement['statement']); ?></h3>
                             <div class="rating-distribution">
-                                <?php for ($i = 5; $i >= 1; $i--): ?>
+                                <?php
+                                // Find ratings for this statement
+                                $statement_ratings = array_filter($feedback_by_section[$section_code], function($rating) use ($statement) {
+                                    return $rating['statement'] === $statement['statement'];
+                                });
+
+                                // Calculate rating distribution
+                                $rating_counts = array_fill(1, 5, 0);
+                                foreach ($statement_ratings as $rating) {
+                                    $rating_counts[$rating['rating']]++;
+                                }
+                                $total_ratings = array_sum($rating_counts);
+
+                                // Display rating bars
+                                for ($i = 5; $i >= 1; $i--):
+                                    $count = $rating_counts[$i];
+                                    $percentage = $total_ratings > 0 ? ($count / $total_ratings * 100) : 0;
+                                ?>
                                     <div class="rating-bar-row">
-                                        <span class="rating-label"><?php echo $i; ?> ★</span>
+                                        <div class="rating-label">
+                                            <?php echo $i; ?> <i class="fas fa-star"></i>
+                                        </div>
                                         <div class="rating-bar">
-                                            <?php 
-                                            $count = $rating["rating_$i"];
-                                            $percentage = $rating['response_count'] > 0 ? 
-                                                ($count / $rating['response_count']) * 100 : 0;
-                                            ?>
                                             <div class="rating-fill" style="width: <?php echo $percentage; ?>%">
                                                 <?php if ($percentage >= 10): ?>
-                                                    <?php echo $count; ?> votes (<?php echo round($percentage); ?>%)
+                                                    <span class="rating-percentage">
+                                                        <?php echo round($percentage); ?>%
+                                                    </span>
                                                 <?php endif; ?>
                                             </div>
+                                        </div>
+                                        <div class="rating-count">
+                                            <?php echo $count; ?> vote<?php echo $count !== 1 ? 's' : ''; ?>
                                         </div>
                                     </div>
                                 <?php endfor; ?>

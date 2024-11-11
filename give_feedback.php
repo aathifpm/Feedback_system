@@ -31,7 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Validate all sections
         $sections = [
             'course_effectiveness',
-            'teaching_effectiveness',
+            'teaching_effectiveness', 
             'resources_admin',
             'assessment_learning',
             'course_outcomes'
@@ -115,7 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         $feedback_id = mysqli_insert_id($conn);
 
-        // Insert ratings
+        // Insert ratings with correct statement IDs
         $rating_query = "INSERT INTO feedback_ratings (
             feedback_id, 
             statement_id, 
@@ -126,13 +126,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         $rating_stmt = mysqli_prepare($conn, $rating_query);
 
+        // Define statement ID ranges for each section
+        $section_ranges = [
+            'course_effectiveness' => ['start' => 1, 'end' => 12],
+            'teaching_effectiveness' => ['start' => 13, 'end' => 19],
+            'resources_admin' => ['start' => 20, 'end' => 23],
+            'assessment_learning' => ['start' => 24, 'end' => 27],
+            'course_outcomes' => ['start' => 28, 'end' => 33]
+        ];
+
         foreach ($all_ratings as $section => $ratings) {
-            foreach ($ratings as $index => $rating) {
+            $statement_id = $section_ranges[$section]['start'];
+            foreach ($ratings as $rating) {
                 if (!$rating_stmt) {
                     throw new Exception("Failed to prepare rating statement");
                 }
 
-                $statement_id = $index + 1;
                 mysqli_stmt_bind_param($rating_stmt, "iiis", 
                     $feedback_id, 
                     $statement_id, 
@@ -143,6 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 if (!mysqli_stmt_execute($rating_stmt)) {
                     throw new Exception("Failed to insert rating: " . mysqli_stmt_error($rating_stmt));
                 }
+                $statement_id++;
             }
         }
 
@@ -863,6 +873,32 @@ if (!$subject) {
         .rating-table td:nth-child(2) {
             min-width: 200px;
         }
+
+        .comments-textarea {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 15px;
+            background: #e0e5ec;
+            box-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
+                       inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            font-size: clamp(0.9rem, 2vw, 0.95rem);
+            color: #2c3e50;
+            resize: vertical;
+            min-height: 120px;
+        }
+
+        .char-counter {
+            text-align: right;
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+        }
+
+        .comments-textarea:focus {
+            outline: 2px solid #3498db;
+            outline-offset: 2px;
+        }
     </style>
 
     <!-- Updated form validation script -->
@@ -955,13 +991,33 @@ if (!$subject) {
             let isValid = true;
             const formData = new FormData(form);
             
-            // Define the expected number of questions for each section
+            // Define the expected number of questions and ID ranges for each section
             const sectionQuestions = {
-                'course_effectiveness': 12,    // 12 questions
-                'teaching_effectiveness': 7,   // 7 questions
-                'resources_admin': 4,          // 4 questions
-                'assessment_learning': 4,      // 4 questions
-                'course_outcomes': 6           // 6 questions
+                'course_effectiveness': {
+                    count: 12,    // 12 questions
+                    startId: 1,   // IDs 1-12
+                    endId: 12
+                },
+                'teaching_effectiveness': {
+                    count: 7,     // 7 questions  
+                    startId: 13,  // IDs 13-19
+                    endId: 19
+                },
+                'resources_admin': {
+                    count: 4,     // 4 questions
+                    startId: 20,  // IDs 20-23
+                    endId: 23
+                },
+                'assessment_learning': {
+                    count: 4,     // 4 questions
+                    startId: 24,  // IDs 24-27
+                    endId: 27
+                },
+                'course_outcomes': {
+                    count: 6,     // 6 questions
+                    startId: 28,  // IDs 28-33
+                    endId: 33
+                }
             };
 
             // Validate all sections
@@ -1054,6 +1110,23 @@ if (!$subject) {
                 }
             });
         });
+
+        const commentsTextarea = document.getElementById('comments');
+        const charCount = document.getElementById('charCount');
+
+        if (commentsTextarea && charCount) {
+            commentsTextarea.addEventListener('input', function() {
+                const remaining = this.value.length;
+                charCount.textContent = remaining;
+                
+                // Optional: Change color when approaching limit
+                if (remaining > 900) {
+                    charCount.style.color = '#e74c3c';
+                } else {
+                    charCount.style.color = '#666';
+                }
+            });
+        }
     });
     </script>
 </head>
@@ -1361,6 +1434,23 @@ if (!$subject) {
                 <label for="semester">Semester:</label>
                 <input type="text" id="semester" name="semester" 
                        value="<?php echo htmlspecialchars($subject['semester']); ?>" readonly>
+            </div>
+
+            <!-- Comments Section -->
+            <div class="feedback-section">
+                <h2 class="section-title">Additional Comments</h2>
+                <div class="form-group">
+                    <label for="comments">Please provide any additional comments or suggestions about the course and teaching (optional):</label>
+                    <textarea 
+                        id="comments" 
+                        name="comments" 
+                        rows="5" 
+                        maxlength="1000" 
+                        class="comments-textarea"
+                        placeholder="Enter your comments here..."
+                    ></textarea>
+                    <div class="char-counter"><span id="charCount">0</span>/1000 characters</div>
+                </div>
             </div>
 
             <button type="submit" class="btn-submit">Submit Feedback</button>

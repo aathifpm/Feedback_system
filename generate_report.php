@@ -1,375 +1,393 @@
 <?php
 session_start();
-include 'functions.php';
+require_once 'functions.php';
 require('fpdf.php');
 
-if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'hod' && $_SESSION['role'] != 'hods')) {
+if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'hod' && $_SESSION['role'] != 'faculty')) {
     header('Location: login.php');
     exit();
 }
 
-$faculty_id = isset($_GET['faculty_id']) ? intval($_GET['faculty_id']) : null;
-$year = isset($_GET['year']) ? intval($_GET['year']) : null;
-$section = isset($_GET['section']) ? mysqli_real_escape_string($conn, $_GET['section']) : null;
-$semester = isset($_GET['semester']) ? intval($_GET['semester']) : null;
-$subject_id = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : null;
-$report_type = isset($_GET['report_type']) ? $_GET['report_type'] : 'overall';
-$academic_year_id = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : null;
+// Get parameters
+$faculty_id = isset($_GET['faculty_id']) ? intval($_GET['faculty_id']) : 0;
+$academic_year_id = getCurrentAcademicYear($conn);
 
-// Fetch current academic year
-$current_year = get_current_academic_year($conn);
-
-if ($academic_year_id != $current_year['id']) {
-    die("Error: Invalid academic year.");
+if (!$faculty_id || !$academic_year_id) {
+    die("Required parameters missing");
 }
 
-// Fetch faculty details if faculty_id is provided
-$faculty_data = null;
-if ($faculty_id) {
-    $faculty_query = "SELECT 
-        f.name, f.faculty_id, f.designation, f.experience, f.qualification,
-        f.specialization, d.name AS department_name, f.email,
-        COUNT(DISTINCT s.id) as total_subjects,
-        COUNT(DISTINCT fb.id) as total_feedback,
-        AVG(fb.course_effectiveness_avg) as course_effectiveness,
-        AVG(fb.teaching_effectiveness_avg) as teaching_effectiveness,
-        AVG(fb.resources_admin_avg) as resources_admin,
-        AVG(fb.assessment_learning_avg) as assessment_learning,
-        AVG(fb.course_outcomes_avg) as course_outcomes,
-        AVG(fb.cumulative_avg) as overall_avg,
-        MIN(fb.cumulative_avg) as min_rating,
-        MAX(fb.cumulative_avg) as max_rating
-    FROM faculty f
-    JOIN departments d ON f.department_id = d.id
-    LEFT JOIN subjects s ON s.faculty_id = f.id 
-        AND s.academic_year_id = ?
-    LEFT JOIN feedback fb ON fb.subject_id = s.id 
-        AND fb.academic_year_id = ?
-    WHERE f.id = ?
-    GROUP BY f.id";
-    
-    $faculty_stmt = mysqli_prepare($conn, $faculty_query);
-    mysqli_stmt_bind_param($faculty_stmt, "iii", 
-        $academic_year_id, 
-        $academic_year_id, 
-        $faculty_id
-    );
-    mysqli_stmt_execute($faculty_stmt);
-    $faculty_data = mysqli_fetch_assoc(mysqli_stmt_get_result($faculty_stmt));
-
-    if (!$faculty_data) {
-        die("Error: Invalid faculty ID.");
-    }
-}
-
-// Custom PDF class with header and footer
 class PDF extends FPDF {
     protected $col = 0;
     protected $y0;
-    protected $pageTitle;
-
-    function setPageTitle($title) {
-        $this->pageTitle = $title;
-    }
 
     function Header() {
+        // Background color for header
+        $this->SetFillColor(51, 122, 183); // Professional blue
+        $this->Rect(0, 0, 210, 40, 'F');
+        
         // Logo
-        $this->Image('college_logo.png', 10, 6, 30);
-        // Arial bold 15
-        $this->SetFont('Arial', 'B', 15);
-        // Move to the right
-        $this->Cell(80);
-        // Title
-        $this->Cell(30, 10, 'Panimalar Engineering College', 0, 1, 'C');
-        $this->SetFont('Arial', 'I', 12);
-        $this->Cell(0, 10, 'Exit Survey Report', 0, 1, 'C');
-        if ($this->pageTitle) {
-            $this->Cell(0, 10, $this->pageTitle, 0, 1, 'C');
+        if (file_exists('college_logo.png')) {
+            $this->Image('college_logo.png', 10, 6, 30);
         }
-        // Line break
-        $this->Ln(20);
-        // Save ordinate
-        $this->y0 = $this->GetY();
+        
+        // College Name
+        $this->SetTextColor(255, 255, 255); // White text
+        $this->SetFont('Arial', 'B', 20);
+        $this->Cell(80);
+        $this->Cell(30, 15, 'Panimalar Engineering College', 0, 1, 'C');
+        
+        // Subtitle
+        $this->SetFont('Arial', 'B', 14);
+        $this->Cell(0, 10, 'Faculty Performance Analysis Report', 0, 1, 'C');
+        
+        // Reset text color
+        $this->SetTextColor(0, 0, 0);
+        $this->Ln(10);
     }
 
     function Footer() {
-        // Position at 1.5 cm from bottom
         $this->SetY(-15);
-        // Arial italic 8
         $this->SetFont('Arial', 'I', 8);
-        // Text color in gray
+        
+        // Add a line above footer
+        $this->SetDrawColor(51, 122, 183);
+        $this->Line(10, $this->GetY(), 200, $this->GetY());
+        
+        // Footer text
         $this->SetTextColor(128);
-        // Page number
-        $this->Cell(0, 10, 'Page '.$this->PageNo().'/{nb}', 0, 0, 'C');
+        $this->Cell(0, 10, 'Page '.$this->PageNo().'/{nb}     Generated on: ' . date('d-m-Y'), 0, 0, 'C');
     }
 
-    function ChapterTitle($num, $label) {
-        // Arial 12
-        $this->SetFont('Arial', '', 12);
-        // Background color
-        $this->SetFillColor(200, 220, 255);
-        // Title
-        $this->Cell(0, 6, "Chapter $num : $label", 0, 1, 'L', true);
-        // Line break
-        $this->Ln(4);
+    function SectionTitle($title) {
+        // Add some space before section
+        $this->Ln(5);
+        
+        // Gradient background
+        $this->SetFillColor(51, 122, 183);
+        $this->SetTextColor(255);
+        $this->SetFont('Arial', 'B', 14);
+        $this->Cell(0, 10, '  ' . $title, 0, 1, 'L', true);
+        
+        // Reset colors
+        $this->SetTextColor(0);
+        $this->Ln(5);
     }
 
-    function ChapterBody($txt) {
-        // Times 12
-        $this->SetFont('Times', '', 12);
-        // Output justified text
-        $this->MultiCell(0, 5, $txt);
-        // Line break
+    function CreateInfoBox($label, $value) {
+        $this->SetFillColor(245, 245, 245);
+        $this->SetFont('Arial', 'B', 11);
+        $this->Cell(50, 8, $label . ':', 0, 0, 'L');
+        $this->SetFont('Arial', '', 11);
+        $this->Cell(0, 8, $value, 0, 1, 'L');
+    }
+
+    function CreateMetricsTable($headers, $data) {
+        // Table header colors
+        $this->SetFillColor(51, 122, 183);
+        $this->SetTextColor(255);
+        $this->SetDrawColor(51, 122, 183);
+        $this->SetLineWidth(0.3);
+        $this->SetFont('Arial', 'B', 10);
+
+        // Header
+        $w = array_values($headers);
+        $columns = array_keys($headers);
+        foreach($columns as $i => $column) {
+            $this->Cell($w[$i], 8, $column, 1, 0, 'C', true);
+        }
         $this->Ln();
+
+        // Data
+        $this->SetFillColor(245, 245, 245);
+        $this->SetTextColor(0);
+        $this->SetFont('Arial', '', 10);
+        $fill = false;
+
+        foreach($data as $row) {
+            // Add color coding based on rating
+            if (isset($row['Rating'])) {
+                $rating = floatval($row['Rating']);
+                if ($rating >= 4.5) $this->SetTextColor(46, 139, 87); // Green
+                elseif ($rating >= 4.0) $this->SetTextColor(25, 135, 84); // Dark green
+                elseif ($rating >= 3.5) $this->SetTextColor(255, 193, 7); // Yellow
+                elseif ($rating >= 3.0) $this->SetTextColor(255, 140, 0); // Orange
+                else $this->SetTextColor(220, 53, 69); // Red
+            }
+
+            foreach($columns as $i => $column) {
+                $this->Cell($w[$i], 7, $row[$column], 1, 0, 'C', $fill);
+            }
+            $this->Ln();
+            $fill = !$fill;
+            $this->SetTextColor(0); // Reset text color
+        }
+    }
+
+    function AddChart($title, $data, $labels) {
+        // Implement simple bar chart
+        $this->SetFont('Arial', 'B', 12);
+        $this->Cell(0, 10, $title, 0, 1, 'C');
+        
+        $chartHeight = 60;
+        $chartWidth = 180;
+        $barWidth = $chartWidth / count($data);
+        
+        // Draw chart axes
+        $startX = 15;
+        $startY = $this->GetY() + $chartHeight;
+        
+        $this->Line($startX, $startY, $startX + $chartWidth, $startY); // X axis
+        $this->Line($startX, $startY, $startX, $startY - $chartHeight); // Y axis
+        
+        // Draw bars
+        $maxValue = max($data);
+        $scale = $chartHeight / $maxValue;
+        
+        $x = $startX;
+        foreach($data as $i => $value) {
+            $barHeight = $value * $scale;
+            $this->SetFillColor(51, 122, 183);
+            $this->Rect($x, $startY - $barHeight, $barWidth - 2, $barHeight, 'F');
+            
+            // Add value on top of bar
+            $this->SetFont('Arial', '', 8);
+            $this->SetXY($x, $startY - $barHeight - 5);
+            $this->Cell($barWidth - 2, 5, number_format($value, 1), 0, 0, 'C');
+            
+            // Add label below bar
+            $this->SetXY($x, $startY + 1);
+            $this->Cell($barWidth - 2, 5, $labels[$i], 0, 0, 'C');
+            
+            $x += $barWidth;
+        }
+        
+        $this->Ln($chartHeight + 20);
+    }
+
+    function AddCommentBox($subject, $date, $comment) {
+        $this->SetFillColor(245, 245, 245);
+        $this->RoundedRect($this->GetX(), $this->GetY(), 190, 30, 3, 'F');
+        
+        // Subject and date header
+        $this->SetFont('Arial', 'B', 10);
+        $this->Cell(140, 6, $subject, 0, 0);
+        $this->SetFont('Arial', 'I', 8);
+        $this->Cell(50, 6, $date, 0, 1, 'R');
+        
+        // Comment text
+        $this->SetFont('Arial', '', 10);
+        $this->MultiCell(190, 5, $comment, 0, 'L');
+        $this->Ln(5);
+    }
+
+    function RoundedRect($x, $y, $w, $h, $r, $style = '') {
+        $k = $this->k;
+        $hp = $this->h;
+        if($style=='F')
+            $op='f';
+        elseif($style=='FD' || $style=='DF')
+            $op='B';
+        else
+            $op='S';
+        $MyArc = 4/3 * (sqrt(2) - 1);
+        $this->_out(sprintf('%.2F %.2F m',($x+$r)*$k,($hp-$y)*$k ));
+        $xc = $x+$w-$r ;
+        $yc = $y+$r;
+        $this->_out(sprintf('%.2F %.2F l', $xc*$k,($hp-$y)*$k ));
+
+        $this->_Arc($xc + $r*$MyArc, $yc - $r, $xc + $r, $yc - $r*$MyArc, $xc + $r, $yc);
+        $xc = $x+$w-$r ;
+        $yc = $y+$h-$r;
+        $this->_out(sprintf('%.2F %.2F l',($x+$w)*$k,($hp-$yc)*$k));
+        $this->_Arc($xc + $r, $yc + $r*$MyArc, $xc + $r*$MyArc, $yc + $r, $xc, $yc + $r);
+        $xc = $x+$r ;
+        $yc = $y+$h-$r;
+        $this->_out(sprintf('%.2F %.2F l',$xc*$k,($hp-($y+$h))*$k));
+        $this->_Arc($xc - $r*$MyArc, $yc + $r, $xc - $r, $yc + $r*$MyArc, $xc - $r, $yc);
+        $xc = $x+$r ;
+        $yc = $y+$r;
+        $this->_out(sprintf('%.2F %.2F l',($x)*$k,($hp-$yc)*$k ));
+        $this->_Arc($xc - $r, $yc - $r*$MyArc, $xc - $r*$MyArc, $yc - $r, $xc, $yc - $r);
+        $this->_out($op);
+    }
+
+    function _Arc($x1, $y1, $x2, $y2, $x3, $y3) {
+        $h = $this->h;
+        $this->_out(sprintf('%.2F %.2F %.2F %.2F %.2F %.2F c ', 
+            $x1*$this->k, ($h-$y1)*$this->k,
+            $x2*$this->k, ($h-$y2)*$this->k,
+            $x3*$this->k, ($h-$y3)*$this->k));
     }
 }
 
 // Create PDF instance
 $pdf = new PDF();
 $pdf->AliasNbPages();
-
-// Prepare the query based on report type
-switch ($report_type) {
-    case 'subject':
-        $query = "SELECT s.name AS subject_name, s.semester, s.section,
-                  COUNT(DISTINCT f.id) AS feedback_count,
-                  AVG(fr.rating) AS avg_rating
-                  FROM subjects s
-                  LEFT JOIN feedback f ON s.id = f.subject_id
-                  LEFT JOIN feedback_ratings fr ON f.id = fr.feedback_id
-                  WHERE s.id = ? AND s.faculty_id = ? AND f.academic_year = ?
-                  GROUP BY s.id, s.semester, s.section";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "iii", $subject_id, $faculty_id, $academic_year_id);
-        break;
-
-    case 'year_section_semester':
-        $query = "SELECT s.name AS subject_name, 
-                  f.name AS faculty_name,
-                  COUNT(DISTINCT fb.id) AS feedback_count,
-                  AVG(fr.rating) AS avg_rating
-                  FROM subjects s
-                  JOIN faculty f ON s.faculty_id = f.id
-                  LEFT JOIN feedback fb ON s.id = fb.subject_id
-                  LEFT JOIN feedback_ratings fr ON fb.id = fr.feedback_id
-                  WHERE s.semester = ? 
-                  AND s.year = ? 
-                  AND s.section = ? 
-                  AND fb.academic_year_id = ?
-                  AND s.is_active = TRUE
-                  GROUP BY s.id, f.id
-                  ORDER BY s.name, avg_rating DESC";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "iisi", $semester, $year, $section, $academic_year_id);
-        break;
-
-    default: // overall faculty report
-        $query = "SELECT s.name AS subject_name, s.semester,
-                  COUNT(DISTINCT f.id) AS feedback_count,
-                  AVG(fr.rating) AS avg_rating
-                  FROM subjects s
-                  LEFT JOIN feedback f ON s.id = f.subject_id
-                  LEFT JOIN feedback_ratings fr ON f.id = fr.feedback_id
-                  WHERE s.faculty_id = ? AND f.academic_year = ?
-                  GROUP BY s.id, s.semester
-                  ORDER BY s.semester, avg_rating DESC";
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
-}
-
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-
-// Generate PDF
 $pdf->AddPage();
 
-// Report Information
-$pdf->ChapterTitle('Report Information');
-$pdf->ChapterBody("Academic Year: " . $current_year['year_range'] . "\n");
+// Fetch faculty details
+$faculty_query = "SELECT f.*, d.name as department_name 
+                 FROM faculty f 
+                 JOIN departments d ON f.department_id = d.id 
+                 WHERE f.id = ?";
+$stmt = mysqli_prepare($conn, $faculty_query);
+mysqli_stmt_bind_param($stmt, "i", $faculty_id);
+mysqli_stmt_execute($stmt);
+$faculty = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
-switch ($report_type) {
-    case 'subject':
-        $pdf->ChapterBody("Faculty Name: " . $faculty_data['name'] . "\n" .
-                          "Department: " . $faculty_data['department_name'] . "\n" .
-                          "Subject: " . mysqli_fetch_assoc($result)['subject_name']);
-        mysqli_data_seek($result, 0);
-        break;
-    case 'year_section_semester':
-        $department_name = mysqli_fetch_assoc($result)['department_name'];
-        mysqli_data_seek($result, 0);
-        $pdf->ChapterBody("Department: " . $department_name . "\n" .
-                          "Year: " . numberToRoman($year) . "\n" .
-                          "Section: " . $section . "\n" .
-                          "Semester: " . $semester);
-        break;
-    default: // overall faculty report
-        $info = "";
-        if ($faculty_data) {
-            $info .= "Faculty Name: " . $faculty_data['name'] . "\n" .
-                     "Department: " . $faculty_data['department_name'] . "\n" .
-                     "Email: " . $faculty_data['email'] . "\n" .
-                     "Experience: " . $faculty_data['experience'] . " years\n";
-        }
-        $pdf->ChapterBody($info);
-}
-
-$pdf->Ln(5);
-
-// Feedback Data
-$pdf->ChapterTitle('Feedback Data');
-
-// Add table header
-$pdf->SetFillColor(0, 51, 102);
-$pdf->SetTextColor(255);
-$pdf->SetFont('Arial', 'B', 10);
-
-switch ($report_type) {
-    case 'subject':
-        $pdf->Cell(60, 7, 'Subject', 1, 0, 'C', true);
-        $pdf->Cell(20, 7, 'Semester', 1, 0, 'C', true);
-        $pdf->Cell(20, 7, 'Section', 1, 0, 'C', true);
-        $pdf->Cell(30, 7, 'Feedback Count', 1, 0, 'C', true);
-        $pdf->Cell(30, 7, 'Avg. Rating', 1, 0, 'C', true);
-        break;
-    case 'year_section_semester':
-        $pdf->Cell(50, 7, 'Subject', 1, 0, 'C', true);
-        $pdf->Cell(50, 7, 'Faculty', 1, 0, 'C', true);
-        $pdf->Cell(30, 7, 'Feedback Count', 1, 0, 'C', true);
-        $pdf->Cell(30, 7, 'Avg. Rating', 1, 0, 'C', true);
-        break;
-    default: // overall faculty report
-        $pdf->Cell(60, 7, 'Subject', 1, 0, 'C', true);
-        $pdf->Cell(20, 7, 'Semester', 1, 0, 'C', true);
-        $pdf->Cell(30, 7, 'Feedback Count', 1, 0, 'C', true);
-        $pdf->Cell(30, 7, 'Avg. Rating', 1, 0, 'C', true);
-        break;
-}
-$pdf->Ln();
-
-// Reset text color for data
-$pdf->SetTextColor(0);
-$pdf->SetFont('Arial', '', 10);
-
-$total_feedback = 0;
-$total_rating = 0;
-$subject_count = 0;
-
-$row_color = false;
-while ($row = mysqli_fetch_assoc($result)) {
-    $pdf->SetFillColor($row_color ? 240 : 255);
-    switch ($report_type) {
-        case 'subject':
-            $pdf->Cell(60, 6, $row['subject_name'], 1, 0, 'L', $row_color);
-            $pdf->Cell(20, 6, $row['semester'], 1, 0, 'C', $row_color);
-            $pdf->Cell(20, 6, $row['section'], 1, 0, 'C', $row_color);
-            $pdf->Cell(30, 6, $row['feedback_count'], 1, 0, 'C', $row_color);
-            $pdf->Cell(30, 6, number_format($row['avg_rating'], 2), 1, 0, 'C', $row_color);
-            break;
-        case 'year_section_semester':
-            $pdf->Cell(50, 6, $row['subject_name'], 1, 0, 'L', $row_color);
-            $pdf->Cell(50, 6, $row['faculty_name'], 1, 0, 'L', $row_color);
-            $pdf->Cell(30, 6, $row['feedback_count'], 1, 0, 'C', $row_color);
-            $pdf->Cell(30, 6, number_format($row['avg_rating'], 2), 1, 0, 'C', $row_color);
-            break;
-        default: // overall faculty report
-            $pdf->Cell(60, 6, $row['subject_name'], 1, 0, 'L', $row_color);
-            $pdf->Cell(20, 6, $row['semester'], 1, 0, 'C', $row_color);
-            $pdf->Cell(30, 6, $row['feedback_count'], 1, 0, 'C', $row_color);
-            $pdf->Cell(30, 6, number_format($row['avg_rating'], 2), 1, 0, 'C', $row_color);
-            break;
-    }
-    $pdf->Ln();
-
-    $total_feedback += $row['feedback_count'];
-    $total_rating += $row['avg_rating'];
-    $subject_count++;
-    $row_color = !$row_color;
-}
-
-$pdf->Ln(10);
-
-// Overall Statistics
-$pdf->ChapterTitle('Overall Statistics');
-$pdf->SetFont('Arial', '', 10);
-$pdf->Cell(0, 6, 'Total Subjects: ' . $subject_count, 0, 1);
-$pdf->Cell(0, 6, 'Total Feedback Received: ' . $total_feedback, 0, 1);
-$pdf->Cell(0, 6, 'Overall Average Rating: ' . ($subject_count > 0 ? number_format($total_rating / $subject_count, 2) : 'N/A') . '/5', 0, 1);
-
-// Add a chart
-$pdf->AddPage(); // Start a new page for the chart
-$pdf->ChapterTitle('Rating Distribution');
-$chart_data = array(
-    'Excellent (4.5-5.0)' => 0,
-    'Good (3.5-4.4)' => 0,
-    'Average (2.5-3.4)' => 0,
-    'Below Average (1.5-2.4)' => 0,
-    'Poor (0-1.4)' => 0
+// Prepare info_data array
+$info_data = array(
+    array('Label' => 'Name', 'Value' => $faculty['name']),
+    array('Label' => 'Faculty ID', 'Value' => $faculty['faculty_id']),
+    array('Label' => 'Department', 'Value' => $faculty['department_name']),
+    array('Label' => 'Designation', 'Value' => $faculty['designation']),
+    array('Label' => 'Experience', 'Value' => $faculty['experience'] . ' years'),
+    array('Label' => 'Qualification', 'Value' => $faculty['qualification']),
+    array('Label' => 'Specialization', 'Value' => $faculty['specialization'])
 );
 
-// Store the data in an array instead of relying on mysqli_data_seek
-$all_data = array();
-mysqli_data_seek($result, 0);
-while ($row = mysqli_fetch_assoc($result)) {
-    $all_data[] = $row;
-}
+// Fetch performance metrics
+$metrics_query = "SELECT 
+    COUNT(DISTINCT s.id) as total_subjects,
+    COUNT(DISTINCT f.id) as total_feedback,
+    AVG(f.course_effectiveness_avg) as course_effectiveness,
+    AVG(f.teaching_effectiveness_avg) as teaching_effectiveness,
+    AVG(f.resources_admin_avg) as resources_admin,
+    AVG(f.assessment_learning_avg) as assessment_learning,
+    AVG(f.course_outcomes_avg) as course_outcomes,
+    AVG(f.cumulative_avg) as overall_avg,
+    MIN(f.cumulative_avg) as min_rating,
+    MAX(f.cumulative_avg) as max_rating
+FROM subjects s
+LEFT JOIN feedback f ON s.id = f.subject_id
+WHERE s.faculty_id = ? 
+AND f.academic_year_id = ?
+GROUP BY s.faculty_id";
 
-foreach ($all_data as $row) {
-    $rating = floatval($row['avg_rating']);
-    if ($rating >= 4.5) $chart_data['Excellent (4.5-5.0)']++;
-    elseif ($rating >= 3.5) $chart_data['Good (3.5-4.4)']++;
-    elseif ($rating >= 2.5) $chart_data['Average (2.5-3.4)']++;
-    elseif ($rating >= 1.5) $chart_data['Below Average (1.5-2.4)']++;
-    else $chart_data['Poor (0-1.4)']++;
-}
+$stmt = mysqli_prepare($conn, $metrics_query);
+mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
+mysqli_stmt_execute($stmt);
+$metrics = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
-$pdf->SetFont('Arial', '', 8);
-$colors = array(
-    'Excellent (4.5-5.0)' => array(0, 102, 204),
-    'Good (3.5-4.4)' => array(0, 204, 102),
-    'Average (2.5-3.4)' => array(255, 204, 0),
-    'Below Average (1.5-2.4)' => array(255, 102, 0),
-    'Poor (0-1.4)' => array(204, 0, 0)
+// Prepare metrics_data array
+$metrics_data = array();
+$parameters = array(
+    'course_effectiveness' => 'Course Effectiveness',
+    'teaching_effectiveness' => 'Teaching Effectiveness',
+    'resources_admin' => 'Resources & Admin',
+    'assessment_learning' => 'Assessment & Learning',
+    'course_outcomes' => 'Course Outcomes',
+    'overall_avg' => 'Overall Rating'
 );
 
-$chart_width = 140;
-$bar_height = 20;
-$x = $pdf->GetX() + 30;
-$y = $pdf->GetY() + 10;
-
-if ($subject_count > 0) {
-    foreach ($chart_data as $label => $value) {
-        $bar_width = ($value / $subject_count) * $chart_width;
-        $pdf->SetFillColor($colors[$label][0], $colors[$label][1], $colors[$label][2]);
-        $pdf->Rect($x, $y, $bar_width, $bar_height, 'F');
-        $pdf->SetXY($x + $bar_width + 2, $y + 2);
-        $pdf->Cell(20, 5, $value . ' (' . number_format(($value / $subject_count) * 100, 1) . '%)', 0, 0, 'L');
-        $pdf->SetXY($x - 70, $y + 6);
-        $pdf->Cell(65, 5, $label, 0, 0, 'R');
-        $y += $bar_height + 5;
-    }
-
-    // Add a legend
-    $y += 10;
-    $pdf->SetFont('Arial', 'B', 10);
-    $pdf->SetXY($x, $y);
-    $pdf->Cell(0, 5, 'Legend:', 0, 1);
-    $pdf->SetFont('Arial', '', 8);
-    $legend_x = $x;
-    $legend_y = $y + 7;
-    foreach ($colors as $label => $color) {
-        $pdf->SetFillColor($color[0], $color[1], $color[2]);
-        $pdf->Rect($legend_x, $legend_y, 5, 5, 'F');
-        $pdf->SetXY($legend_x + 8, $legend_y);
-        $pdf->Cell(60, 5, $label, 0, 0);
-        $legend_x += 70;
-        if ($legend_x > 180) {
-            $legend_x = $x;
-            $legend_y += 7;
-        }
-    }
-} else {
-    $pdf->Cell(0, 10, 'No data available for chart', 0, 1, 'C');
+foreach($parameters as $key => $label) {
+    $rating = round($metrics[$key] ?? 0, 2);
+    $metrics_data[] = array(
+        'Parameter' => $label,
+        'Rating' => $rating
+    );
 }
 
-// Generate the PDF
-$pdf->Output('D', 'feedback_report_' . $report_type . '_' . $current_year['year_range'] . '.pdf');
+// Prepare subjects_data array
+$subjects_query = "SELECT 
+    s.name as subject_name,
+    s.code as subject_code,
+    COUNT(DISTINCT f.id) as feedback_count,
+    AVG(f.cumulative_avg) as avg_rating
+FROM subjects s
+LEFT JOIN feedback f ON s.id = f.subject_id
+WHERE s.faculty_id = ? 
+AND s.academic_year_id = ?
+GROUP BY s.id";
+
+$stmt = mysqli_prepare($conn, $subjects_query);
+mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
+mysqli_stmt_execute($stmt);
+$subjects_result = mysqli_stmt_get_result($stmt);
+
+$subjects_data = array();
+while($row = mysqli_fetch_assoc($subjects_result)) {
+    $subjects_data[] = array(
+        'Subject' => $row['subject_name'],
+        'Code' => $row['subject_code'],
+        'Responses' => $row['feedback_count'],
+        'Rating' => number_format($row['avg_rating'] ?? 0, 2)
+    );
+}
+
+// Prepare headers for tables
+$metrics_headers = array(
+    'Parameter' => 60,
+    'Rating' => 30,
+    'Status' => 40,
+    'Remarks' => 60
+);
+
+$subjects_headers = array(
+    'Subject' => 80,
+    'Code' => 30,
+    'Responses' => 30,
+    'Rating' => 30
+);
+
+// Faculty Information Section
+$pdf->SectionTitle('Faculty Information');
+foreach($info_data as $info) {
+    $pdf->CreateInfoBox($info['Label'], $info['Value']);
+}
+
+// Performance Metrics Section
+$pdf->AddPage();
+$pdf->SectionTitle('Performance Analysis');
+
+// Add radar chart for performance metrics
+$metrics_values = array_column($metrics_data, 'Rating');
+$metrics_labels = array_column($metrics_data, 'Parameter');
+$pdf->AddChart('Performance Metrics Overview', $metrics_values, $metrics_labels);
+
+// Create detailed metrics table
+$pdf->CreateMetricsTable($metrics_headers, $metrics_data);
+
+// Subject-wise Analysis
+$pdf->AddPage();
+$pdf->SectionTitle('Subject-wise Analysis');
+$pdf->CreateMetricsTable($subjects_headers, $subjects_data);
+
+// Add bar chart for subject ratings
+if (!empty($subjects_data)) {
+    $subject_ratings = array_column($subjects_data, 'Rating');
+    $subject_names = array_column($subjects_data, 'Subject');
+    $pdf->AddChart('Subject Rating Comparison', $subject_ratings, $subject_names);
+}
+
+// Fetch and display comments
+$comments_query = "SELECT f.comments, s.name as subject_name, f.submitted_at
+                  FROM feedback f
+                  JOIN subjects s ON f.subject_id = s.id
+                  WHERE s.faculty_id = ? 
+                  AND f.academic_year_id = ?
+                  AND f.comments IS NOT NULL
+                  AND f.comments != ''
+                  ORDER BY f.submitted_at DESC";
+
+$stmt = mysqli_prepare($conn, $comments_query);
+mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
+mysqli_stmt_execute($stmt);
+$comments_result = mysqli_stmt_get_result($stmt);
+
+if (mysqli_num_rows($comments_result) > 0) {
+    $pdf->AddPage();
+    $pdf->SectionTitle('Student Feedback Comments');
+    
+    while($comment = mysqli_fetch_assoc($comments_result)) {
+        $pdf->AddCommentBox(
+            $comment['subject_name'],
+            date('F j, Y', strtotime($comment['submitted_at'])),
+            $comment['comments']
+        );
+    }
+}
+
+// Output PDF
+$pdf->Output('Faculty_Analysis_Report.pdf', 'D');
+?>

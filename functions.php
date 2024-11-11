@@ -269,7 +269,7 @@ function getQuickStats($user_id, $role) {
 }
 
 function get_current_academic_year($conn) {
-    $query = "SELECT id, year_range, start_year, end_year 
+    $query = "SELECT id, year_range 
               FROM academic_years 
               WHERE is_current = TRUE 
               LIMIT 1";
@@ -281,9 +281,9 @@ function get_current_academic_year($conn) {
     }
     
     // If no current academic year is set, return the most recent one
-    $query = "SELECT id, year_range, start_year, end_year 
+    $query = "SELECT id, year_range 
               FROM academic_years 
-              ORDER BY start_year DESC 
+              ORDER BY year_range DESC 
               LIMIT 1";
     
     $result = mysqli_query($conn, $query);
