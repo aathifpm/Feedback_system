@@ -102,6 +102,7 @@ CREATE INDEX idx_faculty_id ON faculty(faculty_id);
 CREATE TABLE students (
     id INT AUTO_INCREMENT PRIMARY KEY,
     roll_number VARCHAR(20) NOT NULL UNIQUE,
+    register_number VARCHAR(20) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
@@ -272,7 +273,7 @@ CREATE INDEX idx_exit_survey_department ON exit_surveys(department_id);
 CREATE INDEX idx_feedback_created ON feedback(created_at);
 CREATE INDEX idx_feedback_ratings_section ON feedback_ratings(section);
 CREATE INDEX idx_subjects_academic_year ON subjects(academic_year_id);
-CREATE INDEX idx_students_batch ON students(batch_start_year, batch_end_year);
+CREATE INDEX idx_students_batch ON students(batch_id);
 CREATE INDEX idx_faculty_active ON faculty(is_active);
 CREATE INDEX idx_hods_active ON hods(is_active);
 

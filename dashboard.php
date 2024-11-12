@@ -1486,9 +1486,47 @@ switch ($role) {
             color: #666;
             margin-bottom: 1rem;
         }
+
+        .logout-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 0.8rem 1.5rem;
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
+            background: #c0392b;
+        }
+
+        @media (max-width: 768px) {
+            .logout-btn {
+                top: 10px;
+                right: 10px;
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
     </style>
 </head>
 <body>
+    <a href="logout.php" class="logout-btn">
+        <i class="fas fa-sign-out-alt"></i> Logout
+    </a>
     <?php include 'header.php'; ?>
 
     <div class="dashboard-container">
