@@ -26,147 +26,193 @@ class PDF extends FPDF {
     protected $y0;
 
     function Header() {
-        // Background color for header
-        $this->SetFillColor(51, 122, 183); // Professional blue
-        $this->Rect(0, 0, 210, 40, 'F');
+        // Professional margins and spacing
+        $this->SetMargins(20, 20, 20);
         
-        // Logo
+        // Logo positioning
         if (file_exists('college_logo.png')) {
-            $this->Image('college_logo.png', 10, 6, 30);
+            $this->Image('college_logo.png', 20, 15, 30);
         }
         
-        // College Name
-        $this->SetTextColor(255, 255, 255); // White text
-        $this->SetFont('Arial', 'B', 20);
-        $this->Cell(80);
-        $this->Cell(30, 15, 'Panimalar Engineering College', 0, 1, 'C');
+        // College Name with improved typography
+        $this->SetFont('Helvetica', 'B', 24);
+        $this->SetTextColor(28, 40, 51);
+        $this->Cell(30); // Space after logo
+        $this->Cell(140, 12, 'Panimalar Engineering College', 0, 1, 'C');
         
-        // Subtitle
-        $this->SetFont('Arial', 'B', 14);
+        // Department name
+        $this->SetFont('Helvetica', '', 14);
+        $this->SetTextColor(52, 73, 94);
+        $this->Cell(30);
+        $this->Cell(140, 8, 'Department of Computer Science and Engineering', 0, 1, 'C');
+        
+        // Report title with subtle separator
+        $this->Ln(4);
+        $this->SetDrawColor(189, 195, 199);
+        $this->Line(20, $this->GetY(), 190, $this->GetY());
+        $this->Ln(4);
+        
+        $this->SetFont('Helvetica', 'B', 16);
         $this->Cell(0, 10, 'Faculty Performance Analysis Report', 0, 1, 'C');
         
-        // Reset text color
-        $this->SetTextColor(0, 0, 0);
+        // Academic Year with improved formatting
+        $this->SetFont('Helvetica', '', 12);
+        $this->Cell(0, 8, 'Academic Year ' . date('Y') . '-' . (date('Y') + 1), 0, 1, 'C');
+        
         $this->Ln(10);
     }
 
     function Footer() {
-        $this->SetY(-15);
-        $this->SetFont('Arial', 'I', 8);
+        $this->SetY(-20);
         
-        // Add a line above footer
-        $this->SetDrawColor(51, 122, 183);
-        $this->Line(10, $this->GetY(), 200, $this->GetY());
+        // Subtle line above footer
+        $this->SetDrawColor(189, 195, 199);
+        $this->Line(15, $this->GetY(), 195, $this->GetY());
         
-        // Footer text
-        $this->SetTextColor(128);
-        $this->Cell(0, 10, 'Page '.$this->PageNo().'/{nb}     Generated on: ' . date('d-m-Y'), 0, 0, 'C');
+        // Footer text with Helvetica
+        $this->SetFont('Helvetica', '', 9);
+        $this->SetTextColor(127, 140, 141);
+        $this->Cell(0, 10, 'Page ' . $this->PageNo() . '/{nb}', 0, 0, 'L');
+        $this->Cell(0, 10, 'Generated on: ' . date('F j, Y'), 0, 0, 'R');
     }
 
     function SectionTitle($title) {
-        // Add some space before section
-        $this->Ln(5);
+        $this->Ln(8);
         
-        // Gradient background
-        $this->SetFillColor(51, 122, 183);
-        $this->SetTextColor(255);
-        $this->SetFont('Arial', 'B', 14);
-        $this->Cell(0, 10, '  ' . $title, 0, 1, 'L', true);
+        // Modern section title design
+        $this->SetFont('Helvetica', 'B', 16);
+        $this->SetTextColor(44, 62, 80);
+        $this->Cell(0, 10, $title, 0, 1, 'L');
         
-        // Reset colors
-        $this->SetTextColor(0);
+        // Subtle underline
+        $this->SetDrawColor(52, 152, 219);
+        $this->SetLineWidth(0.4);
+        $this->Line($this->GetX(), $this->GetY(), $this->GetX() + 190, $this->GetY());
+        
         $this->Ln(5);
     }
 
     function CreateInfoBox($label, $value) {
-        $this->SetFillColor(245, 245, 245);
-        $this->SetFont('Arial', 'B', 11);
-        $this->Cell(50, 8, $label . ':', 0, 0, 'L');
-        $this->SetFont('Arial', '', 11);
+        $this->SetFont('Helvetica', 'B', 11);
+        $this->SetTextColor(52, 73, 94);
+        $this->Cell(60, 8, $label . ':', 0, 0, 'L');
+        
+        $this->SetFont('Helvetica', '', 11);
+        $this->SetTextColor(44, 62, 80);
         $this->Cell(0, 8, $value, 0, 1, 'L');
     }
 
     function CreateMetricsTable($headers, $data) {
-        // Table header colors
-        $this->SetFillColor(51, 122, 183);
-        $this->SetTextColor(255);
-        $this->SetDrawColor(51, 122, 183);
-        $this->SetLineWidth(0.3);
-        $this->SetFont('Arial', 'B', 10);
+        // Modern table design
+        $this->SetFont('Helvetica', 'B', 10);
+        $this->SetFillColor(245, 247, 250);
+        $this->SetTextColor(44, 62, 80);
+        $this->SetDrawColor(189, 195, 199);
+        $this->SetLineWidth(0.2);
 
         // Header
         $w = array_values($headers);
         $columns = array_keys($headers);
         foreach($columns as $i => $column) {
-            $this->Cell($w[$i], 8, $column, 1, 0, 'C', true);
+            $this->Cell($w[$i], 10, $column, 1, 0, 'C', true);
         }
         $this->Ln();
 
-        // Data
-        $this->SetFillColor(245, 245, 245);
-        $this->SetTextColor(0);
-        $this->SetFont('Arial', '', 10);
+        // Data rows with alternating background
+        $this->SetFont('Helvetica', '', 10);
         $fill = false;
 
         foreach($data as $row) {
-            // Add color coding based on rating
+            $this->SetFillColor($fill ? 252 : 248, $fill ? 252 : 249, $fill ? 252 : 250);
+            
+            // Color coding for ratings
             if (isset($row['Rating'])) {
                 $rating = floatval($row['Rating']);
-                if ($rating >= 4.5) $this->SetTextColor(46, 139, 87); // Green
-                elseif ($rating >= 4.0) $this->SetTextColor(25, 135, 84); // Dark green
-                elseif ($rating >= 3.5) $this->SetTextColor(255, 193, 7); // Yellow
-                elseif ($rating >= 3.0) $this->SetTextColor(255, 140, 0); // Orange
-                else $this->SetTextColor(220, 53, 69); // Red
+                if ($rating >= 4.5) {
+                    $this->SetTextColor(39, 174, 96);
+                } elseif ($rating >= 4.0) {
+                    $this->SetTextColor(41, 128, 185);
+                } elseif ($rating >= 3.5) {
+                    $this->SetTextColor(243, 156, 18);
+                } elseif ($rating >= 3.0) {
+                    $this->SetTextColor(230, 126, 34);
+                } else {
+                    $this->SetTextColor(192, 57, 43);
+                }
             }
 
             foreach($columns as $i => $column) {
-                $this->Cell($w[$i], 7, $row[$column], 1, 0, 'C', $fill);
+                $this->Cell($w[$i], 8, $row[$column], 1, 0, 'C', $fill);
             }
             $this->Ln();
             $fill = !$fill;
-            $this->SetTextColor(0); // Reset text color
+            $this->SetTextColor(44, 62, 80);
         }
     }
 
     function AddChart($title, $data, $labels) {
-        // Implement simple bar chart
-        $this->SetFont('Arial', 'B', 12);
+        $this->SetFont('Helvetica', 'B', 12);
         $this->Cell(0, 10, $title, 0, 1, 'C');
         
-        $chartHeight = 60;
-        $chartWidth = 180;
-        $barWidth = $chartWidth / count($data);
-        
-        // Draw chart axes
-        $startX = 15;
+        // Improved chart dimensions
+        $chartHeight = 80;
+        $chartWidth = 170;
+        $barWidth = min(25, $chartWidth / count($data)); // Maximum bar width of 25
+        $startX = 25;
         $startY = $this->GetY() + $chartHeight;
         
-        $this->Line($startX, $startY, $startX + $chartWidth, $startY); // X axis
-        $this->Line($startX, $startY, $startX, $startY - $chartHeight); // Y axis
+        // Draw Y-axis with scale markers (0 to 5)
+        $this->SetFont('Helvetica', '', 8);
+        $this->SetDrawColor(189, 195, 199);
+        for($i = 0; $i <= 5; $i++) {
+            $y = $startY - ($i * $chartHeight/5);
+            $this->Line($startX-2, $y, $startX+$chartWidth, $y); // Grid line
+            $this->SetXY($startX-10, $y-2);
+            $this->Cell(8, 4, $i, 0, 0, 'R');
+        }
         
-        // Draw bars
-        $maxValue = max($data);
-        $scale = $chartHeight / $maxValue;
-        
-        $x = $startX;
+        // Draw bars with improved styling
+        $x = $startX + 10; // Initial padding
         foreach($data as $i => $value) {
-            $barHeight = $value * $scale;
-            $this->SetFillColor(51, 122, 183);
-            $this->Rect($x, $startY - $barHeight, $barWidth - 2, $barHeight, 'F');
+            $barHeight = ($value * $chartHeight/5);
             
-            // Add value on top of bar
-            $this->SetFont('Arial', '', 8);
+            // Color gradient based on rating
+            if ($value >= 4.5) $this->SetFillColor(46, 204, 113);
+            elseif ($value >= 4.0) $this->SetFillColor(52, 152, 219);
+            elseif ($value >= 3.5) $this->SetFillColor(241, 196, 15);
+            elseif ($value >= 3.0) $this->SetFillColor(230, 126, 34);
+            else $this->SetFillColor(231, 76, 60);
+            
+            // Draw bar with rounded corners
+            $this->RoundedRect($x, $startY - $barHeight, $barWidth-4, $barHeight, 2, 'F');
+            
+            // Value on top of bar
+            $this->SetFont('Helvetica', 'B', 8);
+            $this->SetTextColor(44, 62, 80);
             $this->SetXY($x, $startY - $barHeight - 5);
-            $this->Cell($barWidth - 2, 5, number_format($value, 1), 0, 0, 'C');
+            $this->Cell($barWidth-4, 5, number_format($value, 1), 0, 0, 'C');
             
-            // Add label below bar
-            $this->SetXY($x, $startY + 1);
-            $this->Cell($barWidth - 2, 5, $labels[$i], 0, 0, 'C');
+            // Label below bar (rotated for better fit)
+            $this->SetFont('Helvetica', '', 8);
+            $this->SetXY($x, $startY + 2);
+            $label = $this->truncateText($labels[$i], $barWidth-4);
+            $this->Cell($barWidth-4, 5, $label, 0, 0, 'C');
             
             $x += $barWidth;
         }
         
-        $this->Ln($chartHeight + 20);
+        $this->Ln($chartHeight + 25);
+    }
+
+    // Helper function to truncate long labels
+    function truncateText($text, $width) {
+        if($this->GetStringWidth($text) > $width) {
+            while($this->GetStringWidth($text . '...') > $width) {
+                $text = substr($text, 0, -1);
+            }
+            return $text . '...';
+        }
+        return $text;
     }
 
     function AddCommentBox($subject, $date, $comment) {
