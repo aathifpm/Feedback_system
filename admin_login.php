@@ -16,8 +16,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         // Check admin credentials
-        $query = "SELECT * FROM admin_users 
-                 WHERE email = ? AND is_active = TRUE";
+        $query = "SELECT id, username, email, password, is_active, last_login 
+                  FROM admin_users 
+                  WHERE email = ? AND is_active = TRUE";
                  
         $stmt = mysqli_prepare($conn, $query);
         mysqli_stmt_bind_param($stmt, "s", $email);
@@ -27,7 +28,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         if ($admin && password_verify($password, $admin['password'])) {
             // Update last login timestamp
-            $update_query = "UPDATE admin_users SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
+            $update_query = "UPDATE admin_users 
+                            SET last_login = CURRENT_TIMESTAMP 
+                            WHERE id = ?";
             $update_stmt = mysqli_prepare($conn, $update_query);
             mysqli_stmt_bind_param($update_stmt, "i", $admin['id']);
             mysqli_stmt_execute($update_stmt);
