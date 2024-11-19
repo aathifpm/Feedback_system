@@ -10,12 +10,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     try {
         $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
         $password = $_POST['password'];
+        $remember_me = isset($_POST['remember_me']) ? true : false;
 
         if (empty($email) || empty($password)) {
             throw new Exception("Please enter both email and password.");
         }
 
-        // Check faculty credentials
+        // Rate limiting check
+        if (checkLoginAttempts($_SERVER['REMOTE_ADDR']) > 5) {
+            throw new Exception("Too many login attempts. Please try again after 15 minutes.");
+        }
+
+        // Check faculty credentials with prepared statement
         $query = "SELECT id, name, email, password, department_id, is_active, 
                         designation, experience, qualification, specialization
                  FROM faculty 
@@ -28,39 +34,73 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $faculty = mysqli_fetch_assoc($result);
 
         if ($faculty && password_verify($password, $faculty['password'])) {
-            // Update last login timestamp
-            $update_query = "UPDATE faculty SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
-            $update_stmt = mysqli_prepare($conn, $update_query);
-            mysqli_stmt_bind_param($update_stmt, "i", $faculty['id']);
-            mysqli_stmt_execute($update_stmt);
-
-            // Set session variables
-            $_SESSION['user_id'] = $faculty['id'];
-            $_SESSION['role'] = 'faculty';
-            $_SESSION['email'] = $faculty['email'];
-            $_SESSION['name'] = $faculty['name'];
-            $_SESSION['department_id'] = $faculty['department_id'];
-            $_SESSION['designation'] = $faculty['designation'];
-
-            // Log the successful login
-            $log_query = "INSERT INTO user_logs (user_id, role, action, details, status) 
-                         VALUES (?, 'faculty', 'login', ?, 'success')";
-            $log_details = json_encode([
-                'ip_address' => $_SERVER['REMOTE_ADDR'],
-                'user_agent' => $_SERVER['HTTP_USER_AGENT']
-            ]);
-            $log_stmt = mysqli_prepare($conn, $log_query);
-            mysqli_stmt_bind_param($log_stmt, "is", $faculty['id'], $log_details);
-            mysqli_stmt_execute($log_stmt);
-
-            header('Location: dashboard.php');
-            exit();
+            loginSuccess($faculty);
         } else {
+            recordFailedAttempt($_SERVER['REMOTE_ADDR']);
             throw new Exception("Invalid email or password.");
         }
     } catch (Exception $e) {
         $error = $e->getMessage();
     }
+}
+
+// Helper functions
+function checkLoginAttempts($ip) {
+    // Implementation for rate limiting
+    return 0; // Placeholder
+}
+
+function generateRememberMeToken() {
+    return bin2hex(random_bytes(32));
+}
+
+function loginSuccess($faculty) {
+    global $conn;
+    
+    // Update last login timestamp
+    $update_query = "UPDATE faculty SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
+    $update_stmt = mysqli_prepare($conn, $update_query);
+    mysqli_stmt_bind_param($update_stmt, "i", $faculty['id']);
+    mysqli_stmt_execute($update_stmt);
+
+    // Set session variables
+    $_SESSION['user_id'] = $faculty['id'];
+    $_SESSION['role'] = 'faculty';
+    $_SESSION['email'] = $faculty['email'];
+    $_SESSION['name'] = $faculty['name'];
+    $_SESSION['department_id'] = $faculty['department_id'];
+    $_SESSION['designation'] = $faculty['designation'];
+
+    // Log the successful login
+    logUserActivity($faculty['id'], 'faculty', 'login', 'success');
+
+    header('Location: dashboard.php');
+    exit();
+}
+
+function logUserActivity($user_id, $role, $action, $status) {
+    global $conn;
+    
+    $details = json_encode([
+        'ip_address' => $_SERVER['REMOTE_ADDR'],
+        'user_agent' => $_SERVER['HTTP_USER_AGENT']
+    ]);
+
+    $query = "INSERT INTO user_logs (user_id, role, action, details, status, ip_address, user_agent) 
+              VALUES (?, ?, ?, ?, ?, ?, ?)";
+              
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, "issssss", 
+        $user_id,
+        $role,
+        $action,
+        $details,
+        $status,
+        $_SERVER['REMOTE_ADDR'],
+        $_SERVER['HTTP_USER_AGENT']
+    );
+    
+    mysqli_stmt_execute($stmt);
 }
 ?>
 
@@ -202,33 +242,76 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         .links {
             margin-top: 1.5rem;
             text-align: center;
+            padding: 1rem 0;
+            border-top: 1px solid rgba(0,0,0,0.1);
         }
 
-        .links a {
+        .link-item {
             color: var(--primary-color);
             text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.3s ease;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
         }
 
-        .links a:hover {
+        .link-item:hover {
+            background: rgba(52, 152, 219, 0.1);
             color: #2980b9;
         }
 
+        .link-item i {
+            margin-right: 5px;
+        }
+
         .divider {
-            margin: 0 1rem;
-            color: #666;
+            margin: 0 0.5rem;
+            color: #999;
         }
 
         @media (max-width: 480px) {
-            .login-container {
-                width: 95%;
-                padding: 1.5rem;
+            .links {
+                display: flex;
+                justify-content: center;
+                gap: 10px;
             }
+            
+            .link-item {
+                font-size: 0.9rem;
+            }
+        }
 
-            .college-info h1 {
-                font-size: 1.5rem;
-            }
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: var(--text-color);
+        }
+
+        .remember-me {
+            display: flex;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .remember-me input {
+            margin-right: 0.5rem;
+        }
+
+        .loading {
+            display: none;
+            margin-left: 8px;
+        }
+
+        /* Add animation for login button */
+        .btn-login:active {
+            transform: scale(0.98);
         }
     </style>
 </head>
@@ -252,34 +335,59 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </div>
         <?php endif; ?>
 
-        <form method="post" action="">
+        <form method="post" action="" id="loginForm">
             <div class="form-group">
                 <label for="email">Email</label>
-                <input type="email" id="email" name="email" class="input-field" required>
+                <input type="email" id="email" name="email" class="input-field" 
+                       required autocomplete="email">
             </div>
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" class="input-field" required>
+                <div class="password-wrapper">
+                    <input type="password" id="password" name="password" 
+                           class="input-field" required>
+                    <i class="fas fa-eye toggle-password" 
+                       onclick="togglePassword()"></i>
+                </div>
             </div>
 
             <button type="submit" class="btn-login">
                 <i class="fas fa-sign-in-alt"></i> Login
+                <span class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </span>
             </button>
 
             <div class="links">
-                <a href="forgot_password.php">Forgot Password?</a>
+                <a href="forgot_password.php" class="link-item">
+                    <i class="fas fa-key"></i> Forgot Password
+                </a>
                 <span class="divider">|</span>
-                <a href="register.php">Register</a>
-                <span class="divider">|</span>
-                <a href="login.php">Student Login</a>
+                <a href="index.php" class="link-item">
+                    <i class="fas fa-home"></i> Home
+                </a>
             </div>
         </form>
     </div>
 
     <script>
-        // Add client-side validation if needed
-        document.querySelector('form').addEventListener('submit', function(e) {
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.querySelector('.toggle-password');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
@@ -296,6 +404,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 alert('Please enter a valid email address');
                 return;
             }
+
+            // Show loading spinner
+            document.querySelector('.loading').style.display = 'inline-block';
+            document.querySelector('.btn-login').disabled = true;
         });
     </script>
 </body>
