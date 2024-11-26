@@ -2,7 +2,7 @@
 session_start();
 include 'functions.php';
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'faculty') {
+if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'faculty' && $_SESSION['role'] != 'admin')) {
     header('Location: login.php');
     exit();
 }
