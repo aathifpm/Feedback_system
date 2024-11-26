@@ -373,6 +373,240 @@ $departments = mysqli_query($conn, $query);
             background: #f8d7da;
             color: #721c24;
         }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .modal-content {
+            background: var(--bg-color);
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            width: 90%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .modal-title {
+            color: var(--primary-color);
+            font-size: 1.5rem;
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-color);
+            font-weight: 500;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.8rem 1.2rem;
+            border: none;
+            border-radius: 12px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            font-size: 1rem;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            box-shadow: var(--shadow);
+        }
+
+        .validation-hint {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.5rem;
+            padding-left: 0.5rem;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 2rem;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            box-shadow: var(--shadow);
+        }
+
+        .btn-primary {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        /* Department Card Styles */
+        .department-card {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+            margin-bottom: 1.5rem;
+        }
+
+        .department-card:hover {
+            transform: translateY(-5px);
+        }
+
+        .department-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+
+        .department-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .department-code {
+            padding: 0.5rem 1rem;
+            background: var(--bg-color);
+            border-radius: 10px;
+            font-size: 0.9rem;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .department-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .stat-item {
+            text-align: center;
+            padding: 1rem;
+            background: var(--bg-color);
+            border-radius: 10px;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-color);
+            margin-top: 0.25rem;
+        }
+
+        .department-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .btn-action {
+            flex: 1;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 10px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-action:hover {
+            transform: translateY(-2px);
+        }
+
+        .btn-edit {
+            color: #2980b9;
+        }
+
+        .btn-delete {
+            color: var(--primary-color);
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 95%;
+                margin: 1rem;
+                padding: 1.5rem;
+            }
+
+            .modal-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+
+            .department-stats {
+                grid-template-columns: 1fr;
+            }
+
+            .department-actions {
+                flex-direction: column;
+            }
+
+            .btn-action {
+                width: 100%;
+            }
+        }
     </style>
 </head>
 <body>
@@ -462,20 +696,26 @@ $departments = mysqli_query($conn, $query);
     <!-- Add Department Modal -->
     <div id="addModal" class="modal">
         <div class="modal-content">
-            <h2>Add Department</h2>
+            <h2 class="modal-title">Add Department</h2>
             <form method="POST">
                 <input type="hidden" name="action" value="add">
                 <div class="form-group">
                     <label for="name">Department Name</label>
                     <input type="text" id="name" name="name" class="form-control" required>
+                    <div class="validation-hint">Enter full department name (e.g., Computer Science and Engineering)</div>
                 </div>
                 <div class="form-group">
                     <label for="code">Department Code</label>
                     <input type="text" id="code" name="code" class="form-control" required>
+                    <div class="validation-hint">Enter short code (e.g., CSE)</div>
                 </div>
-                <div class="form-group">
-                    <button type="submit" class="btn">Add Department</button>
-                    <button type="button" class="btn" onclick="hideModal('addModal')">Cancel</button>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> Add Department
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('addModal')">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
                 </div>
             </form>
         </div>
@@ -484,21 +724,27 @@ $departments = mysqli_query($conn, $query);
     <!-- Edit Department Modal -->
     <div id="editModal" class="modal">
         <div class="modal-content">
-            <h2>Edit Department</h2>
+            <h2 class="modal-title">Edit Department</h2>
             <form method="POST">
                 <input type="hidden" name="action" value="edit">
                 <input type="hidden" name="id" id="edit_id">
                 <div class="form-group">
                     <label for="edit_name">Department Name</label>
                     <input type="text" id="edit_name" name="name" class="form-control" required>
+                    <div class="validation-hint">Enter full department name (e.g., Computer Science and Engineering)</div>
                 </div>
                 <div class="form-group">
                     <label for="edit_code">Department Code</label>
                     <input type="text" id="edit_code" name="code" class="form-control" required>
+                    <div class="validation-hint">Enter short code (e.g., CSE)</div>
                 </div>
-                <div class="form-group">
-                    <button type="submit" class="btn">Update Department</button>
-                    <button type="button" class="btn" onclick="hideModal('editModal')">Cancel</button>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Update Department
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('editModal')">
+                        <i class="fas fa-times"></i> Cancel
+                    </button>
                 </div>
             </form>
         </div>
