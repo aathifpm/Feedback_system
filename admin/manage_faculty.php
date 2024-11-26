@@ -5,7 +5,7 @@ require_once '../functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../login.php');
+    header('Location: ../header.php');
     exit();
 }
 
@@ -943,7 +943,7 @@ $faculty_result = mysqli_query($conn, $faculty_query);
         }
 
         function viewFeedback(id) {
-            window.location.href = `view_faculty_feedback.php?faculty_id=${id}`;
+            window.location.href = `../view_faculty_feedback.php?faculty_id=${id}`;
         }
 
         // Close modals when clicking outside
