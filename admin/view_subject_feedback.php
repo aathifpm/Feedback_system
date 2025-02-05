@@ -9,32 +9,36 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit();
 }
 
-// Get subject ID from request
+// Get subject ID and assignment ID from request
 $subject_id = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : 0;
+$assignment_id = isset($_GET['assignment_id']) ? intval($_GET['assignment_id']) : 0;
 
-if (!$subject_id) {
+if (!$subject_id || !$assignment_id) {
     header('Location: manage_subjects.php');
     exit();
 }
 
-// Get subject details
+// Get subject details with specific assignment
 $subject_query = "SELECT 
     s.code,
     s.name,
-    s.year,
-    s.semester,
-    s.section,
+    sa.year,
+    sa.semester,
+    sa.section COLLATE utf8mb4_unicode_ci as section,
     d.name as department_name,
     f.name as faculty_name,
     ay.year_range as academic_year
 FROM subjects s
 JOIN departments d ON s.department_id = d.id
-JOIN faculty f ON s.faculty_id = f.id
-JOIN academic_years ay ON s.academic_year_id = ay.id
-WHERE s.id = ?";
+JOIN subject_assignments sa ON s.id = sa.subject_id
+JOIN faculty f ON sa.faculty_id = f.id
+JOIN academic_years ay ON sa.academic_year_id = ay.id
+WHERE s.id = ? 
+AND sa.id = ?
+AND sa.is_active = TRUE";
 
 $stmt = mysqli_prepare($conn, $subject_query);
-mysqli_stmt_bind_param($stmt, "i", $subject_id);
+mysqli_stmt_bind_param($stmt, "ii", $subject_id, $assignment_id);
 mysqli_stmt_execute($stmt);
 $subject = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
@@ -43,35 +47,43 @@ if (!$subject) {
     exit();
 }
 
-// Get feedback statistics
+// Get feedback statistics for specific assignment
 $stats_query = "SELECT 
-    COUNT(DISTINCT f.id) as total_feedback,
-    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(f.cumulative_avg), 2) as overall_rating
+    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.id END) as total_feedback,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.course_effectiveness_avg END), 2) as course_effectiveness,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.teaching_effectiveness_avg END), 2) as teaching_effectiveness,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.resources_admin_avg END), 2) as resources_admin,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.assessment_learning_avg END), 2) as assessment_learning,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.course_outcomes_avg END), 2) as course_outcomes,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.cumulative_avg END), 2) as overall_rating
 FROM feedback f
-WHERE f.subject_id = ?";
+JOIN subjects sub ON f.subject_id = sub.id
+JOIN subject_assignments sa ON sub.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
+JOIN students s ON f.student_id = s.id
+WHERE f.subject_id = ? 
+AND sa.id = ?";
 
 $stmt = mysqli_prepare($conn, $stats_query);
-mysqli_stmt_bind_param($stmt, "i", $subject_id);
+mysqli_stmt_bind_param($stmt, "ii", $subject_id, $assignment_id);
 mysqli_stmt_execute($stmt);
 $stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
-// Get detailed feedback
+// Get detailed feedback for specific assignment
 $feedback_query = "SELECT 
     f.*,
     s.name as student_name,
-    s.roll_number
+    s.roll_number,
+    s.section COLLATE utf8mb4_unicode_ci as student_section
 FROM feedback f
 JOIN students s ON f.student_id = s.id
+JOIN subject_assignments sa ON f.subject_id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
 WHERE f.subject_id = ?
+AND sa.id = ?
+AND s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci
 ORDER BY f.submitted_at DESC";
 
 $stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, "i", $subject_id);
+mysqli_stmt_bind_param($stmt, "ii", $subject_id, $assignment_id);
 mysqli_stmt_execute($stmt);
 $feedback_result = mysqli_stmt_get_result($stmt);
 

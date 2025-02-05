@@ -37,33 +37,32 @@ if (!$current_year) {
     die("Error: No active academic year found.");
 }
 
-// Fetch feedback statistics
+// Get faculty details with feedback statistics
 $stats_query = "SELECT 
     s.code,
     s.name as subject_name,
-    COUNT(DISTINCT f.id) as feedback_count,
-    AVG(f.course_effectiveness_avg) as course_effectiveness,
-    AVG(f.teaching_effectiveness_avg) as teaching_effectiveness,
-    AVG(f.resources_admin_avg) as resources_admin,
-    AVG(f.assessment_learning_avg) as assessment_learning,
-    AVG(f.course_outcomes_avg) as course_outcomes,
-    AVG(f.cumulative_avg) as overall_avg,
-    MIN(f.cumulative_avg) as min_rating,
-    MAX(f.cumulative_avg) as max_rating,
-    s.semester,
-    s.section
+    sa.year,
+    sa.semester,
+    sa.section COLLATE utf8mb4_unicode_ci as section,
+    COUNT(DISTINCT CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.id END) as feedback_count,
+    ROUND(AVG(CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.course_effectiveness_avg END), 2) as course_effectiveness,
+    ROUND(AVG(CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.teaching_effectiveness_avg END), 2) as teaching_effectiveness,
+    ROUND(AVG(CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.resources_admin_avg END), 2) as resources_admin,
+    ROUND(AVG(CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.assessment_learning_avg END), 2) as assessment_learning,
+    ROUND(AVG(CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.course_outcomes_avg END), 2) as course_outcomes,
+    ROUND(AVG(CASE WHEN s2.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.cumulative_avg END), 2) as overall_rating
 FROM subjects s
-LEFT JOIN feedback f ON s.id = f.subject_id
-WHERE s.faculty_id = ? 
-AND s.is_active = TRUE
-AND f.academic_year_id = ?
-GROUP BY s.id
-ORDER BY s.code";
+JOIN subject_assignments sa ON s.id = sa.subject_id
+LEFT JOIN feedback f ON s.id = f.subject_id AND f.academic_year_id = sa.academic_year_id
+LEFT JOIN students s2 ON f.student_id = s2.id
+WHERE sa.faculty_id = ?
+AND sa.is_active = TRUE
+GROUP BY s.id, sa.id
+ORDER BY s.code, sa.year, sa.semester, sa.section";
 
 $stats_stmt = mysqli_prepare($conn, $stats_query);
-mysqli_stmt_bind_param($stats_stmt, "ii", 
-    $faculty_id, 
-    $current_year['id']
+mysqli_stmt_bind_param($stats_stmt, "i", 
+    $faculty_id
 );
 mysqli_stmt_execute($stats_stmt);
 $stats_result = mysqli_stmt_get_result($stats_stmt);
@@ -127,31 +126,39 @@ $section_info = [
     ]
 ];
 
-// Update the feedback query to join with feedback_statements
+// Get detailed feedback
 $feedback_query = "SELECT 
     fr.rating, 
     f.comments, 
     s.code, 
     s.name AS subject_name,
+    sa.year,
+    sa.semester,
+    sa.section COLLATE utf8mb4_unicode_ci as section,
     fs.statement,
-    fs.section,
+    fs.section as feedback_section,
     f.submitted_at,
     f.course_effectiveness_avg,
     f.teaching_effectiveness_avg,
     f.resources_admin_avg,
     f.assessment_learning_avg,
     f.course_outcomes_avg,
-    f.cumulative_avg
+    f.cumulative_avg,
+    st.name as student_name,
+    st.roll_number
 FROM feedback f
 JOIN subjects s ON f.subject_id = s.id
+JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
 JOIN feedback_ratings fr ON f.id = fr.feedback_id
 JOIN feedback_statements fs ON fr.statement_id = fs.id
-WHERE s.faculty_id = ? 
-AND f.academic_year_id = ?
-ORDER BY fs.section, fs.id";
+JOIN students st ON f.student_id = st.id
+WHERE sa.faculty_id = ? 
+AND sa.is_active = TRUE
+AND st.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci
+ORDER BY s.code, sa.year, sa.semester, sa.section, fs.section, fs.id";
 
 $stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $current_year['id']);
+mysqli_stmt_bind_param($stmt, "i", $faculty_id);
 mysqli_stmt_execute($stmt);
 $feedback_result = mysqli_stmt_get_result($stmt);
 
@@ -164,18 +171,30 @@ while ($row = mysqli_fetch_assoc($feedback_result)) {
     $feedback_by_section[$row['section']][] = $row;
 }
 
-// Fetch student comments
-$comments_query = "SELECT f.comments, f.submitted_at, s.name as subject_name, s.code as subject_code
-                  FROM feedback f
-                  JOIN subjects s ON f.subject_id = s.id
-                  WHERE s.faculty_id = ? 
-                  AND f.academic_year_id = ?
-                  AND f.comments IS NOT NULL
-                  AND f.comments != ''
-                  ORDER BY f.submitted_at DESC";
+// Get student comments
+$comments_query = "SELECT 
+    f.comments, 
+    f.submitted_at, 
+    s.name as subject_name, 
+    s.code as subject_code,
+    sa.year,
+    sa.semester,
+    sa.section COLLATE utf8mb4_unicode_ci as section,
+    st.name as student_name,
+    st.roll_number
+FROM feedback f
+JOIN subjects s ON f.subject_id = s.id
+JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
+JOIN students st ON f.student_id = st.id
+WHERE sa.faculty_id = ? 
+AND sa.is_active = TRUE
+AND st.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci
+AND f.comments IS NOT NULL
+AND f.comments != ''
+ORDER BY f.submitted_at DESC";
 
 $comments_stmt = mysqli_prepare($conn, $comments_query);
-mysqli_stmt_bind_param($comments_stmt, "ii", $faculty_id, $current_year['id']);
+mysqli_stmt_bind_param($comments_stmt, "i", $faculty_id);
 mysqli_stmt_execute($comments_stmt);
 $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSOC);
 ?>

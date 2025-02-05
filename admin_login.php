@@ -6,7 +6,13 @@ require_once 'db_connection.php';
 $error = '';
 $success = '';
 
+// Clear any existing session data at the start of login
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    // Clear existing session
+    session_unset();
+    session_destroy();
+    session_start();
+
     try {
         $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
         $password = $_POST['password'];
@@ -40,6 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_SESSION['role'] = 'admin';
             $_SESSION['email'] = $admin['email'];
             $_SESSION['username'] = $admin['username'];
+            $_SESSION['last_activity'] = time();
 
             // Log the successful login
             $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
@@ -59,12 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             );
             mysqli_stmt_execute($log_stmt);
 
+            // Ensure proper session handling
+            session_write_close();
+            
             header('Location: admin/dashboard.php');
             exit();
         } else {
-            // Log failed login attempt in user_logs instead of login_attempts
+            // Log failed login attempt
             $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
-                         VALUES (NULL, 'admin', 'login_failed', ?, ?, ?)";
+                         VALUES (0, 'admin', 'login_failed', ?, ?, ?)";
             $log_details = json_encode([
                 'email' => $email,
                 'timestamp' => date('Y-m-d H:i:s'),
@@ -84,6 +94,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     } catch (Exception $e) {
         $error = $e->getMessage();
     }
+}
+
+// Ensure proper session handling for non-POST requests
+if (!isset($_SESSION['user_id']) && isset($_COOKIE[session_name()])) {
+    setcookie(session_name(), '', time() - 3600, '/');
 }
 ?>
 

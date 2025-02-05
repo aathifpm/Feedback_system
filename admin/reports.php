@@ -31,7 +31,7 @@ $overall_stats_query = "SELECT
     COUNT(DISTINCT f.id) as total_feedback,
     COUNT(DISTINCT f.student_id) as total_students,
     COUNT(DISTINCT s.id) as total_subjects,
-    COUNT(DISTINCT s.faculty_id) as total_faculty,
+    COUNT(DISTINCT sa.faculty_id) as total_faculty,
     ROUND(AVG(f.course_effectiveness_avg), 2) as avg_course_effectiveness,
     ROUND(AVG(f.teaching_effectiveness_avg), 2) as avg_teaching_effectiveness,
     ROUND(AVG(f.resources_admin_avg), 2) as avg_resources_admin,
@@ -40,6 +40,7 @@ $overall_stats_query = "SELECT
     ROUND(AVG(f.cumulative_avg), 2) as overall_avg
 FROM feedback f
 JOIN subjects s ON f.subject_id = s.id
+JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
 WHERE f.academic_year_id = ?";
 
 if ($selected_dept) {
@@ -59,11 +60,12 @@ $overall_stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 $dept_stats_query = "SELECT 
     d.name as department_name,
     COUNT(DISTINCT f.id) as feedback_count,
-    COUNT(DISTINCT s.faculty_id) as faculty_count,
+    COUNT(DISTINCT sa.faculty_id) as faculty_count,
     COUNT(DISTINCT s.id) as subjects_count,
     ROUND(AVG(f.cumulative_avg), 2) as avg_rating
 FROM departments d
 LEFT JOIN subjects s ON d.id = s.department_id
+LEFT JOIN subject_assignments sa ON s.id = sa.subject_id
 LEFT JOIN feedback f ON s.id = f.subject_id AND f.academic_year_id = ?
 GROUP BY d.id
 ORDER BY avg_rating DESC";
@@ -81,8 +83,9 @@ $faculty_stats_query = "SELECT
     ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
 FROM faculty f
 JOIN departments d ON f.department_id = d.id
-JOIN subjects s ON f.id = s.faculty_id
-JOIN feedback fb ON s.id = fb.subject_id
+JOIN subject_assignments sa ON f.id = sa.faculty_id
+JOIN subjects s ON sa.subject_id = s.id
+JOIN feedback fb ON s.id = fb.subject_id AND fb.academic_year_id = sa.academic_year_id
 WHERE fb.academic_year_id = ?";
 
 if ($selected_dept) {
@@ -110,9 +113,10 @@ $subject_stats_query = "SELECT
     COUNT(fb.id) as feedback_count,
     ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
 FROM subjects s
-JOIN faculty f ON s.faculty_id = f.id
+JOIN subject_assignments sa ON s.id = sa.subject_id
+JOIN faculty f ON sa.faculty_id = f.id
 JOIN departments d ON s.department_id = d.id
-JOIN feedback fb ON s.id = fb.subject_id
+JOIN feedback fb ON s.id = fb.subject_id AND fb.academic_year_id = sa.academic_year_id
 WHERE fb.academic_year_id = ?";
 
 if ($selected_dept) {

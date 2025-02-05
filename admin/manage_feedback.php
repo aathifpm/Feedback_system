@@ -24,73 +24,93 @@ $departments = mysqli_query($conn, $dept_query);
 $academic_year_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
 $academic_years = mysqli_query($conn, $academic_year_query);
 
-// Build the base query for subject-wise feedback summary
-$feedback_query = "SELECT 
+// Update the main query to match database structure
+$query = "SELECT 
     sub.id as subject_id,
     sub.code as subject_code,
     sub.name as subject_name,
-    sub.year,
-    sub.semester,
-    sub.section,
-    fac.name as faculty_name,
+    sub.credits,
+    sa.id as assignment_id,
+    sa.year,
+    sa.semester,
+    sa.section COLLATE utf8mb4_unicode_ci as section,
+    f.id as faculty_id,
+    f.name as faculty_name,
     d.name as department_name,
     ay.year_range as academic_year,
-    COUNT(DISTINCT f.id) as feedback_count,
-    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(f.cumulative_avg), 2) as overall_rating
+    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.id END) as feedback_count,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.course_effectiveness_avg END), 2) as course_effectiveness,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.teaching_effectiveness_avg END), 2) as teaching_effectiveness,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.resources_admin_avg END), 2) as resources_admin,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.assessment_learning_avg END), 2) as assessment_learning,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.course_outcomes_avg END), 2) as course_outcomes,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.cumulative_avg END), 2) as overall_rating
 FROM subjects sub
-LEFT JOIN feedback f ON sub.id = f.subject_id
-JOIN faculty fac ON sub.faculty_id = fac.id
+JOIN subject_assignments sa ON sub.id = sa.subject_id
+JOIN faculty f ON sa.faculty_id = f.id
 JOIN departments d ON sub.department_id = d.id
-JOIN academic_years ay ON sub.academic_year_id = ay.id
-WHERE 1=1";
+JOIN academic_years ay ON sa.academic_year_id = ay.id
+LEFT JOIN feedback fb ON sub.id = fb.subject_id 
+    AND fb.academic_year_id = sa.academic_year_id
+LEFT JOIN students s ON fb.student_id = s.id
+WHERE sub.is_active = 1 
+AND sa.is_active = 1";
 
 // Apply filters if set
 if (isset($_GET['department_id']) && !empty($_GET['department_id'])) {
-    $feedback_query .= " AND d.id = " . intval($_GET['department_id']);
+    $query .= " AND d.id = " . intval($_GET['department_id']);
 }
 
 if (isset($_GET['academic_year_id']) && !empty($_GET['academic_year_id'])) {
-    $feedback_query .= " AND sub.academic_year_id = " . intval($_GET['academic_year_id']);
+    $query .= " AND sa.academic_year_id = " . intval($_GET['academic_year_id']);
 }
 
 if (isset($_GET['rating_min']) && !empty($_GET['rating_min'])) {
-    $feedback_query .= " AND f.cumulative_avg >= " . floatval($_GET['rating_min']);
+    $query .= " AND fb.cumulative_avg >= " . floatval($_GET['rating_min']);
 }
 
 if (isset($_GET['rating_max']) && !empty($_GET['rating_max'])) {
-    $feedback_query .= " AND f.cumulative_avg <= " . floatval($_GET['rating_max']);
+    $query .= " AND fb.cumulative_avg <= " . floatval($_GET['rating_max']);
 }
 
-$feedback_query .= " GROUP BY sub.id ORDER BY feedback_count DESC";
-$feedback_result = mysqli_query($conn, $feedback_query);
+// Group by the specific assignment
+$query .= " GROUP BY sa.id, sub.id, sub.code, sub.name, sub.credits, sa.year, sa.semester, sa.section, f.id, f.name, d.name, ay.year_range
+ORDER BY sub.code, sa.year, sa.semester, sa.section";
 
-// Get overall statistics
+$result = mysqli_query($conn, $query);
+
+// Update the overall statistics query
 $stats_query = "SELECT 
-    COUNT(DISTINCT f.id) as total_feedback,
-    ROUND(AVG(f.cumulative_avg), 2) as avg_rating,
-    COUNT(DISTINCT f.student_id) as total_students,
-    COUNT(DISTINCT f.subject_id) as total_subjects,
-    COUNT(DISTINCT sub.faculty_id) as total_faculty
-FROM feedback f
-JOIN subjects sub ON f.subject_id = sub.id";
+    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.id END) as total_feedback,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.cumulative_avg END), 2) as avg_rating,
+    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.student_id END) as total_students,
+    COUNT(DISTINCT sub.id) as total_subjects,
+    COUNT(DISTINCT sa.faculty_id) as total_faculty
+FROM feedback fb
+JOIN subjects sub ON fb.subject_id = sub.id
+JOIN subject_assignments sa ON sub.id = sa.subject_id 
+    AND sa.academic_year_id = fb.academic_year_id
+JOIN students s ON fb.student_id = s.id
+WHERE sa.is_active = 1";
+
 $stats_result = mysqli_query($conn, $stats_query);
 $stats = mysqli_fetch_assoc($stats_result);
 
-// Get department-wise statistics
+// Update the department-wise statistics query
 $dept_stats_query = "SELECT 
     d.name as department_name,
-    COUNT(DISTINCT f.id) as feedback_count,
-    ROUND(AVG(f.cumulative_avg), 2) as avg_rating
+    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.id END) as feedback_count,
+    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.cumulative_avg END), 2) as avg_rating
 FROM departments d
 LEFT JOIN subjects sub ON d.id = sub.department_id
-LEFT JOIN feedback f ON sub.id = f.subject_id
-GROUP BY d.id
+LEFT JOIN subject_assignments sa ON sub.id = sa.subject_id
+LEFT JOIN feedback fb ON sub.id = fb.subject_id 
+    AND fb.academic_year_id = sa.academic_year_id
+LEFT JOIN students s ON fb.student_id = s.id
+WHERE (sa.is_active = 1 OR sa.is_active IS NULL)
+GROUP BY d.id, d.name
 ORDER BY feedback_count DESC";
+
 $dept_stats_result = mysqli_query($conn, $dept_stats_query);
 ?>
 <!DOCTYPE html>
@@ -680,7 +700,7 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while ($feedback = mysqli_fetch_assoc($feedback_result)): ?>
+                    <?php while ($feedback = mysqli_fetch_assoc($result)): ?>
                         <tr>
                             <td>
                                 <strong><?php echo htmlspecialchars($feedback['subject_code']); ?></strong><br>
@@ -709,7 +729,7 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
                                 </span>
                             </td>
                             <td>
-                                <a href="view_subject_feedback.php?subject_id=<?php echo $feedback['subject_id']; ?>" class="btn-action">
+                                <a href="view_subject_feedback.php?subject_id=<?php echo $feedback['subject_id']; ?>&assignment_id=<?php echo $feedback['assignment_id']; ?>" class="btn-action">
                                     <i class="fas fa-chart-bar"></i> Details
                                 </a>
                             </td>

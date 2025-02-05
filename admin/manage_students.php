@@ -1209,8 +1209,9 @@ $students_result = mysqli_query($conn, $students_query);
         }
 
         function viewFeedback(id) {
-            window.location.href = `view_student_feedback.php?student_id=${id}`;
+            window.location.href = `../view_student_feedback.php?student_id=${id}`;
         }
+
 
         // Close modals when clicking outside
         window.onclick = function(event) {

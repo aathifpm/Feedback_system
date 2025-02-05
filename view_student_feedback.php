@@ -7,63 +7,107 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'faculty' && $_SESSION
     exit();
 }
 
-$faculty_id = $_SESSION['user_id'];
-$academic_year_id = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : null;
-$year = isset($_GET['year']) ? intval($_GET['year']) : null;
-$semester = isset($_GET['semester']) ? intval($_GET['semester']) : null;
-$section = isset($_GET['section']) ? mysqli_real_escape_string($conn, $_GET['section']) : null;
+// Get student ID from request
+$student_id = isset($_GET['student_id']) ? intval($_GET['student_id']) : 0;
 
-if (!$academic_year_id || !$year || !$semester || !$section) {
-    die("Please provide academic year, year of study, semester, and section.");
+if (!$student_id) {
+    header('Location: admin/manage_students.php');
+    exit();
 }
 
-// Fetch selected academic year
-$query = "SELECT * FROM academic_years WHERE id = ?";
-$stmt = mysqli_prepare($conn, $query);
-mysqli_stmt_bind_param($stmt, "i", $academic_year_id);
+// Fetch student details
+$student_query = "SELECT s.*, d.name as department_name, b.batch_name 
+                 FROM students s
+                 JOIN departments d ON s.department_id = d.id
+                 JOIN batch_years b ON s.batch_id = b.id
+                 WHERE s.id = ?";
+$stmt = mysqli_prepare($conn, $student_query);
+mysqli_stmt_bind_param($stmt, "i", $student_id);
 mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$selected_academic_year = mysqli_fetch_assoc($result);
+$student = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
-if (!$selected_academic_year) {
-    die("Error: Invalid academic year.");
+if (!$student) {
+    header('Location: admin/manage_students.php');
+    exit();
 }
 
-// Fetch feedback for the selected academic year, year of study, section, and semester
-$query = "SELECT f.id, f.comments, f.created_at, s.name as subject_name,
-          f.course_effectiveness_avg,
-          f.teaching_effectiveness_avg,
-          f.resources_admin_avg,
-          f.assessment_learning_avg,
-          f.course_outcomes_avg,
-          f.cumulative_avg
-          FROM feedback f
-          JOIN subjects s ON f.subject_id = s.id
-          WHERE s.faculty_id = ? 
-          AND s.academic_year = ? 
-          AND s.year = ? 
-          AND s.semester = ? 
-          AND s.section = ?
-          ORDER BY f.created_at DESC";
-$stmt = mysqli_prepare($conn, $query);
-mysqli_stmt_bind_param($stmt, "iiisi", $faculty_id, $academic_year_id, $year, $semester, $section);
-mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-$feedbacks = mysqli_fetch_all($result, MYSQLI_ASSOC);
+// Get feedback statistics for the student
+$stats_query = "SELECT 
+    s.code,
+    s.name as subject_name,
+    sa.year,
+    sa.semester,
+    sa.section,
+    f.id as feedback_id,
+    f.comments,
+    f.course_effectiveness_avg,
+    f.teaching_effectiveness_avg,
+    f.resources_admin_avg,
+    f.assessment_learning_avg,
+    f.course_outcomes_avg,
+    f.cumulative_avg,
+    f.submitted_at,
+    fac.name as faculty_name
+FROM feedback f
+JOIN subjects s ON f.subject_id = s.id
+JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
+JOIN faculty fac ON sa.faculty_id = fac.id
+WHERE f.student_id = ?
+AND sa.is_active = TRUE
+AND sa.section = ?
+ORDER BY f.submitted_at DESC";
 
-// Fetch feedback statements
-$statements = [
-    "Understanding of the subject matter",
-    "Participation in class discussions",
-    "Timely submission of assignments",
-    "Quality of work",
-    "Ability to apply concepts",
-    "Attendance and punctuality",
-    "Collaboration with peers",
-    "Improvement throughout the semester",
-    "Communication skills",
-    "Overall performance"
-];
+$stmt = mysqli_prepare($conn, $stats_query);
+mysqli_stmt_bind_param($stmt, "is", $student_id, $student['section']);
+mysqli_stmt_execute($stmt);
+$feedbacks = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+
+// Fetch all feedback statements once
+$statements_query = "SELECT id, statement FROM feedback_statements WHERE is_active = TRUE ORDER BY id";
+$stmt = mysqli_prepare($conn, $statements_query);
+mysqli_stmt_execute($stmt);
+$statements_result = mysqli_stmt_get_result($stmt);
+$statements = [];
+while ($row = mysqli_fetch_assoc($statements_result)) {
+    $statements[$row['id']] = $row['statement'];
+}
+
+// Get detailed feedback ratings
+$ratings_query = "SELECT 
+    fr.rating,
+    fs.statement,
+    fs.section as feedback_section,
+    f.subject_id,
+    sa.year,
+    sa.semester,
+    sa.section
+FROM feedback f
+JOIN feedback_ratings fr ON f.id = fr.feedback_id
+JOIN feedback_statements fs ON fr.statement_id = fs.id
+JOIN subject_assignments sa ON f.subject_id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
+WHERE f.student_id = ?
+AND sa.is_active = TRUE
+AND sa.section = ?
+ORDER BY f.submitted_at DESC, fs.section, fs.id";
+
+$stmt = mysqli_prepare($conn, $ratings_query);
+mysqli_stmt_bind_param($stmt, "is", $student_id, $student['section']);
+mysqli_stmt_execute($stmt);
+$ratings = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+
+// Organize ratings by subject and section
+$organized_ratings = [];
+foreach ($ratings as $rating) {
+    $subject_id = $rating['subject_id'];
+    $section = $rating['feedback_section'];
+    if (!isset($organized_ratings[$subject_id])) {
+        $organized_ratings[$subject_id] = [];
+    }
+    if (!isset($organized_ratings[$subject_id][$section])) {
+        $organized_ratings[$subject_id][$section] = [];
+    }
+    $organized_ratings[$subject_id][$section][] = $rating;
+}
 ?>
 
 <!DOCTYPE html>
@@ -71,7 +115,7 @@ $statements = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Student Feedback - <?php echo $selected_academic_year['year_range']; ?> - Panimalar Engineering College</title>
+    <title>View Student Feedback - <?php echo $student['name']; ?> - Panimalar Engineering College</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         * {
@@ -226,48 +270,56 @@ $statements = [
     </div>
     <div class="container">
         <h2>View Student Feedback</h2>
-        <h3>Academic Year: <?php echo $selected_academic_year['year_range']; ?></h3>
-        <h3>Year of Study: <?php echo $year; ?>, Semester: <?php echo $semester; ?>, Section: <?php echo $section; ?></h3>
+        <h3>Student: <?php echo $student['name']; ?></h3>
+        <h3>Department: <?php echo $student['department_name']; ?></h3>
+        <h3>Batch: <?php echo $student['batch_name']; ?></h3>
 
         <?php if (empty($feedbacks)): ?>
             <div class="no-feedback">
-                <p>No feedback submitted for this academic year, year of study, semester, and section yet.</p>
+                <p>No feedback submitted for this student yet.</p>
             </div>
         <?php else: ?>
             <?php foreach ($feedbacks as $feedback): ?>
                 <div class="feedback-card">
                     <div class="feedback-meta">
                         <h3>Feedback for <?php echo htmlspecialchars($feedback['subject_name']); ?></h3>
-                        <p>Submitted on: <?php echo date('F j, Y, g:i a', strtotime($feedback['created_at'])); ?></p>
+                        <p>Submitted on: <?php echo date('F j, Y, g:i a', strtotime($feedback['submitted_at'])); ?></p>
                     </div>
                     
-                    <h4>Average Rating: <?php echo number_format($feedback['avg_rating'], 2); ?>/5</h4>
+                    <h4>Average Rating: <?php echo number_format($feedback['cumulative_avg'], 2); ?>/5</h4>
                     
                     <h4>Ratings:</h4>
                     <ul>
                         <?php
-                        $ratings_query = "SELECT statement_id, rating FROM feedback_ratings WHERE feedback_id = ?";
+                        $ratings_query = "SELECT fr.statement_id, fr.rating, fs.statement 
+                                        FROM feedback_ratings fr
+                                        JOIN feedback_statements fs ON fr.statement_id = fs.id
+                                        WHERE fr.feedback_id = ?
+                                        ORDER BY fs.section, fs.id";
                         $ratings_stmt = mysqli_prepare($conn, $ratings_query);
-                        mysqli_stmt_bind_param($ratings_stmt, "i", $feedback['id']);
+                        mysqli_stmt_bind_param($ratings_stmt, "i", $feedback['feedback_id']);
                         mysqli_stmt_execute($ratings_stmt);
                         $ratings_result = mysqli_stmt_get_result($ratings_stmt);
-                        $ratings = mysqli_fetch_all($ratings_result, MYSQLI_ASSOC);
                         
-                        foreach ($ratings as $rating):
+                        while ($rating = mysqli_fetch_assoc($ratings_result)):
                             $width_percentage = ($rating['rating'] / 5) * 100;
                         ?>
                             <li>
-                                <?php echo htmlspecialchars($statements[$rating['statement_id']]); ?>: <?php echo $rating['rating']; ?>/5
+                                <?php echo htmlspecialchars($rating['statement']); ?>: <?php echo $rating['rating']; ?>/5
                                 <div class="rating-bar">
                                     <div class="rating-fill" style="width: <?php echo $width_percentage; ?>%;"></div>
                                 </div>
                             </li>
-                        <?php endforeach; ?>
+                        <?php endwhile; ?>
                     </ul>
                     
                     <h4>Comments:</h4>
                     <div class="comments">
-                        <p><?php echo nl2br(htmlspecialchars($feedback['comments'])); ?></p>
+                        <?php if (!empty($feedback['comments'])): ?>
+                            <p><?php echo nl2br(htmlspecialchars($feedback['comments'])); ?></p>
+                        <?php else: ?>
+                            <p><em>No comments provided</em></p>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endforeach; ?>
