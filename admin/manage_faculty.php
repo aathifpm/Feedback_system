@@ -184,13 +184,14 @@ $departments = mysqli_query($conn, $dept_query);
 $faculty_query = "SELECT 
     f.*,
     d.name as department_name,
-    COUNT(DISTINCT s.id) as subject_count,
+    COUNT(DISTINCT sa.id) as subject_count,
     COUNT(DISTINCT fb.id) as feedback_count,
     ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
 FROM faculty f
 LEFT JOIN departments d ON f.department_id = d.id
-LEFT JOIN subjects s ON f.id = s.faculty_id
-LEFT JOIN feedback fb ON s.id = fb.subject_id
+LEFT JOIN subject_assignments sa ON f.id = sa.faculty_id
+LEFT JOIN feedback fb ON sa.subject_id = fb.subject_id
+    AND fb.academic_year_id = sa.academic_year_id
 GROUP BY f.id
 ORDER BY f.name";
 

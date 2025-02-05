@@ -112,8 +112,8 @@ function register_student($conn, $data, $hashed_password) {
     }
 
     // Validate register number format (adjust the pattern as per your requirements)
-    if (!preg_match('/^[0-9A-Z]{10,15}$/', $register_number)) {
-        throw new Exception("Invalid register number format");
+    if (!preg_match('/^[0-9]{12,15}$/', $register_number)) {
+        throw new Exception("Invalid register number format. Must be 12-15 digits.");
     }
 
     // Check if register number already exists

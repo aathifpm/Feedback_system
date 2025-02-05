@@ -131,27 +131,76 @@ CREATE TABLE password_reset_tokens (
     INDEX idx_expiry (expires_at)
 );
 
--- Create subjects table
+-- Create subjects table (Updated)
 CREATE TABLE subjects (
     id INT AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(20) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
     department_id INT NOT NULL,
+    credits INT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(id),
+    CONSTRAINT chk_credits CHECK (credits > 0)
+);
+
+-- Create subject_assignments table (New)
+CREATE TABLE subject_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subject_id INT NOT NULL,
     faculty_id INT NOT NULL,
     academic_year_id INT NOT NULL,
     year INT NOT NULL,
     semester INT NOT NULL,
     section VARCHAR(1) NOT NULL,
-    credits INT NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (department_id) REFERENCES departments(id),
+    FOREIGN KEY (subject_id) REFERENCES subjects(id),
     FOREIGN KEY (faculty_id) REFERENCES faculty(id),
     FOREIGN KEY (academic_year_id) REFERENCES academic_years(id),
     CONSTRAINT chk_subject_year CHECK (year BETWEEN 1 AND 4),
     CONSTRAINT chk_subject_semester CHECK (semester BETWEEN 1 AND 8),
-    CONSTRAINT chk_credits CHECK (credits > 0)
+    UNIQUE KEY unique_subject_assignment (subject_id, academic_year_id, year, semester, section)
 );
+
+-- Add indexes for better performance
+CREATE INDEX idx_subject_assignments_faculty ON subject_assignments(faculty_id);
+CREATE INDEX idx_subject_assignments_academic_year ON subject_assignments(academic_year_id);
+CREATE INDEX idx_subject_assignments_active ON subject_assignments(is_active);
+
+-- Migration script for existing data
+INSERT INTO subject_assignments (
+    subject_id,
+    faculty_id,
+    academic_year_id,
+    year,
+    semester,
+    section,
+    is_active,
+    created_at
+)
+SELECT 
+    id as subject_id,
+    faculty_id,
+    academic_year_id,
+    year,
+    semester,
+    section,
+    is_active,
+    created_at
+FROM subjects;
+
+-- Update feedback table foreign key
+ALTER TABLE feedback 
+DROP FOREIGN KEY feedback_ibfk_2,
+ADD CONSTRAINT feedback_ibfk_2 
+FOREIGN KEY (subject_id) REFERENCES subjects(id);
+
+-- Update course_outcomes table foreign key
+ALTER TABLE course_outcomes 
+DROP FOREIGN KEY course_outcomes_ibfk_1,
+ADD CONSTRAINT course_outcomes_ibfk_1 
+FOREIGN KEY (subject_id) REFERENCES subjects(id);
 
 -- Create course outcomes table
 CREATE TABLE course_outcomes (

@@ -20,7 +20,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $code = mysqli_real_escape_string($conn, $_POST['code']);
                     $name = mysqli_real_escape_string($conn, $_POST['name']);
                     $department_id = intval($_POST['department_id']);
-                    $academic_year_id = intval($_POST['academic_year_id']);
                     $credits = intval($_POST['credits']);
                     
                     // Begin transaction
@@ -37,79 +36,53 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         throw new Exception("Subject code already exists!");
                     }
 
-                    // Create assignment array from form data
-                    $assignments = [];
-                    $years = isset($_POST['years']) ? $_POST['years'] : [];
-                    $semesters = isset($_POST['semesters']) ? $_POST['semesters'] : [];
-                    $sections = isset($_POST['sections']) ? $_POST['sections'] : [];
-                    $faculty_ids = isset($_POST['faculty_ids']) ? $_POST['faculty_ids'] : [];
-
-                    // Validate that we have all required arrays and they have the same length
-                    if (empty($years) || empty($semesters) || empty($sections) || empty($faculty_ids) ||
-                        count($years) !== count($semesters) || 
-                        count($years) !== count($sections) || 
-                        count($years) !== count($faculty_ids)) {
-                        throw new Exception("Invalid assignment data provided!");
-                    }
-
-                    // Create assignments array
-                    for ($i = 0; $i < count($years); $i++) {
-                        $assignments[] = [
-                            'year' => intval($years[$i]),
-                            'semester' => intval($semesters[$i]),
-                            'section' => $sections[$i],
-                            'faculty_id' => intval($faculty_ids[$i])
-                        ];
-                    }
+                    // Insert the subject
+                    $query = "INSERT INTO subjects (code, name, department_id, credits, is_active) 
+                             VALUES (?, ?, ?, ?, TRUE)";
                     
-                    // Insert each assignment as a separate subject entry
-                    foreach ($assignments as $assignment) {
-                        $query = "INSERT INTO subjects (
-                            code, name, department_id, faculty_id, 
-                            academic_year_id, year, semester, section, 
-                            credits, is_active
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)";
+                    $stmt = mysqli_prepare($conn, $query);
+                    mysqli_stmt_bind_param($stmt, "ssii", 
+                        $code,
+                        $name,
+                        $department_id,
+                        $credits
+                    );
+                    
+                    if (!mysqli_stmt_execute($stmt)) {
+                        throw new Exception("Error adding subject!");
+                    }
+
+                    $subject_id = mysqli_insert_id($conn);
+
+                    // Add initial assignment if provided
+                    if (isset($_POST['faculty_id']) && isset($_POST['academic_year_id'])) {
+                        $faculty_id = intval($_POST['faculty_id']);
+                        $academic_year_id = intval($_POST['academic_year_id']);
+                        $year = intval($_POST['year']);
+                        $semester = intval($_POST['semester']);
+                        $section = mysqli_real_escape_string($conn, $_POST['section']);
+
+                        $assignment_query = "INSERT INTO subject_assignments 
+                                           (subject_id, faculty_id, academic_year_id, year, semester, section) 
+                                           VALUES (?, ?, ?, ?, ?, ?)";
                         
-                        $stmt = mysqli_prepare($conn, $query);
-                        mysqli_stmt_bind_param($stmt, "ssiiiiiis", 
-                            $code, 
-                            $name, 
-                            $department_id,
-                            $assignment['faculty_id'],
+                        $stmt = mysqli_prepare($conn, $assignment_query);
+                        mysqli_stmt_bind_param($stmt, "iiiiss", 
+                            $subject_id,
+                            $faculty_id,
                             $academic_year_id,
-                            $assignment['year'],
-                            $assignment['semester'],
-                            $assignment['section'],
-                            $credits
+                            $year,
+                            $semester,
+                            $section
                         );
-                        
+
                         if (!mysqli_stmt_execute($stmt)) {
                             throw new Exception("Error adding subject assignment!");
                         }
                     }
-                    
-                    // Log the action
-                    $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
-                                  VALUES (?, 'admin', 'add_subject', ?, ?, ?)";
-                    $log_stmt = mysqli_prepare($conn, $log_query);
-                    $details = json_encode([
-                        'code' => $code,
-                        'name' => $name,
-                        'department_id' => $department_id,
-                        'assignments_count' => count($assignments)
-                    ]);
-                    
-                    mysqli_stmt_bind_param($log_stmt, "isss", 
-                        $_SESSION['user_id'], 
-                        $details,
-                        $_SERVER['REMOTE_ADDR'],
-                        $_SERVER['HTTP_USER_AGENT']
-                    );
-                    mysqli_stmt_execute($log_stmt);
-                    
-                    // Commit transaction
+
                     mysqli_commit($conn);
-                    $success_msg = "Subject added successfully with " . count($assignments) . " assignments!";
+                    $success_msg = "Subject added successfully!";
                     
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
@@ -118,99 +91,64 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 break;
             case 'edit':
                 try {
-                    // Validate required fields exist
-                    $required_fields = ['id', 'code', 'name', 'department_id', 'faculty_id', 
-                                     'academic_year_id', 'year', 'semester', 'section', 'credits'];
-                    foreach($required_fields as $field) {
-                        if(!isset($_POST[$field])) {
-                            throw new Exception("Missing required field: $field");
-                        }
-                    }
-
-                    // Sanitize and validate inputs
-                    $id = filter_var($_POST['id'], FILTER_VALIDATE_INT);
-                    $code = mysqli_real_escape_string($conn, $_POST['code']);
+                    $id = intval($_POST['id']);
                     $name = mysqli_real_escape_string($conn, $_POST['name']);
-                    $department_id = filter_var($_POST['department_id'], FILTER_VALIDATE_INT);
-                    $faculty_id = filter_var($_POST['faculty_id'], FILTER_VALIDATE_INT);
-                    $academic_year_id = filter_var($_POST['academic_year_id'], FILTER_VALIDATE_INT);
-                    $year = filter_var($_POST['year'], FILTER_VALIDATE_INT);
-                    $semester = filter_var($_POST['semester'], FILTER_VALIDATE_INT);
-                    $section = mysqli_real_escape_string($conn, $_POST['section']);
-                    $credits = filter_var($_POST['credits'], FILTER_VALIDATE_INT);
+                    $department_id = intval($_POST['department_id']);
+                    $credits = intval($_POST['credits']);
 
-                    // Validate all fields have valid values
-                    if(!$id || !$department_id || !$faculty_id || !$academic_year_id || 
-                       !$year || !$semester || !$credits || empty($code) || empty($name) || empty($section)) {
-                        throw new Exception("Invalid input values provided");
-                    }
-
-                    // Check for existing subject code excluding current subject
-                    $check_query = "SELECT id FROM subjects WHERE code = ? AND id != ?";
-                    $stmt = mysqli_prepare($conn, $check_query);
-                    mysqli_stmt_bind_param($stmt, "si", $code, $id);
-                    mysqli_stmt_execute($stmt);
-                    $result = mysqli_stmt_get_result($stmt);
-
-                    if (mysqli_num_rows($result) > 0) {
-                        throw new Exception("Subject code already exists!");
-                    }
-
-                    // Start transaction
+                    // Begin transaction
                     mysqli_begin_transaction($conn);
 
-                    $query = "UPDATE subjects SET 
-                             code = ?, 
-                             name = ?,
-                             department_id = ?,
-                             faculty_id = ?,
-                             academic_year_id = ?,
-                             year = ?,
-                             semester = ?,
-                             section = ?,
-                             credits = ?
-                             WHERE id = ?";
-
-                    $stmt = mysqli_prepare($conn, $query);
-                    mysqli_stmt_bind_param($stmt, "ssiiiiiisi",
-                        $code, $name, $department_id, $faculty_id,
-                        $academic_year_id, $year, $semester, $section,
-                        $credits, $id
+                    // Update subject details
+                    $update_query = "UPDATE subjects SET 
+                                    name = ?,
+                                    department_id = ?,
+                                    credits = ?
+                                    WHERE id = ?";
+                    
+                    $stmt = mysqli_prepare($conn, $update_query);
+                    mysqli_stmt_bind_param($stmt, "siii", 
+                        $name,
+                        $department_id,
+                        $credits,
+                        $id
                     );
 
                     if (!mysqli_stmt_execute($stmt)) {
                         throw new Exception("Error updating subject!");
                     }
 
-                    // Log the action
-                    $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
-                                VALUES (?, 'admin', 'edit_subject', ?, ?, ?)";
-                    $log_stmt = mysqli_prepare($conn, $log_query);
-                    $details = json_encode([
-                        'subject_id' => $id,
-                        'code' => $code,
-                        'name' => $name,
-                        'department_id' => $department_id,
-                        'faculty_id' => $faculty_id,
-                        'academic_year_id' => $academic_year_id,
-                        'year' => $year,
-                        'semester' => $semester,
-                        'section' => $section,
-                        'credits' => $credits
-                    ]);
-                    
-                    mysqli_stmt_bind_param($log_stmt, "isss", 
-                        $_SESSION['user_id'], 
-                        $details,
-                        $_SERVER['REMOTE_ADDR'],
-                        $_SERVER['HTTP_USER_AGENT']
-                    );
-                    
-                    if (!mysqli_stmt_execute($log_stmt)) {
-                        throw new Exception("Error logging subject update!");
+                    // Handle assignments if provided
+                    if (isset($_POST['assignments']) && is_array($_POST['assignments'])) {
+                        foreach ($_POST['assignments'] as $assignment) {
+                            $faculty_id = intval($assignment['faculty_id']);
+                            $academic_year_id = intval($assignment['academic_year_id']);
+                            $year = intval($assignment['year']);
+                            $semester = intval($assignment['semester']);
+                            $section = mysqli_real_escape_string($conn, $assignment['section']);
+
+                            $assignment_query = "INSERT INTO subject_assignments 
+                                               (subject_id, faculty_id, academic_year_id, year, semester, section)
+                                               VALUES (?, ?, ?, ?, ?, ?)
+                                               ON DUPLICATE KEY UPDATE
+                                               faculty_id = VALUES(faculty_id)";
+                            
+                            $stmt = mysqli_prepare($conn, $assignment_query);
+                            mysqli_stmt_bind_param($stmt, "iiiiss", 
+                                $id,
+                                $faculty_id,
+                                $academic_year_id,
+                                $year,
+                                $semester,
+                                $section
+                            );
+
+                            if (!mysqli_stmt_execute($stmt)) {
+                                throw new Exception("Error updating subject assignments!");
+                            }
+                        }
                     }
 
-                    // Commit transaction
                     mysqli_commit($conn);
                     $success_msg = "Subject updated successfully!";
 
@@ -262,7 +200,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $assignment_id = intval($_POST['assignment_id']);
                     $status = $_POST['status'] === 'true';
                     
-                    $query = "UPDATE subjects SET is_active = ? WHERE id = ?";
+                    $query = "UPDATE subject_assignments SET is_active = ? WHERE id = ?";
                     $stmt = mysqli_prepare($conn, $query);
                     mysqli_stmt_bind_param($stmt, "ii", $status, $assignment_id);
                     
@@ -293,107 +231,101 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 break;
 
             case 'add_assignment':
+                header('Content-Type: application/json');
                 try {
-                    // Validate required fields
-                    $required_fields = ['subject_code', 'year', 'semester', 'section', 'faculty_id'];
-                    foreach($required_fields as $field) {
-                        if(!isset($_POST[$field])) {
-                            throw new Exception("Missing required field: $field");
-                        }
-                    }
-
-                    $subject_code = mysqli_real_escape_string($conn, $_POST['subject_code']);
+                    // Validate and sanitize inputs
+                    $subject_id = filter_var($_POST['subject_id'], FILTER_VALIDATE_INT);
+                    $faculty_id = filter_var($_POST['faculty_id'], FILTER_VALIDATE_INT);
+                    $academic_year_id = filter_var($_POST['academic_year_id'], FILTER_VALIDATE_INT);
                     $year = filter_var($_POST['year'], FILTER_VALIDATE_INT);
                     $semester = filter_var($_POST['semester'], FILTER_VALIDATE_INT);
                     $section = mysqli_real_escape_string($conn, $_POST['section']);
-                    $faculty_id = filter_var($_POST['faculty_id'], FILTER_VALIDATE_INT);
-                    
-                    if(!$year || !$semester || !$faculty_id || empty($subject_code) || empty($section)) {
-                        throw new Exception("Invalid input values provided");
+
+                    // Validate all required fields
+                    if (!$subject_id || !$faculty_id || !$academic_year_id || 
+                        !$year || !$semester || empty($section)) {
+                        throw new Exception("All fields are required and must be valid");
                     }
 
-                    // Get existing subject details
-                    $subject_query = "SELECT name, department_id, academic_year_id, credits 
-                                     FROM subjects WHERE code = ? LIMIT 1";
-                    $stmt = mysqli_prepare($conn, $subject_query);
-                    mysqli_stmt_bind_param($stmt, "s", $subject_code);
-                    mysqli_stmt_execute($stmt);
-                    $subject_result = mysqli_stmt_get_result($stmt);
-                    $subject_details = mysqli_fetch_assoc($subject_result);
-                    
-                    if (!$subject_details) {
-                        throw new Exception("Subject not found!");
-                    }
-                    
-                    // Check if assignment already exists
-                    $check_query = "SELECT id FROM subjects 
-                                   WHERE code = ? AND year = ? AND semester = ? AND section = ?";
-                    $stmt = mysqli_prepare($conn, $check_query);
-                    mysqli_stmt_bind_param($stmt, "siis", $subject_code, $year, $semester, $section);
+                    // Begin transaction
+                    mysqli_begin_transaction($conn);
+
+                    // Check if subject exists and is active
+                    $check_subject = "SELECT id FROM subjects WHERE id = ? AND is_active = 1";
+                    $stmt = mysqli_prepare($conn, $check_subject);
+                    mysqli_stmt_bind_param($stmt, "i", $subject_id);
                     mysqli_stmt_execute($stmt);
                     $result = mysqli_stmt_get_result($stmt);
                     
-                    if (mysqli_num_rows($result) > 0) {
-                        throw new Exception("Assignment already exists for this section!");
+                    if (!mysqli_fetch_assoc($result)) {
+                        mysqli_stmt_close($stmt);
+                        throw new Exception("Invalid subject selected");
                     }
+                    mysqli_stmt_close($stmt);
+                    mysqli_free_result($result);
+
+                    // Check for duplicate assignment
+                    $check_query = "SELECT id FROM subject_assignments 
+                                   WHERE subject_id = ? AND academic_year_id = ? 
+                                   AND year = ? AND semester = ? AND section = ?";
+                    $stmt = mysqli_prepare($conn, $check_query);
+                    mysqli_stmt_bind_param($stmt, "iiiis", 
+                        $subject_id, $academic_year_id, $year, $semester, $section);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
                     
-                    // Start transaction
-                    mysqli_begin_transaction($conn);
+                    if (mysqli_fetch_assoc($result)) {
+                        mysqli_stmt_close($stmt);
+                        mysqli_free_result($result);
+                        throw new Exception("Assignment already exists for this combination");
+                    }
+                    mysqli_stmt_close($stmt);
+                    mysqli_free_result($result);
 
                     // Insert new assignment
-                    $query = "INSERT INTO subjects (
-                        code, name, department_id, faculty_id, academic_year_id,
-                        year, semester, section, credits, is_active
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, TRUE)";
+                    $query = "INSERT INTO subject_assignments 
+                             (subject_id, faculty_id, academic_year_id, year, semester, section, is_active) 
+                             VALUES (?, ?, ?, ?, ?, ?, 1)";
                     
                     $stmt = mysqli_prepare($conn, $query);
-                    mysqli_stmt_bind_param($stmt, "ssiiiiiis", 
-                        $subject_code,
-                        $subject_details['name'],
-                        $subject_details['department_id'],
-                        $faculty_id,
-                        $subject_details['academic_year_id'],
-                        $year,
-                        $semester,
-                        $section,
-                        $subject_details['credits']
-                    );
-                    
-                    if (!mysqli_stmt_execute($stmt)) {
-                        throw new Exception("Error adding new assignment!");
-                    }
+                    mysqli_stmt_bind_param($stmt, "iiiiss", 
+                        $subject_id, $faculty_id, $academic_year_id, $year, $semester, $section);
 
+                    if (!mysqli_stmt_execute($stmt)) {
+                        throw new Exception("Error adding assignment: " . mysqli_error($conn));
+                    }
+                    
+                    mysqli_stmt_close($stmt);
+                    
                     // Log the action
                     $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
                                  VALUES (?, 'admin', 'add_subject_assignment', ?, ?, ?)";
-                    $log_stmt = mysqli_prepare($conn, $log_query);
+                    $stmt = mysqli_prepare($conn, $log_query);
                     $details = json_encode([
-                        'subject_code' => $subject_code,
+                        'subject_id' => $subject_id,
+                        'faculty_id' => $faculty_id,
+                        'academic_year_id' => $academic_year_id,
                         'year' => $year,
                         'semester' => $semester,
-                        'section' => $section,
-                        'faculty_id' => $faculty_id
+                        'section' => $section
                     ]);
-                    
-                    mysqli_stmt_bind_param($log_stmt, "isss", 
+                    mysqli_stmt_bind_param($stmt, "isss", 
                         $_SESSION['user_id'], 
                         $details,
                         $_SERVER['REMOTE_ADDR'],
                         $_SERVER['HTTP_USER_AGENT']
                     );
-                    
-                    if (!mysqli_stmt_execute($log_stmt)) {
-                        throw new Exception("Error logging new assignment!");
-                    }
+                    mysqli_stmt_execute($stmt);
+                    mysqli_stmt_close($stmt);
 
-                    // Commit transaction
                     mysqli_commit($conn);
-                    $success_msg = "New assignment added successfully!";
-
+                    echo json_encode(['success' => true, 'message' => 'Assignment added successfully!']);
+                    
                 } catch (Exception $e) {
                     mysqli_rollback($conn);
-                    $error_msg = $e->getMessage();
+                    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
                 }
+                exit;
                 break;
         }
     }
@@ -413,32 +345,41 @@ $academic_years = mysqli_query($conn, $academic_year_query);
 
 // Fetch subjects with related information
 $subjects_query = "SELECT 
+    s.id,
     s.code,
     s.name,
     s.department_id,
-    s.year,
-    s.semester,
-    s.section,
+    s.credits,
     s.is_active,
-    s.id,
     d.name as department_name,
-    GROUP_CONCAT(DISTINCT CONCAT(f.name, ' (', s.section, ')') SEPARATOR ', ') as faculty_assignments,
-    GROUP_CONCAT(DISTINCT CONCAT('Year ', s.year, ' Sem ', s.semester) SEPARATOR ', ') as year_sem_info,
+    COUNT(DISTINCT sa.id) as assignment_count,
     COUNT(DISTINCT fb.id) as feedback_count,
-    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating,
-    MIN(s.is_active) as is_active,
-    MIN(s.year) as min_year,
-    MIN(s.semester) as min_semester,
-    MIN(s.section) as min_section
+    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
 FROM subjects s
 LEFT JOIN departments d ON s.department_id = d.id
-LEFT JOIN faculty f ON s.faculty_id = f.id
-LEFT JOIN academic_years ay ON s.academic_year_id = ay.id
+LEFT JOIN subject_assignments sa ON s.id = sa.subject_id
 LEFT JOIN feedback fb ON s.id = fb.subject_id
-GROUP BY s.code, s.name, s.department_id
+GROUP BY s.id
 ORDER BY s.code";
 
 $subjects_result = mysqli_query($conn, $subjects_query);
+
+function getSubjectAssignments($conn, $subject_id) {
+    $query = "SELECT 
+        sa.*,
+        f.name as faculty_name,
+        ay.year_range as academic_year
+    FROM subject_assignments sa
+    JOIN faculty f ON sa.faculty_id = f.id
+    JOIN academic_years ay ON sa.academic_year_id = ay.id
+    WHERE sa.subject_id = ?
+    ORDER BY sa.academic_year_id DESC, sa.year, sa.semester";
+
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, "i", $subject_id);
+    mysqli_stmt_execute($stmt);
+    return mysqli_stmt_get_result($stmt);
+}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1128,8 +1069,8 @@ $subjects_result = mysqli_query($conn, $subjects_query);
                      data-status="<?php echo $subject['is_active'] ? '1' : '0'; ?>">
                     <div class="subject-header">
                         <div class="subject-info">
-                            <div class="subject-name"><?php echo htmlspecialchars($subject['name']); ?></div>
-                            <div class="subject-code"><?php echo htmlspecialchars($subject['code']); ?></div>
+                            <h3 class="subject-name"><?php echo htmlspecialchars($subject['name']); ?></h3>
+                            <span class="subject-code"><?php echo htmlspecialchars($subject['code']); ?></span>
                         </div>
                         <span class="status-badge <?php echo $subject['is_active'] ? 'status-active' : 'status-inactive'; ?>">
                             <?php echo $subject['is_active'] ? 'Active' : 'Inactive'; ?>
@@ -1142,35 +1083,55 @@ $subjects_result = mysqli_query($conn, $subjects_query);
                             <span class="detail-value"><?php echo htmlspecialchars($subject['department_name']); ?></span>
                         </div>
                         <div class="detail-item">
-                            <span class="detail-label">Faculty Assignments</span>
-                            <span class="detail-value"><?php echo htmlspecialchars($subject['faculty_assignments']); ?></span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-label">Year & Semester</span>
-                            <span class="detail-value"><?php echo htmlspecialchars($subject['year_sem_info']); ?></span>
+                            <span class="detail-label">Credits</span>
+                            <span class="detail-value"><?php echo $subject['credits']; ?></span>
                         </div>
                     </div>
 
                     <div class="subject-stats">
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $subject['feedback_count']; ?></div>
-                            <div class="stat-label">Feedbacks</div>
+                            <div class="stat-value"><?php echo $subject['assignment_count']; ?></div>
+                            <div class="stat-label">Assignments</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $subject['avg_rating'] ?? 'N/A'; ?></div>
-                            <div class="stat-label">Avg Rating</div>
+                            <div class="stat-value"><?php echo $subject['feedback_count'] ?: 0; ?></div>
+                            <div class="stat-label">Feedbacks</div>
                         </div>
                     </div>
+
+                    <?php 
+                    $assignments = getSubjectAssignments($conn, $subject['id']);
+                    if (mysqli_num_rows($assignments) > 0): 
+                    ?>
+                    <div class="current-assignments">
+                        <h3>Current Assignments</h3>
+                        <?php while($assignment = mysqli_fetch_assoc($assignments)): ?>
+                            <div class="current-assignment-item">
+                                <div class="assignment-details">
+                                    <span>Year <?php echo $assignment['year']; ?></span>
+                                    <span>Sem <?php echo $assignment['semester']; ?></span>
+                                    <span>Section <?php echo $assignment['section']; ?></span>
+                                    <span><?php echo htmlspecialchars($assignment['faculty_name']); ?></span>
+                                </div>
+                                <div class="assignment-actions">
+                                    <button class="btn-action" onclick="toggleAssignmentStatus(<?php echo $assignment['id']; ?>, <?php echo $assignment['is_active']; ?>)">
+                                        <i class="fas fa-<?php echo $assignment['is_active'] ? 'times' : 'check'; ?>"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        <?php endwhile; ?>
+                    </div>
+                    <?php endif; ?>
 
                     <div class="subject-actions">
                         <button class="btn-action" onclick="showEditModal(<?php echo htmlspecialchars(json_encode($subject)); ?>)">
                             <i class="fas fa-edit"></i> Edit
                         </button>
-                        <button class="btn-action" onclick="toggleStatus(<?php echo $subject['id']; ?>, <?php echo $subject['is_active'] ? 'false' : 'true'; ?>)">
+                        <button class="btn-action" onclick="toggleSubjectStatus(<?php echo $subject['id']; ?>, <?php echo $subject['is_active']; ?>)">
                             <i class="fas fa-power-off"></i> <?php echo $subject['is_active'] ? 'Deactivate' : 'Activate'; ?>
                         </button>
-                        <button class="btn-action" onclick="viewFeedback(<?php echo $subject['id']; ?>)">
-                            <i class="fas fa-comments"></i> View Feedback
+                        <button class="btn-action" onclick="showAddAssignmentModal(<?php echo $subject['id']; ?>)">
+                            <i class="fas fa-plus"></i> Add Assignment
                         </button>
                     </div>
                 </div>
@@ -1282,61 +1243,6 @@ $subjects_result = mysqli_query($conn, $subjects_query);
                     </div>
                 </div>
 
-                <div class="form-group" id="assignmentContainer">
-                    <label>Subject Assignments</label>
-                    <div class="assignments">
-                        <div class="assignment-row">
-                            <div class="form-row">
-                                <div class="form-group">
-                                    <label>Year & Semester</label>
-                                    <div class="input-group">
-                                        <select name="years[]" class="form-control" required>
-                                            <option value="">Select Year</option>
-                                            <?php for($i = 1; $i <= 4; $i++): ?>
-                                                <option value="<?php echo $i; ?>">Year <?php echo $i; ?></option>
-                                            <?php endfor; ?>
-                                        </select>
-                                        <select name="semesters[]" class="form-control" required>
-                                            <option value="">Select Semester</option>
-                                            <?php for($i = 1; $i <= 8; $i++): ?>
-                                                <option value="<?php echo $i; ?>">Semester <?php echo $i; ?></option>
-                                            <?php endfor; ?>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="form-group">
-                                    <label>Section & Faculty</label>
-                                    <div class="input-group">
-                                        <select name="sections[]" class="form-control" required>
-                                            <option value="">Select Section</option>
-                                            <?php for($i = 65; $i <= 70; $i++): ?>
-                                                <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
-                                            <?php endfor; ?>
-                                        </select>
-                                        <select name="faculty_ids[]" class="form-control" required>
-                                            <option value="">Select Faculty</option>
-                                            <?php 
-                                            mysqli_data_seek($faculty_members, 0);
-                                            while ($faculty = mysqli_fetch_assoc($faculty_members)): 
-                                            ?>
-                                                <option value="<?php echo $faculty['id']; ?>">
-                                                    <?php echo htmlspecialchars($faculty['name']); ?>
-                                                </option>
-                                            <?php endwhile; ?>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                            <button type="button" class="btn btn-danger btn-remove-assignment" onclick="removeAssignment(this)">
-                                <i class="fas fa-minus"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <button type="button" class="btn btn-secondary" onclick="addAssignment()">
-                        <i class="fas fa-plus"></i> Add Another Assignment
-                    </button>
-                </div>
-
                 <div class="modal-actions">
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-plus"></i> Add Subject
@@ -1442,25 +1348,103 @@ $subjects_result = mysqli_query($conn, $subjects_query);
         </div>
     </div>
 
+    <!-- Add Assignment Modal -->
+    <div id="addAssignmentModal" class="modal">
+        <div class="modal-content">
+            <h2>Add New Assignment</h2>
+            <form id="newAssignmentForm">
+                <input type="hidden" name="action" value="add_assignment">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="faculty_id">Faculty</label>
+                        <select name="faculty_id" class="form-control" required>
+                            <option value="">Select Faculty</option>
+                            <?php 
+                            mysqli_data_seek($faculty_members, 0);
+                            while($faculty = mysqli_fetch_assoc($faculty_members)): 
+                            ?>
+                                <option value="<?php echo $faculty['id']; ?>">
+                                    <?php echo htmlspecialchars($faculty['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="academic_year_id">Academic Year</label>
+                        <select name="academic_year_id" class="form-control" required>
+                            <option value="">Select Academic Year</option>
+                            <?php 
+                            mysqli_data_seek($academic_years, 0);
+                            while($year = mysqli_fetch_assoc($academic_years)): 
+                            ?>
+                                <option value="<?php echo $year['id']; ?>">
+                                    <?php echo htmlspecialchars($year['year_range']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="year">Year</label>
+                        <select name="year" class="form-control" required>
+                            <option value="">Select Year</option>
+                            <?php for($i = 1; $i <= 4; $i++): ?>
+                                <option value="<?php echo $i; ?>">Year <?php echo $i; ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="semester">Semester</label>
+                        <select name="semester" class="form-control" required>
+                            <option value="">Select Semester</option>
+                            <?php for($i = 1; $i <= 8; $i++): ?>
+                                <option value="<?php echo $i; ?>">Semester <?php echo $i; ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="section">Section</label>
+                        <select name="section" class="form-control" required>
+                            <option value="">Select Section</option>
+                            <?php foreach(range('A', 'E') as $section): ?>
+                                <option value="<?php echo $section; ?>">Section <?php echo $section; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-actions">
+                    <button type="submit" class="btn btn-primary">Add Assignment</button>
+                    <button type="button" class="btn btn-secondary" onclick="hideModal('addAssignmentModal')">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         // Modal handling functions
         function showAddModal() {
             const modal = document.getElementById('addModal');
             modal.style.display = 'flex';
-            // Reset form when opening
             document.querySelector('#addModal form').reset();
         }
 
         function showEditModal(subject) {
             const modal = document.getElementById('editModal');
             
-            // Set basic subject info
+            // Set form values
             document.getElementById('edit_id').value = subject.id;
             document.getElementById('edit_code').value = subject.code;
             document.getElementById('edit_name').value = subject.name;
-            
-            // Fetch and display current assignments
-            fetchCurrentAssignments(subject.code);
+            document.getElementById('edit_department_id').value = subject.department_id;
+            document.getElementById('edit_faculty_id').value = subject.faculty_id;
+            document.getElementById('edit_academic_year_id').value = subject.academic_year_id;
+            document.getElementById('edit_year').value = subject.year;
+            document.getElementById('edit_semester').value = subject.semester;
+            document.getElementById('edit_section').value = subject.section;
+            document.getElementById('edit_credits').value = subject.credits;
             
             modal.style.display = 'flex';
         }
@@ -1606,8 +1590,7 @@ $subjects_result = mysqli_query($conn, $subjects_query);
         // Add real-time validation for subject code
         document.addEventListener('DOMContentLoaded', function() {
             const codeInputs = document.querySelectorAll('input[name="code"]');
-            const codePattern = /^\d{2}[A-Z]{2,4}\d{4}$/;
-
+            
             codeInputs.forEach(input => {
                 input.addEventListener('input', function() {
                     formatSubjectCode(this);
@@ -1619,58 +1602,6 @@ $subjects_result = mysqli_query($conn, $subjects_query);
                     }
                 });
             });
-        });
-
-        function addAssignment() {
-            const template = document.querySelector('.assignment-row').cloneNode(true);
-            // Reset values in the cloned template
-            template.querySelectorAll('select').forEach(select => select.value = '');
-            document.querySelector('.assignments').appendChild(template);
-        }
-
-        function removeAssignment(button) {
-            const assignments = document.querySelector('.assignments');
-            if (assignments.children.length > 1) {
-                button.closest('.assignment-row').remove();
-            }
-        }
-
-        // Modify the form submission handler
-        function handleSubjectSubmission(form) {
-            // Validate that at least one assignment exists
-            const assignments = form.querySelectorAll('.assignment-row');
-            if (assignments.length === 0) {
-                alert('Please add at least one subject assignment');
-                return false;
-            }
-
-            // Validate each assignment
-            let isValid = true;
-            assignments.forEach(assignment => {
-                const selects = assignment.querySelectorAll('select');
-                selects.forEach(select => {
-                    if (!select.value) {
-                        isValid = false;
-                        select.classList.add('error');
-                    } else {
-                        select.classList.remove('error');
-                    }
-                });
-            });
-
-            if (!isValid) {
-                alert('Please fill in all assignment fields');
-                return false;
-            }
-
-            return true;
-        }
-
-        // Add this to your existing form event listener
-        document.querySelector('#addModal form').addEventListener('submit', function(e) {
-            if (!handleSubjectSubmission(this)) {
-                e.preventDefault();
-            }
         });
 
         function formatSubjectCode(input) {
@@ -1705,116 +1636,222 @@ $subjects_result = mysqli_query($conn, $subjects_query);
             }
         }
 
-        // Add event listeners for auto-formatting
-        document.addEventListener('DOMContentLoaded', function() {
-            const codeInputs = document.querySelectorAll('input[name="code"]');
-            
-            codeInputs.forEach(input => {
-                input.addEventListener('input', function() {
-                    formatSubjectCode(this);
-                });
-                
-                input.addEventListener('blur', function() {
-                    if (this.value.length > 0 && !/^\d{2}[A-Z]{2,4}\d{4}$/.test(this.value)) {
-                        this.classList.add('error');
-                    }
-                });
-            });
-        });
+        // Show/Hide Modal Functions
+        function showModal(modalId) {
+            document.getElementById(modalId).style.display = 'flex';
+        }
 
-        function fetchCurrentAssignments(subjectCode) {
-            fetch(`get_subject_assignments.php?code=${subjectCode}`)
-                .then(response => response.json())
-                .then(assignments => {
-                    displayCurrentAssignments(assignments);
+        function hideModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+
+        // Toggle Subject Status
+        function toggleSubjectStatus(id, currentStatus) {
+            if (confirm('Are you sure you want to ' + (currentStatus ? 'deactivate' : 'activate') + ' this subject?')) {
+                const formData = new FormData();
+                formData.append('action', 'toggle_status');
+                formData.append('id', id);
+                formData.append('status', !currentStatus);
+
+                fetch('manage_subjects.php', {
+                    method: 'POST',
+                    body: formData
                 })
+                .then(response => response.text())
+                .then(() => window.location.reload())
                 .catch(error => console.error('Error:', error));
-        }
-
-        function displayCurrentAssignments(assignments) {
-            const container = document.getElementById('currentAssignmentsList');
-            container.innerHTML = '';
-            
-            assignments.forEach(assignment => {
-                const assignmentDiv = document.createElement('div');
-                assignmentDiv.className = 'current-assignment-item';
-                assignmentDiv.innerHTML = `
-                    <div class="assignment-details">
-                        <span>Year ${assignment.year} - Semester ${assignment.semester}</span>
-                        <span>Section ${assignment.section}</span>
-                        <span>Faculty: ${assignment.faculty_name}</span>
-                        <span class="status-badge ${assignment.is_active ? 'status-active' : 'status-inactive'}">
-                            ${assignment.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                    </div>
-                    <div class="assignment-actions">
-                        <button type="button" class="btn-action" 
-                                onclick="toggleAssignmentStatus(${assignment.id}, ${!assignment.is_active})">
-                            <i class="fas fa-power-off"></i>
-                            ${assignment.is_active ? 'Deactivate' : 'Activate'}
-                        </button>
-                    </div>
-                `;
-                container.appendChild(assignmentDiv);
-            });
-        }
-
-        function addNewAssignment() {
-            const template = document.querySelector('.assignment-row').cloneNode(true);
-            template.querySelectorAll('select').forEach(select => select.value = '');
-            document.querySelector('.assignments').appendChild(template);
-        }
-
-        function toggleAssignmentStatus(id, status) {
-            if (confirm('Are you sure you want to ' + (status ? 'activate' : 'deactivate') + ' this assignment?')) {
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.innerHTML = `
-                    <input type="hidden" name="action" value="toggle_assignment_status">
-                    <input type="hidden" name="assignment_id" value="${id}">
-                    <input type="hidden" name="status" value="${status}">
-                `;
-                document.body.appendChild(form);
-                form.submit();
             }
         }
 
-        function validateNewAssignment(form) {
-            const requiredFields = form.querySelectorAll('[required]');
+        // Toggle Assignment Status
+        function toggleAssignmentStatus(assignmentId, currentStatus) {
+            if (confirm('Are you sure you want to ' + (currentStatus ? 'deactivate' : 'activate') + ' this assignment?')) {
+                const formData = new FormData();
+                formData.append('action', 'toggle_assignment_status');
+                formData.append('assignment_id', assignmentId);
+                formData.append('status', !currentStatus);
+
+                fetch('manage_subjects.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.text())
+                .then(() => window.location.reload())
+                .catch(error => console.error('Error:', error));
+            }
+        }
+
+        // Show Edit Modal with Subject Data
+        function showEditModal(subject) {
+            document.getElementById('edit_id').value = subject.id;
+            document.getElementById('edit_code').value = subject.code;
+            document.getElementById('edit_name').value = subject.name;
+            document.getElementById('edit_department_id').value = subject.department_id;
+            document.getElementById('edit_credits').value = subject.credits;
+
+            // Fetch current assignments
+            fetch(`get_subject_assignments.php?code=${subject.code}`)
+                .then(response => response.json())
+                .then(assignments => {
+                    const assignmentsList = document.getElementById('currentAssignmentsList');
+                    assignmentsList.innerHTML = assignments.map(assignment => `
+                        <div class="assignment-item">
+                            <div class="assignment-info">
+                                <span>Year ${assignment.year}</span>
+                                <span>Semester ${assignment.semester}</span>
+                                <span>Section ${assignment.section}</span>
+                                <span>${assignment.faculty_name}</span>
+                            </div>
+                            <div class="assignment-status">
+                                <button type="button" class="btn-action" 
+                                        onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
+                                    <i class="fas fa-${assignment.is_active ? 'times' : 'check'}"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => console.error('Error:', error));
+
+            showModal('editModal');
+        }
+
+        // Add New Assignment Row
+        function addNewAssignment() {
+            const container = document.getElementById('newAssignments');
+            const assignmentRow = document.createElement('div');
+            assignmentRow.className = 'assignment-row';
+            assignmentRow.innerHTML = `
+                <button type="button" class="btn-action btn-remove-assignment" onclick="this.parentElement.remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Year</label>
+                        <select name="assignments[][year]" class="form-control" required>
+                            <option value="">Select Year</option>
+                            ${[1,2,3,4].map(year => `<option value="${year}">Year ${year}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Semester</label>
+                        <select name="assignments[][semester]" class="form-control" required>
+                            <option value="">Select Semester</option>
+                            ${[1,2,3,4,5,6,7,8].map(sem => `<option value="${sem}">Semester ${sem}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Section</label>
+                        <select name="assignments[][section]" class="form-control" required>
+                            <option value="">Select Section</option>
+                            ${['A','B','C','D','E'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Faculty</label>
+                        <select name="assignments[][faculty_id]" class="form-control" required>
+                            <option value="">Select Faculty</option>
+                            ${Array.from(document.querySelector('[name="faculty_id"]').options)
+                                .map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+            `;
+            container.appendChild(assignmentRow);
+        }
+
+        // Form Validation
+        function validateForm(form) {
+            const code = form.querySelector('[name="code"]');
+            if (code && !code.readOnly) {
+                const codePattern = /^\d{2}[A-Z]{2,4}\d{4}$/;
+                if (!codePattern.test(code.value)) {
+                    alert('Invalid subject code format. Please use format: YY + DEPT + NUMBER (e.g., 21AD1501)');
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        function showAddAssignmentModal(subjectId) {
+            const modal = document.getElementById('addAssignmentModal');
+            const form = modal.querySelector('#newAssignmentForm');
+            form.onsubmit = function(e) {
+                e.preventDefault();
+                submitNewAssignment(subjectId);
+            };
+            form.reset();
+            showModal('addAssignmentModal');
+        }
+
+        function submitNewAssignment(subjectId) {
+            const form = document.getElementById('newAssignmentForm');
+            const formData = new FormData(form);
+            
+            // Clear previous error states
+            form.querySelectorAll('.error').forEach(el => el.classList.remove('error'));
+            form.querySelectorAll('.validation-message').forEach(el => el.remove());
+            
+            // Required fields based on DB structure
+            const requiredFields = ['faculty_id', 'academic_year_id', 'year', 'semester', 'section'];
             let isValid = true;
             
+            // Validate each required field
             requiredFields.forEach(field => {
-                if (!field.value.trim()) {
+                const input = form.querySelector(`[name="${field}"]`);
+                if (!input || !input.value.trim()) {
                     isValid = false;
-                    field.classList.add('error');
-                } else {
-                    field.classList.remove('error');
+                    input.classList.add('error');
+                    const errorMsg = document.createElement('div');
+                    errorMsg.className = 'validation-message';
+                    errorMsg.textContent = `${field.replace('_', ' ')} is required`;
+                    input.parentNode.appendChild(errorMsg);
                 }
             });
             
             if (!isValid) {
-                alert('Please fill in all required fields');
-                return false;
+                return;
             }
             
-            // Check if year and semester combination is valid
-            const year = parseInt(form.querySelector('[name="year"]').value);
-            const semester = parseInt(form.querySelector('[name="semester"]').value);
+            // Add subject_id to formData
+            formData.append('subject_id', subjectId);
+            formData.append('action', 'add_assignment');
             
-            if (semester > year * 2) {
-                alert('Invalid year and semester combination');
-                return false;
+            // Additional validation for numeric fields
+            const year = parseInt(formData.get('year'));
+            const semester = parseInt(formData.get('semester'));
+            
+            if (year < 1 || year > 4) {
+                alert('Year must be between 1 and 4');
+                return;
             }
             
-            return confirm('Are you sure you want to add this new assignment?');
-        }
+            if (semester < 1 || semester > 8) {
+                alert('Semester must be between 1 and 8');
+                return;
+            }
 
-        // Add event listener for new assignment form
-        document.querySelector('#addAssignmentForm').addEventListener('submit', function(e) {
-            if (!validateNewAssignment(this)) {
-                e.preventDefault();
-            }
-        });
+            // Send the request
+            fetch('manage_subjects.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert(data.message || 'Assignment added successfully!');
+                    hideModal('addAssignmentModal');
+                    window.location.reload();
+                } else {
+                    throw new Error(data.message || 'Error adding assignment');
+                }
+            })
+            .catch(error => {
+                alert(error.message || 'Error adding assignment. Please try again.');
+            });
+        }
     </script>
 </body>
 </html>

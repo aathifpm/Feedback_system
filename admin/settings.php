@@ -98,9 +98,9 @@ $current_year = mysqli_fetch_assoc($current_year_result);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #34495e;
-            --accent-color: #3498db;
+            --primary-color: #9b59b6;  /* Purple theme */
+            --secondary-color: #8e44ad;
+            --accent-color: #9b59b6;
             --text-color: #2c3e50;
             --bg-color: #e0e5ec;
             --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
@@ -124,46 +124,45 @@ $current_year = mysqli_fetch_assoc($current_year_result);
 
         .sidebar {
             width: 280px;
-            background: var(--primary-color);
-            padding: 20px;
-            color: #fff;
-            position: fixed;
-            height: 100vh;
-            overflow-y: auto;
+            background: var(--bg-color);
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            border-radius: 0 20px 20px 0;
+            z-index: 1000;
         }
 
         .sidebar h2 {
-            color: #fff;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--secondary-color);
+            color: var(--primary-color);
+            margin-bottom: 2rem;
+            font-size: 1.5rem;
+            text-align: center;
         }
 
         .nav-link {
             display: flex;
             align-items: center;
-            padding: 12px 15px;
-            color: #fff;
+            padding: 1rem;
+            color: var(--text-color);
             text-decoration: none;
+            margin-bottom: 0.5rem;
             border-radius: 10px;
-            margin-bottom: 5px;
             transition: all 0.3s ease;
         }
 
-        .nav-link i {
-            margin-right: 10px;
-            width: 20px;
-            text-align: center;
-        }
-
         .nav-link:hover {
-            background: var(--secondary-color);
+            background: var(--bg-color);
             box-shadow: var(--shadow);
+            transform: translateY(-2px);
         }
 
         .nav-link.active {
-            background: var(--accent-color);
-            box-shadow: var(--shadow);
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+        }
+
+        .nav-link i {
+            margin-right: 1rem;
+            color: var(--primary-color);
         }
 
         .main-content {
@@ -182,7 +181,7 @@ $current_year = mysqli_fetch_assoc($current_year_result);
         }
 
         .page-title i {
-            color: var(--accent-color);
+            color: var(--primary-color);
         }
 
         .card {
@@ -191,6 +190,11 @@ $current_year = mysqli_fetch_assoc($current_year_result);
             box-shadow: var(--shadow);
             margin-bottom: 2rem;
             border: none;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
         }
 
         .card-header {
@@ -210,7 +214,7 @@ $current_year = mysqli_fetch_assoc($current_year_result);
         }
 
         .card-header h5 i {
-            color: var(--accent-color);
+            color: var(--primary-color);
         }
 
         .card-body {
@@ -238,10 +242,11 @@ $current_year = mysqli_fetch_assoc($current_year_result);
             color: var(--text-color);
             margin-bottom: 0.5rem;
             font-weight: 500;
+            display: block;
         }
 
         .btn-primary {
-            background: var(--accent-color);
+            background: var(--primary-color);
             border: none;
             padding: 0.8rem 1.5rem;
             border-radius: 10px;
@@ -253,7 +258,7 @@ $current_year = mysqli_fetch_assoc($current_year_result);
         }
 
         .btn-primary:hover {
-            background: var(--accent-color);
+            background: var(--secondary-color);
             transform: translateY(-2px);
             box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
                        -12px -12px 20px rgba(255,255,255, 0.6);
@@ -294,6 +299,7 @@ $current_year = mysqli_fetch_assoc($current_year_result);
                 width: 100%;
                 height: auto;
                 position: relative;
+                border-radius: 0;
             }
 
             .main-content {

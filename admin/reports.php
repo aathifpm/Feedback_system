@@ -144,9 +144,9 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #34495e;
-            --accent-color: #3498db;
+            --primary-color: #9b59b6;
+            --secondary-color: #8e44ad;
+            --accent-color: #9b59b6;
             --text-color: #2c3e50;
             --bg-color: #e0e5ec;
             --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
@@ -170,46 +170,45 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
 
         .sidebar {
             width: 280px;
-            background: var(--primary-color);
-            padding: 20px;
-            color: #fff;
-            position: fixed;
-            height: 100vh;
-            overflow-y: auto;
+            background: var(--bg-color);
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            border-radius: 0 20px 20px 0;
+            z-index: 1000;
         }
 
         .sidebar h2 {
-            color: #fff;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 1px solid var(--secondary-color);
+            color: var(--primary-color);
+            margin-bottom: 2rem;
+            font-size: 1.5rem;
+            text-align: center;
         }
 
         .nav-link {
             display: flex;
             align-items: center;
-            padding: 12px 15px;
-            color: #fff;
+            padding: 1rem;
+            color: var(--text-color);
             text-decoration: none;
+            margin-bottom: 0.5rem;
             border-radius: 10px;
-            margin-bottom: 5px;
             transition: all 0.3s ease;
         }
 
-        .nav-link i {
-            margin-right: 10px;
-            width: 20px;
-            text-align: center;
-        }
-
         .nav-link:hover {
-            background: var(--secondary-color);
+            background: var(--bg-color);
             box-shadow: var(--shadow);
+            transform: translateY(-2px);
         }
 
         .nav-link.active {
-            background: var(--accent-color);
-            box-shadow: var(--shadow);
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+        }
+
+        .nav-link i {
+            margin-right: 1rem;
+            color: var(--primary-color);
         }
 
         .main-content {
@@ -321,7 +320,7 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
         }
 
         .table th {
-            background: rgba(44, 62, 80, 0.1);
+            background: rgba(155, 89, 182, 0.1);
             color: var(--text-color);
             font-weight: 600;
             padding: 1rem;
@@ -334,7 +333,7 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
         }
 
         .table tr:hover {
-            background: rgba(44, 62, 80, 0.02);
+            background: rgba(155, 89, 182, 0.02);
         }
 
         .rating-badge {
@@ -352,8 +351,8 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
             color: #27ae60;
         }
         .rating-good { 
-            background: #3498db10;
-            color: #3498db;
+            background: #9b59b610;
+            color: #9b59b6;
         }
         .rating-average { 
             background: #f39c1210;
@@ -445,7 +444,7 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
 
         .dataTables_wrapper .dataTables_paginate .paginate_button.current,
         .dataTables_wrapper .dataTables_paginate .paginate_button:hover {
-            background: var(--accent-color) !important;
+            background: var(--primary-color) !important;
             color: white !important;
             box-shadow: var(--inner-shadow);
         }
@@ -484,6 +483,49 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
 
             .table-container {
                 padding: 1rem;
+            }
+        }
+
+        .filter-label {
+            display: block;
+            color: var(--text-color);
+            font-size: 0.9rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 1.5rem;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+
+        .filter-group {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .export-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-left: auto;
+        }
+
+        @media (max-width: 768px) {
+            .filter-row {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .filter-group {
+                width: 100%;
+            }
+            
+            .export-buttons {
+                width: 100%;
+                margin-left: 0;
+                margin-top: 1rem;
             }
         }
     </style>
@@ -526,9 +568,10 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
         <div class="dashboard-header">
             <h1><i class="fas fa-chart-line"></i> Feedback Reports & Analytics</h1>
             
-            <!-- Filter Section -->
+            <form id="filterForm" method="GET" class="mt-4">
             <div class="filter-row">
                 <div class="filter-group">
+                        <label class="filter-label">Academic Year</label>
                     <select name="academic_year" class="form-control" onchange="this.form.submit()">
                         <?php
                         mysqli_data_seek($academic_years, 0);
@@ -542,6 +585,7 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
                 </div>
 
                 <div class="filter-group">
+                        <label class="filter-label">Department</label>
                     <select name="department" class="form-control" onchange="this.form.submit()">
                         <option value="">All Departments</option>
                         <?php
@@ -564,6 +608,7 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
                     </button>
                 </div>
             </div>
+            </form>
         </div>
 
         <!-- Overall Statistics -->

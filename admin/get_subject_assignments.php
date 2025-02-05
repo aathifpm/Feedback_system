@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 require_once '../db_connection.php';
@@ -15,12 +14,13 @@ if (empty($subject_code)) {
     exit('Subject code is required');
 }
 
-$query = "SELECT s.id, s.year, s.semester, s.section, s.faculty_id, 
-          f.name as faculty_name, s.is_active
+$query = "SELECT sa.id, sa.year, sa.semester, sa.section, sa.faculty_id, 
+          f.name as faculty_name, sa.is_active
           FROM subjects s
-          LEFT JOIN faculty f ON s.faculty_id = f.id
+          JOIN subject_assignments sa ON s.id = sa.subject_id
+          LEFT JOIN faculty f ON sa.faculty_id = f.id
           WHERE s.code = ?
-          ORDER BY s.year, s.semester, s.section";
+          ORDER BY sa.year, sa.semester, sa.section";
 
 $stmt = mysqli_prepare($conn, $query);
 mysqli_stmt_bind_param($stmt, "s", $subject_code);

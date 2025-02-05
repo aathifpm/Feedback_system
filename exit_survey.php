@@ -10,9 +10,18 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
 
 // Fetch student details
 $student_id = $_SESSION['user_id'];
-$query = "SELECT s.*, d.name as department_name 
+$query = "SELECT s.*, d.name as department_name, 
+          b.batch_name, b.graduation_year,
+          d.id as department_id,
+          s.roll_number,
+          s.register_number,
+          s.name,
+          s.email,
+          s.phone as contact_number,
+          s.address as contact_address
           FROM students s 
           JOIN departments d ON s.department_id = d.id 
+          JOIN batch_years b ON s.batch_id = b.id
           WHERE s.id = ?";
 $stmt = mysqli_prepare($conn, $query);
 mysqli_stmt_bind_param($stmt, "i", $student_id);
@@ -24,27 +33,139 @@ if (!$student) {
     die("Error: Student data not found.");
 }
 
+// Check if student has already submitted an exit survey for current academic year
+$check_survey_query = "SELECT id FROM exit_surveys 
+                      WHERE student_id = ? AND academic_year_id = 
+                      (SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1)";
+$check_stmt = mysqli_prepare($conn, $check_survey_query);
+mysqli_stmt_bind_param($check_stmt, "i", $student_id);
+mysqli_stmt_execute($check_stmt);
+$survey_result = mysqli_stmt_get_result($check_stmt);
+
+if (mysqli_num_rows($survey_result) > 0) {
+    $_SESSION['error_message'] = "You have already submitted the exit survey for this academic year.";
+    header('Location: dashboard.php');
+    exit();
+}
+
 $errors = [];
 $success = false;
 
+// Add default values for the form
+$default_values = [
+    'name' => $student['name'],
+    'roll_number' => $student['roll_number'],
+    'register_number' => $student['register_number'],
+    'passing_year' => $student['graduation_year'],
+    'email' => $student['email'],
+    'contact_number' => $student['contact_number'],
+    'contact_address' => $student['contact_address'],
+    'department_id' => $student['department_id']
+];
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // Create validator instance
-    $validator = new ExitSurveyValidator($_POST);
-    
-    // Perform validation
-    if ($validator->validate()) {
-        // Process the form data
-        try {
-            // Your existing database insertion code here
-            $success = true;
-            $_SESSION['success_message'] = "Exit survey submitted successfully!";
-            header('Location: dashboard.php');
-            exit();
-        } catch (Exception $e) {
-            $errors['database'] = "An error occurred while saving the survey. Please try again.";
+    try {
+        // Get current academic year
+        $academic_year_query = "SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1";
+        $academic_year_result = mysqli_query($conn, $academic_year_query);
+        $academic_year = mysqli_fetch_assoc($academic_year_result);
+        
+        if (!$academic_year) {
+            throw new Exception("No active academic year found!");
         }
-    } else {
-        $errors = $validator->getErrors();
+
+        // Begin transaction
+        mysqli_begin_transaction($conn);
+
+        // Prepare the data
+        $po_ratings = json_encode(isset($_POST['po_ratings']) ? $_POST['po_ratings'] : []);
+        $pso_ratings = json_encode(isset($_POST['pso_ratings']) ? $_POST['pso_ratings'] : []);
+        $program_satisfaction = json_encode(isset($_POST['program_satisfaction']) ? $_POST['program_satisfaction'] : []);
+        $infrastructure_satisfaction = json_encode(isset($_POST['infrastructure_satisfaction']) ? $_POST['infrastructure_satisfaction'] : []);
+        $employment_status = json_encode([
+            'status' => $_POST['employment']['status'],
+            'employer_details' => $_POST['employment']['employer_details'] ?? '',
+            'starting_salary' => $_POST['employment']['starting_salary'] ?? '',
+            'job_offers' => $_POST['employment']['job_offers'] ?? '',
+            'satisfaction' => $_POST['employment']['satisfaction'] ?? '',
+            'interviews' => $_POST['employment']['interviews'] ?? ''
+        ]);
+
+        // Insert into exit_surveys table
+        $query = "INSERT INTO exit_surveys (
+            student_id,
+            academic_year_id,
+            name,
+            department_id,
+            roll_number,
+            register_number,
+            passing_year,
+            contact_address,
+            email,
+            contact_number,
+            po_ratings,
+            pso_ratings,
+            employment_status,
+            program_satisfaction,
+            infrastructure_satisfaction,
+            date,
+            station
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+        $stmt = mysqli_prepare($conn, $query);
+        mysqli_stmt_bind_param($stmt, "iisiissssssssssss",
+            $student_id,
+            $academic_year['id'],
+            $_POST['name'],
+            $student['department_id'],
+            $_POST['roll_number'],
+            $_POST['register_number'],
+            $_POST['passing_year'],
+            $_POST['contact_address'],
+            $_POST['email'],
+            $_POST['contact_number'],
+            $po_ratings,
+            $pso_ratings,
+            $employment_status,
+            $program_satisfaction,
+            $infrastructure_satisfaction,
+            $_POST['date'],
+            $_POST['station']
+        );
+
+        if (!mysqli_stmt_execute($stmt)) {
+            throw new Exception("Error saving survey: " . mysqli_stmt_error($stmt));
+        }
+
+        // Log the action
+        $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
+                      VALUES (?, 'student', 'submit_exit_survey', ?, ?, ?)";
+        $log_stmt = mysqli_prepare($conn, $log_query);
+        $log_details = json_encode([
+            'academic_year_id' => $academic_year['id'],
+            'department_id' => $student['department_id']
+        ]);
+        
+        mysqli_stmt_bind_param($log_stmt, "isss", 
+            $student_id,
+            $log_details,
+            $_SERVER['REMOTE_ADDR'],
+            $_SERVER['HTTP_USER_AGENT']
+        );
+        mysqli_stmt_execute($log_stmt);
+
+        // Commit transaction
+        mysqli_commit($conn);
+        
+        // Set success message and redirect
+        $_SESSION['success_message'] = "Exit survey submitted successfully!";
+        header('Location: dashboard.php');
+        exit();
+
+    } catch (Exception $e) {
+        mysqli_rollback($conn);
+        $error_msg = $e->getMessage();
+        $errors['database'] = "An error occurred while saving the survey: " . $error_msg;
     }
 }
 ?>
@@ -329,48 +450,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         <?php endif; ?>
 
         <form method="post" onsubmit="return validateForm()" class="survey-form">
-            <!-- Background Information Section -->
-            <div class="survey-section">
-                <h2>Background Information</h2>
-                <div class="form-group">
-                    <label for="name">Name:</label>
-                    <input type="text" id="name" name="name" value="<?php echo $student['name']; ?>" required>
-                </div>
+            <!-- Student Information Section -->
+            <div class="form-section">
+                <h2>Student Information</h2>
                 
                 <div class="form-group">
-                    <label for="department">Department:</label>
-                    <input type="text" id="department" value="<?php echo $student['department_name']; ?>" readonly>
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" value="<?php echo htmlspecialchars($default_values['name']); ?>" readonly>
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="roll_number">Roll Number:</label>
-                    <input type="text" id="roll_number" name="roll_number" value="<?php echo $student['roll_number']; ?>" required>
+                    <label for="roll_number">Roll Number</label>
+                    <input type="text" id="roll_number" name="roll_number" value="<?php echo htmlspecialchars($default_values['roll_number']); ?>" readonly>
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="register_number">Register Number:</label>
-                    <input type="text" id="register_number" name="register_number" required>
+                    <label for="register_number">Register Number</label>
+                    <input type="text" id="register_number" name="register_number" value="<?php echo htmlspecialchars($default_values['register_number']); ?>" readonly>
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="passing_year">Year of Passing:</label>
-                    <input type="number" id="passing_year" name="passing_year" min="2000" max="2099" required>
+                    <label for="passing_year">Year of Passing</label>
+                    <input type="text" id="passing_year" name="passing_year" value="<?php echo htmlspecialchars($default_values['passing_year']); ?>" readonly>
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="contact_address">Contact Address:</label>
-                    <textarea id="contact_address" name="contact_address" rows="3" required></textarea>
+                    <label for="email">Email Address</label>
+                    <input type="email" id="email" name="email" value="<?php echo htmlspecialchars($default_values['email']); ?>" required>
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="email">Email ID:</label>
-                    <input type="email" id="email" name="email" value="<?php echo $student['email']; ?>" required>
+                    <label for="contact_number">Contact Number</label>
+                    <input type="tel" id="contact_number" name="contact_number" value="<?php echo htmlspecialchars($default_values['contact_number']); ?>" required>
                 </div>
-                
+
                 <div class="form-group">
-                    <label for="contact_number">Contact Number:</label>
-                    <input type="tel" id="contact_number" name="contact_number" pattern="[0-9]{10}" required>
+                    <label for="contact_address">Contact Address</label>
+                    <textarea id="contact_address" name="contact_address" required><?php echo htmlspecialchars($default_values['contact_address']); ?></textarea>
                 </div>
+
+                <input type="hidden" name="department_id" value="<?php echo htmlspecialchars($default_values['department_id']); ?>">
             </div>
 
             <!-- Program Outcomes Section -->

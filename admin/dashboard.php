@@ -1,4 +1,3 @@
-
 <?php
 session_start();
 require_once '../db_connection.php';
@@ -72,31 +71,53 @@ $stats['students'] = [
 ];
 
 // Get faculty statistics
-$faculty_query = "SELECT 
+$user_query = "SELECT f.*,
     d.name as department_name,
-    COUNT(f.id) as faculty_count,
-    SUM(CASE WHEN f.is_active = TRUE THEN 1 ELSE 0 END) as active_count
-FROM departments d
-LEFT JOIN faculty f ON d.id = f.department_id
-GROUP BY d.id";
-$result = mysqli_query($conn, $faculty_query);
-while ($row = mysqli_fetch_assoc($result)) {
-    $stats['faculty']['by_department'][$row['department_name']] = [
-        'total' => $row['faculty_count'],
-        'active' => $row['active_count']
-    ];
-    $stats['faculty']['total'] += $row['faculty_count'];
-    $stats['faculty']['active'] += $row['active_count'];
-}
+    d.code as department_code,
+    (SELECT COUNT(DISTINCT sa.id) 
+     FROM subject_assignments sa 
+     WHERE sa.faculty_id = f.id 
+     AND sa.academic_year_id = ?) as total_subjects,
+    (SELECT COUNT(DISTINCT fb.id) 
+     FROM feedback fb 
+     JOIN subject_assignments sa ON fb.subject_id = sa.subject_id 
+     WHERE sa.faculty_id = f.id 
+     AND fb.academic_year_id = ?) as total_feedback,
+    (SELECT AVG(fb.cumulative_avg)
+     FROM feedback fb
+     JOIN subject_assignments sa ON fb.subject_id = sa.subject_id
+     WHERE sa.faculty_id = f.id
+     AND fb.academic_year_id = ?) as avg_rating
+FROM faculty f
+JOIN departments d ON f.department_id = d.id
+WHERE f.id = ? AND f.is_active = TRUE";
+
+$stmt = mysqli_prepare($conn, $user_query);
+mysqli_stmt_bind_param($stmt, "iiii", $current_academic_year['id'], $current_academic_year['id'], $current_academic_year['id'], $current_academic_year['id']);
+mysqli_stmt_execute($stmt);
+$faculty_stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+
+$stats['faculty'] = [
+    'total' => $faculty_stats['total'] ?? 0,
+    'active' => $faculty_stats['active'] ?? 0,
+    'by_department' => [
+        $faculty_stats['department_name'] => [
+            'total' => $faculty_stats['total'] ?? 0,
+            'active' => $faculty_stats['active'] ?? 0
+        ]
+    ]
+];
 
 // Get feedback statistics
 $feedback_query = "SELECT 
     COUNT(DISTINCT f.id) as total_feedback,
-    COUNT(DISTINCT s.id) as total_subjects,
-    COUNT(DISTINCT CASE WHEN f.id IS NOT NULL THEN s.id END) as completed_subjects
-FROM subjects s
-LEFT JOIN feedback f ON s.id = f.subject_id
-WHERE s.academic_year_id = ?";
+    COUNT(DISTINCT sa.id) as total_subjects,
+    COUNT(DISTINCT CASE WHEN f.id IS NOT NULL THEN sa.id END) as completed_subjects
+FROM subject_assignments sa
+LEFT JOIN feedback f ON sa.subject_id = f.subject_id 
+    AND f.academic_year_id = sa.academic_year_id
+WHERE sa.academic_year_id = ?";
+
 $stmt = mysqli_prepare($conn, $feedback_query);
 mysqli_stmt_bind_param($stmt, "i", $current_academic_year['id']);
 mysqli_stmt_execute($stmt);

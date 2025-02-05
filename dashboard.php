@@ -1603,10 +1603,48 @@ switch ($role) {
             <?php if ($data['show_exit_survey']): ?>
                 <div class="content-section">
                     <h2 class="section-title">Exit Survey</h2>
-                    <p>As you're in your final semester, please complete the exit survey.</p>
-                    <a href="exit_survey.php" class="btn btn-warning">
-                        <i class="fas fa-poll"></i> Complete Exit Survey
-                    </a>
+                    <?php
+                    // Check if exit survey is already submitted
+                    $exit_survey_query = "SELECT id, date FROM exit_surveys 
+                                        WHERE student_id = ? AND academic_year_id = ?";
+                    $exit_survey_stmt = mysqli_prepare($conn, $exit_survey_query);
+                    mysqli_stmt_bind_param($exit_survey_stmt, "ii", 
+                        $user_id, 
+                        $current_academic_year['id']
+                    );
+                    mysqli_stmt_execute($exit_survey_stmt);
+                    $exit_survey_result = mysqli_stmt_get_result($exit_survey_stmt);
+                    $exit_survey = mysqli_fetch_assoc($exit_survey_result);
+                    
+                    if ($exit_survey): ?>
+                        <div class="subject-card">
+                            <div class="subject-info">
+                                <h3>Exit Survey Status</h3>
+                                <p>Submitted on: <?php echo date('F j, Y', strtotime($exit_survey['date'])); ?></p>
+                            </div>
+                            <div class="subject-actions">
+                                <span class="status-badge status-completed">
+                                    <i class="fas fa-check-circle"></i> Submitted
+                                </span>
+                            </div>
+                        </div>
+                    <?php else: ?>
+                        <p>As you're in your final semester, please complete the exit survey.</p>
+                        <div class="subject-card">
+                            <div class="subject-info">
+                                <h3>Exit Survey Status</h3>
+                                <p>Your feedback is valuable for improving our programs.</p>
+                            </div>
+                            <div class="subject-actions">
+                                <span class="status-badge status-pending">
+                                    <i class="fas fa-clock"></i> Pending
+                                </span>
+                                <a href="exit_survey.php" class="btn btn-primary">
+                                    <i class="fas fa-poll"></i> Complete Exit Survey
+                                </a>
+                            </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
             <?php endif; ?>
 
