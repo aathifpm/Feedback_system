@@ -14,13 +14,22 @@ if (empty($subject_code)) {
     exit('Subject code is required');
 }
 
-$query = "SELECT sa.id, sa.year, sa.semester, sa.section, sa.faculty_id, 
-          f.name as faculty_name, sa.is_active
-          FROM subjects s
-          JOIN subject_assignments sa ON s.id = sa.subject_id
-          LEFT JOIN faculty f ON sa.faculty_id = f.id
-          WHERE s.code = ?
-          ORDER BY sa.year, sa.semester, sa.section";
+$query = "SELECT 
+    sa.id, 
+    sa.year, 
+    sa.semester, 
+    sa.section, 
+    sa.faculty_id, 
+    sa.is_active,
+    f.name as faculty_name,
+    ay.year_range as academic_year,
+    (SELECT COUNT(*) FROM feedback fb WHERE fb.assignment_id = sa.id) as feedback_count
+FROM subjects s
+JOIN subject_assignments sa ON s.id = sa.subject_id
+LEFT JOIN faculty f ON sa.faculty_id = f.id
+LEFT JOIN academic_years ay ON sa.academic_year_id = ay.id
+WHERE s.code = ?
+ORDER BY sa.academic_year_id DESC, sa.year, sa.semester, sa.section";
 
 $stmt = mysqli_prepare($conn, $query);
 mysqli_stmt_bind_param($stmt, "s", $subject_code);

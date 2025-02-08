@@ -61,7 +61,8 @@ $stats_query = "SELECT
     ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
     ROUND(AVG(f.cumulative_avg), 2) as overall_rating
 FROM feedback f
-WHERE f.subject_id = ?";
+JOIN subject_assignments sa ON f.assignment_id = sa.id
+WHERE sa.subject_id = ?";
 
 $stmt = mysqli_prepare($conn, $stats_query);
 mysqli_stmt_bind_param($stmt, "i", $subject['id']);

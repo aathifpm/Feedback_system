@@ -39,9 +39,9 @@ $overall_stats_query = "SELECT
     ROUND(AVG(f.course_outcomes_avg), 2) as avg_course_outcomes,
     ROUND(AVG(f.cumulative_avg), 2) as overall_avg
 FROM feedback f
-JOIN subjects s ON f.subject_id = s.id
-JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
-WHERE f.academic_year_id = ?";
+JOIN subject_assignments sa ON f.assignment_id = sa.id
+JOIN subjects s ON sa.subject_id = s.id
+WHERE sa.academic_year_id = ?";
 
 if ($selected_dept) {
     $overall_stats_query .= " AND s.department_id = ?";
@@ -66,7 +66,7 @@ $dept_stats_query = "SELECT
 FROM departments d
 LEFT JOIN subjects s ON d.id = s.department_id
 LEFT JOIN subject_assignments sa ON s.id = sa.subject_id
-LEFT JOIN feedback f ON s.id = f.subject_id AND f.academic_year_id = ?
+LEFT JOIN feedback f ON f.assignment_id = sa.id AND sa.academic_year_id = ?
 GROUP BY d.id
 ORDER BY avg_rating DESC";
 
@@ -84,9 +84,8 @@ $faculty_stats_query = "SELECT
 FROM faculty f
 JOIN departments d ON f.department_id = d.id
 JOIN subject_assignments sa ON f.id = sa.faculty_id
-JOIN subjects s ON sa.subject_id = s.id
-JOIN feedback fb ON s.id = fb.subject_id AND fb.academic_year_id = sa.academic_year_id
-WHERE fb.academic_year_id = ?";
+JOIN feedback fb ON fb.assignment_id = sa.id
+WHERE sa.academic_year_id = ?";
 
 if ($selected_dept) {
     $faculty_stats_query .= " AND f.department_id = ?";
@@ -116,8 +115,8 @@ FROM subjects s
 JOIN subject_assignments sa ON s.id = sa.subject_id
 JOIN faculty f ON sa.faculty_id = f.id
 JOIN departments d ON s.department_id = d.id
-JOIN feedback fb ON s.id = fb.subject_id AND fb.academic_year_id = sa.academic_year_id
-WHERE fb.academic_year_id = ?";
+JOIN feedback fb ON fb.assignment_id = sa.id
+WHERE sa.academic_year_id = ?";
 
 if ($selected_dept) {
     $subject_stats_query .= " AND s.department_id = ?";

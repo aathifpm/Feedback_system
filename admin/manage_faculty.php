@@ -190,8 +190,7 @@ $faculty_query = "SELECT
 FROM faculty f
 LEFT JOIN departments d ON f.department_id = d.id
 LEFT JOIN subject_assignments sa ON f.id = sa.faculty_id
-LEFT JOIN feedback fb ON sa.subject_id = fb.subject_id
-    AND fb.academic_year_id = sa.academic_year_id
+LEFT JOIN feedback fb ON fb.assignment_id = sa.id
 GROUP BY f.id
 ORDER BY f.name";
 

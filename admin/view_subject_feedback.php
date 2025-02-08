@@ -49,22 +49,18 @@ if (!$subject) {
 
 // Get feedback statistics for specific assignment
 $stats_query = "SELECT 
-    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.id END) as total_feedback,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.course_effectiveness_avg END), 2) as course_effectiveness,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.teaching_effectiveness_avg END), 2) as teaching_effectiveness,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.resources_admin_avg END), 2) as resources_admin,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.assessment_learning_avg END), 2) as assessment_learning,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.course_outcomes_avg END), 2) as course_outcomes,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN f.cumulative_avg END), 2) as overall_rating
+    COUNT(DISTINCT f.id) as total_feedback,
+    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
+    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
+    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
+    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
+    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
+    ROUND(AVG(f.cumulative_avg), 2) as overall_rating
 FROM feedback f
-JOIN subjects sub ON f.subject_id = sub.id
-JOIN subject_assignments sa ON sub.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
-JOIN students s ON f.student_id = s.id
-WHERE f.subject_id = ? 
-AND sa.id = ?";
+WHERE f.assignment_id = ?";
 
 $stmt = mysqli_prepare($conn, $stats_query);
-mysqli_stmt_bind_param($stmt, "ii", $subject_id, $assignment_id);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
 mysqli_stmt_execute($stmt);
 $stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
@@ -73,17 +69,14 @@ $feedback_query = "SELECT
     f.*,
     s.name as student_name,
     s.roll_number,
-    s.section COLLATE utf8mb4_unicode_ci as student_section
+    s.section
 FROM feedback f
 JOIN students s ON f.student_id = s.id
-JOIN subject_assignments sa ON f.subject_id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
-WHERE f.subject_id = ?
-AND sa.id = ?
-AND s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci
+WHERE f.assignment_id = ?
 ORDER BY f.submitted_at DESC";
 
 $stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, "ii", $subject_id, $assignment_id);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
 mysqli_stmt_execute($stmt);
 $feedback_result = mysqli_stmt_get_result($stmt);
 

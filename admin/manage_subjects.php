@@ -357,9 +357,9 @@ $subjects_query = "SELECT
     ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
 FROM subjects s
 LEFT JOIN departments d ON s.department_id = d.id
-LEFT JOIN subject_assignments sa ON s.id = sa.subject_id
-LEFT JOIN feedback fb ON s.id = fb.subject_id
-GROUP BY s.id
+LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
+LEFT JOIN feedback fb ON fb.assignment_id = sa.id
+GROUP BY s.id, s.code, s.name, s.department_id, s.credits, s.is_active, d.name
 ORDER BY s.code";
 
 $subjects_result = mysqli_query($conn, $subjects_query);
@@ -368,12 +368,13 @@ function getSubjectAssignments($conn, $subject_id) {
     $query = "SELECT 
         sa.*,
         f.name as faculty_name,
-        ay.year_range as academic_year
+        ay.year_range as academic_year,
+        (SELECT COUNT(*) FROM feedback fb WHERE fb.assignment_id = sa.id) as feedback_count
     FROM subject_assignments sa
     JOIN faculty f ON sa.faculty_id = f.id
     JOIN academic_years ay ON sa.academic_year_id = ay.id
     WHERE sa.subject_id = ?
-    ORDER BY sa.academic_year_id DESC, sa.year, sa.semester";
+    ORDER BY sa.academic_year_id DESC, sa.year, sa.semester, sa.section";
 
     $stmt = mysqli_prepare($conn, $query);
     mysqli_stmt_bind_param($stmt, "i", $subject_id);
@@ -1311,7 +1312,7 @@ function getSubjectAssignments($conn, $subject_id) {
                                     <div class="input-group">
                                         <select name="sections[]" class="form-control" required>
                                             <option value="">Select Section</option>
-                                            <?php for($i = 65; $i <= 70; $i++): ?>
+                                            <?php for($i = 65; $i <= 75; $i++): ?>
                                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                                             <?php endfor; ?>
                                         </select>

@@ -8,30 +8,12 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'faculty') {
     exit();
 }
 
-if (!isset($_GET['subject_id'])) {
-    die("Error: No subject selected.");
+if (!isset($_GET['assignment_id'])) {
+    die("Error: No assignment selected.");
 }
 
-$subject_id = intval($_GET['subject_id']);
+$assignment_id = intval($_GET['assignment_id']);
 $faculty_id = $_SESSION['user_id'];
-
-// Fetch subject and faculty details
-$subject_query = "SELECT s.*, f.name AS faculty_name, f.faculty_id AS faculty_code,
-                 f.designation, f.qualification, f.experience, f.specialization,
-                 d.name AS department_name 
-                 FROM subjects s
-                 JOIN faculty f ON s.faculty_id = f.id
-                 JOIN departments d ON f.department_id = d.id
-                 WHERE s.id = ? AND f.id = ?";
-$subject_stmt = mysqli_prepare($conn, $subject_query);
-mysqli_stmt_bind_param($subject_stmt, "ii", $subject_id, $faculty_id);
-mysqli_stmt_execute($subject_stmt);
-$subject_result = mysqli_stmt_get_result($subject_stmt);
-$subject = mysqli_fetch_assoc($subject_result);
-
-if (!$subject) {
-    die("Error: Invalid subject ID or unauthorized access.");
-}
 
 // Get current academic year
 $current_year_query = "SELECT id, year_range FROM academic_years WHERE is_current = TRUE LIMIT 1";
@@ -40,6 +22,26 @@ $current_year = mysqli_fetch_assoc($current_year_result);
 
 if (!$current_year) {
     die("Error: No active academic year found.");
+}
+
+// Fetch subject and faculty details
+$subject_query = "SELECT s.*, f.name AS faculty_name, f.faculty_id AS faculty_code,
+                 f.designation, f.qualification, f.experience, f.specialization,
+                 d.name AS department_name,
+                 sa.year, sa.semester, sa.section, sa.id as assignment_id
+                 FROM subject_assignments sa
+                 JOIN subjects s ON sa.subject_id = s.id
+                 JOIN faculty f ON sa.faculty_id = f.id
+                 JOIN departments d ON s.department_id = d.id
+                 WHERE sa.id = ? AND f.id = ? AND sa.academic_year_id = ?";
+$subject_stmt = mysqli_prepare($conn, $subject_query);
+mysqli_stmt_bind_param($subject_stmt, "iii", $assignment_id, $faculty_id, $current_year['id']);
+mysqli_stmt_execute($subject_stmt);
+$subject_result = mysqli_stmt_get_result($subject_stmt);
+$subject = mysqli_fetch_assoc($subject_result);
+
+if (!$subject) {
+    die("Error: Invalid assignment ID or unauthorized access.");
 }
 
 // Fetch feedback statements and organize by section
@@ -116,12 +118,11 @@ $feedback_query = "SELECT
 FROM feedback f
 JOIN feedback_ratings fr ON f.id = fr.feedback_id
 JOIN feedback_statements fs ON fr.statement_id = fs.id
-WHERE f.subject_id = ? 
-AND f.academic_year_id = ?
+WHERE f.assignment_id = ?
 ORDER BY fs.section, fs.id";
 
 $stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, "ii", $subject_id, $current_year['id']);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
 mysqli_stmt_execute($stmt);
 $feedback_result = mysqli_stmt_get_result($stmt);
 
@@ -146,25 +147,23 @@ $stats_query = "SELECT
     MIN(f.cumulative_avg) as min_rating,
     MAX(f.cumulative_avg) as max_rating
 FROM feedback f
-WHERE f.subject_id = ? 
-AND f.academic_year_id = ?";
+WHERE f.assignment_id = ?";
 
 $stats_stmt = mysqli_prepare($conn, $stats_query);
-mysqli_stmt_bind_param($stats_stmt, "ii", $subject_id, $current_year['id']);
+mysqli_stmt_bind_param($stats_stmt, "i", $assignment_id);
 mysqli_stmt_execute($stats_stmt);
 $stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stats_stmt));
 
 // Fetch student comments
 $comments_query = "SELECT comments, submitted_at
                   FROM feedback
-                  WHERE subject_id = ? 
-                  AND academic_year_id = ?
+                  WHERE assignment_id = ?
                   AND comments IS NOT NULL
                   AND comments != ''
                   ORDER BY submitted_at DESC";
 
 $comments_stmt = mysqli_prepare($conn, $comments_query);
-mysqli_stmt_bind_param($comments_stmt, "ii", $subject_id, $current_year['id']);
+mysqli_stmt_bind_param($comments_stmt, "i", $assignment_id);
 mysqli_stmt_execute($comments_stmt);
 $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSOC);
 
@@ -583,8 +582,8 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             <h1><?php echo htmlspecialchars($subject['name']); ?> (<?php echo htmlspecialchars($subject['code']); ?>)</h1>
             <div class="faculty-meta">
                 <div class="meta-card">
-                    <h3>Semester</h3>
-                    <p><?php echo htmlspecialchars($subject['semester']); ?></p>
+                    <h3>Year & Semester</h3>
+                    <p>Year <?php echo htmlspecialchars($subject['year']); ?> - Semester <?php echo htmlspecialchars($subject['semester']); ?></p>
                 </div>
                 <div class="meta-card">
                     <h3>Section</h3>
@@ -593,6 +592,10 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                 <div class="meta-card">
                     <h3>Department</h3>
                     <p><?php echo htmlspecialchars($subject['department_name']); ?></p>
+                </div>
+                <div class="meta-card">
+                    <h3>Faculty</h3>
+                    <p><?php echo htmlspecialchars($subject['faculty_name']); ?> (<?php echo htmlspecialchars($subject['faculty_code']); ?>)</p>
                 </div>
             </div>
         </div>
@@ -606,20 +609,21 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                     <div class="rating-summary">
                         <?php
                         $metrics = [
-                            'Course Effectiveness' => $stats['course_effectiveness'],
-                            'Teaching Effectiveness' => $stats['teaching_effectiveness'],
-                            'Resources & Admin' => $stats['resources_admin'],
-                            'Assessment & Learning' => $stats['assessment_learning'],
-                            'Course Outcomes' => $stats['course_outcomes']
+                            'Course Effectiveness' => $stats['course_effectiveness'] ?? 0,
+                            'Teaching Effectiveness' => $stats['teaching_effectiveness'] ?? 0,
+                            'Resources & Admin' => $stats['resources_admin'] ?? 0,
+                            'Assessment & Learning' => $stats['assessment_learning'] ?? 0,
+                            'Course Outcomes' => $stats['course_outcomes'] ?? 0
                         ];
                         
                         foreach ($metrics as $label => $value):
                             $percentage = $value * 20; // Convert to percentage
+                            $rating_class = getRatingClass($value);
                         ?>
                             <div class="rating-item">
                                 <span class="label"><?php echo $label; ?></span>
                                 <div class="rating-bar">
-                                    <div class="rating-fill" style="width: <?php echo $percentage; ?>%">
+                                    <div class="rating-fill <?php echo $rating_class; ?>" style="width: <?php echo $percentage; ?>%">
                                         <?php echo number_format($value, 2); ?>
                                     </div>
                                 </div>
@@ -627,8 +631,17 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                         <?php endforeach; ?>
                     </div>
                     <div class="feedback-count">
-                        <span><?php echo $stats['feedback_count']; ?> responses</span>
+                        <i class="fas fa-users"></i>
+                        <span><?php echo $stats['feedback_count'] ?? 0; ?> responses</span>
                     </div>
+                    <?php if (isset($stats['overall_avg'])): ?>
+                    <div class="overall-rating">
+                        <h4>Overall Rating</h4>
+                        <div class="rating-value <?php echo getRatingClass($stats['overall_avg']); ?>">
+                            <?php echo number_format($stats['overall_avg'], 2); ?> / 5.00
+                        </div>
+                    </div>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
@@ -642,7 +655,7 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                 </div>
                 <p class="section-description"><?php echo $info['description']; ?></p>
 
-                <?php if (isset($feedback_by_section[$section_code])): ?>
+                <?php if (isset($feedback_by_section[$section_code]) && !empty($feedback_by_section[$section_code])): ?>
                     <?php foreach ($feedback_statements[$section_code] as $statement): ?>
                         <div class="rating-item">
                             <h3><?php echo htmlspecialchars($statement['statement']); ?></h3>
@@ -670,7 +683,8 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                                             <?php echo $i; ?> <i class="fas fa-star"></i>
                                         </div>
                                         <div class="rating-bar">
-                                            <div class="rating-fill" style="width: <?php echo $percentage; ?>%">
+                                            <div class="rating-fill <?php echo getRatingClass($i); ?>" 
+                                                 style="width: <?php echo $percentage; ?>%">
                                                 <?php if ($percentage >= 10): ?>
                                                     <span class="rating-percentage">
                                                         <?php echo round($percentage); ?>%
@@ -699,7 +713,10 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                 <?php foreach ($comments as $comment): ?>
                     <div class="comment-card">
                         <div class="comment-header">
-                            <span class="date"><?php echo date('F j, Y', strtotime($comment['submitted_at'])); ?></span>
+                            <span class="date">
+                                <i class="far fa-calendar-alt"></i>
+                                <?php echo date('F j, Y', strtotime($comment['submitted_at'])); ?>
+                            </span>
                         </div>
                         <div class="comment-text">
                             <?php echo nl2br(htmlspecialchars($comment['comments'])); ?>
@@ -707,12 +724,15 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                     </div>
                 <?php endforeach; ?>
             <?php else: ?>
-                <p class="no-data">No comments available.</p>
+                <p class="no-data">
+                    <i class="far fa-comment-dots"></i>
+                    No comments available.
+                </p>
             <?php endif; ?>
         </div>
 
         <div class="actions">
-            <a href="generate_report.php?subject_id=<?php echo $subject_id; ?>" class="btn btn-primary">
+            <a href="generate_report.php?assignment_id=<?php echo $assignment_id; ?>" class="btn btn-primary">
                 <i class="fas fa-file-pdf"></i> Generate Report
             </a>
             <a href="dashboard.php" class="btn btn-secondary">
@@ -720,5 +740,40 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
             </a>
         </div>
     </div>
+
+    <script>
+        function getRatingClass(rating) {
+            if (rating >= 4.5) return 'rating-excellent';
+            if (rating >= 4.0) return 'rating-good';
+            if (rating >= 3.0) return 'rating-average';
+            return 'rating-poor';
+        }
+
+        // Add smooth scrolling to section cards
+        document.querySelectorAll('.section-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+
+        // Add hover effects for rating bars
+        document.querySelectorAll('.rating-bar').forEach(bar => {
+            bar.addEventListener('mouseover', function() {
+                this.querySelector('.rating-fill').style.filter = 'brightness(1.1)';
+            });
+            bar.addEventListener('mouseout', function() {
+                this.querySelector('.rating-fill').style.filter = 'none';
+            });
+        });
+    </script>
 </body>
 </html>
+
+<?php
+function getRatingClass($rating) {
+    if ($rating >= 4.5) return 'rating-excellent';
+    if ($rating >= 4.0) return 'rating-good';
+    if ($rating >= 3.0) return 'rating-average';
+    return 'rating-poor';
+}
+?>

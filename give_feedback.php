@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
 }
 
 $user_id = $_SESSION['user_id'];
-$subject_id = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : 0;
+$assignment_id = isset($_GET['assignment_id']) ? intval($_GET['assignment_id']) : 0;
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     header('Content-Type: application/json');
@@ -75,11 +75,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         // Calculate cumulative average
         $cumulative_avg = array_sum($section_averages) / count($section_averages);
 
-        // Insert feedback record
-        $feedback_query = "INSERT INTO feedback (
-            student_id, 
-            subject_id, 
-            academic_year_id, 
+        // First verify if the assignment exists and get necessary details
+        $verify_query = "SELECT sa.id, sa.faculty_id, f.email as faculty_email
+                        FROM subject_assignments sa
+                        JOIN faculty f ON sa.faculty_id = f.id
+                        WHERE sa.id = ?";
+        $verify_stmt = mysqli_prepare($conn, $verify_query);
+        mysqli_stmt_bind_param($verify_stmt, "i", $assignment_id);
+        mysqli_stmt_execute($verify_stmt);
+        $verify_result = mysqli_stmt_get_result($verify_stmt);
+        $assignment_details = mysqli_fetch_assoc($verify_result);
+        if (!$assignment_details) {
+            header('Location: dashboard.php?error=invalid_assignment');
+            exit();
+        }
+
+        // Insert feedback record (note: faculty_id is now removed from feedback)
+        $insert_query = "INSERT INTO feedback (
+            assignment_id, 
+            student_id,
             comments,
             course_effectiveness_avg,
             teaching_effectiveness_avg,
@@ -88,18 +102,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             course_outcomes_avg,
             cumulative_avg,
             submitted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-        
-        $stmt = mysqli_prepare($conn, $feedback_query);
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+
+        $stmt = mysqli_prepare($conn, $insert_query);
         if (!$stmt) {
             throw new Exception("Failed to prepare feedback statement: " . mysqli_error($conn));
         }
 
         $comments = isset($_POST['comments']) ? $_POST['comments'] : '';
-        mysqli_stmt_bind_param($stmt, "iiisdddddd", 
-            $_SESSION['user_id'], 
-            $subject_id, 
-            $academic_year, 
+        mysqli_stmt_bind_param($stmt, "iisdddddd", 
+            $assignment_id,
+            $_SESSION['user_id'],
             $comments,
             $section_averages['course_effectiveness_avg'],
             $section_averages['teaching_effectiveness_avg'],
@@ -119,10 +132,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $rating_query = "INSERT INTO feedback_ratings (
             feedback_id, 
             statement_id, 
-            rating, 
-            section,
-            created_at
-        ) VALUES (?, ?, ?, ?, NOW())";
+            rating
+        ) VALUES (?, ?, ?)";
         
         $rating_stmt = mysqli_prepare($conn, $rating_query);
 
@@ -142,11 +153,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     throw new Exception("Failed to prepare rating statement");
                 }
 
-                mysqli_stmt_bind_param($rating_stmt, "iiis", 
+                mysqli_stmt_bind_param($rating_stmt, "iii", 
                     $feedback_id, 
                     $statement_id, 
-                    $rating, 
-                    $section
+                    $rating
                 );
 
                 if (!mysqli_stmt_execute($rating_stmt)) {
@@ -155,24 +165,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $statement_id++;
             }
         }
-
-        // Insert notification for faculty
-        $notify_query = "INSERT INTO notifications (
-            user_id, 
-            role, 
-            message,
-            is_read
-        ) SELECT 
-            s.faculty_id,
-            'faculty',
-            CONCAT('New feedback received for ', s.name),
-            FALSE
-        FROM subjects s
-        WHERE s.id = ?";
-        
-        $notify_stmt = mysqli_prepare($conn, $notify_query);
-        mysqli_stmt_bind_param($notify_stmt, "i", $subject_id);
-        mysqli_stmt_execute($notify_stmt);
 
         // Log the action
         $log_query = "INSERT INTO user_logs (
@@ -185,8 +177,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         $log_details = json_encode([
             'feedback_id' => $feedback_id,
-            'subject_id' => $subject_id,
-            'academic_year_id' => $academic_year
+            'assignment_id' => $assignment_id
         ]);
         
         $log_stmt = mysqli_prepare($conn, $log_query);
@@ -244,27 +235,27 @@ $current_semester = $student['current_semester'];
 $current_year = $student['current_year_of_study'];
 
 // Fetch subject and faculty details with proper error handling
-$subject_id = isset($_GET['subject_id']) ? intval($_GET['subject_id']) : 0;
-$subject_query = "SELECT s.*, f.name AS faculty_name,
+$assignment_id = isset($_GET['assignment_id']) ? intval($_GET['assignment_id']) : 0;
+$subject_query = "SELECT sa.*, s.name AS subject_name,
                  ay.year_range as academic_year,
-                 s.semester,
+                 sa.semester,
                  CASE 
-                    WHEN s.semester % 2 = 0 THEN s.semester / 2
-                    ELSE (s.semester + 1) / 2
+                    WHEN sa.semester % 2 = 0 THEN sa.semester / 2
+                    ELSE (sa.semester + 1) / 2
                  END as year
-                 FROM subjects s 
-                 JOIN faculty f ON s.faculty_id = f.id 
-                 JOIN academic_years ay ON s.academic_year_id = ay.id
-                 WHERE s.id = ?";
+                 FROM subject_assignments sa 
+                 JOIN subjects s ON sa.subject_id = s.id 
+                 JOIN academic_years ay ON sa.academic_year_id = ay.id
+                 WHERE sa.id = ?";
 
 $subject_stmt = mysqli_prepare($conn, $subject_query);
-mysqli_stmt_bind_param($subject_stmt, "i", $subject_id);
+mysqli_stmt_bind_param($subject_stmt, "i", $assignment_id);
 mysqli_stmt_execute($subject_stmt);
 $subject_result = mysqli_stmt_get_result($subject_stmt);
 $subject = mysqli_fetch_assoc($subject_result);
 
 if (!$subject) {
-    header('Location: dashboard.php?error=invalid_subject');
+    header('Location: dashboard.php?error=invalid_assignment');
     exit();
 }
 ?>
@@ -1189,7 +1180,15 @@ if (!$subject) {
                     <input type="text" 
                            id="subject" 
                            name="subject" 
-                           value="<?php echo htmlspecialchars(($subject['code'] ?? '') . ' - ' . ($subject['name'] ?? '')); ?>" 
+                           value="<?php echo htmlspecialchars(($subject['subject_name'] ?? '') . ' - ' . ($subject['code'] ?? '')); ?>" 
+                           readonly>
+                </div>
+                <div class="form-group">
+                    <label for="section">SECTION</label>
+                    <input type="text" 
+                           id="section" 
+                           name="section" 
+                           value="<?php echo htmlspecialchars($subject['section'] ?? ''); ?>" 
                            readonly>
                 </div>
                 <div class="form-group">

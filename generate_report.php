@@ -14,11 +14,30 @@ if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'hod' && $_SESSION['ro
 }
 
 // Get parameters
-$faculty_id = isset($_GET['faculty_id']) ? intval($_GET['faculty_id']) : 0;
-$academic_year_id = getCurrentAcademicYear($conn);
+$assignment_id = isset($_GET['assignment_id']) ? intval($_GET['assignment_id']) : 0;
 
-if (!$faculty_id || !$academic_year_id) {
+if (!$assignment_id) {
     die("Required parameters missing");
+}
+
+// Fetch assignment, subject and faculty details
+$details_query = "SELECT 
+    sa.*, s.*, f.*, d.name as department_name,
+    ay.year_range as academic_year
+FROM subject_assignments sa
+JOIN subjects s ON sa.subject_id = s.id
+JOIN faculty f ON sa.faculty_id = f.id
+JOIN departments d ON s.department_id = d.id
+JOIN academic_years ay ON sa.academic_year_id = ay.id
+WHERE sa.id = ? AND sa.is_active = TRUE";
+
+$stmt = mysqli_prepare($conn, $details_query);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+mysqli_stmt_execute($stmt);
+$details = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+
+if (!$details) {
+    die("Invalid assignment ID");
 }
 
 class PDF extends FPDF {
@@ -276,30 +295,19 @@ $pdf = new PDF();
 $pdf->AliasNbPages();
 $pdf->AddPage();
 
-// Fetch faculty details
-$faculty_query = "SELECT f.*, d.name as department_name 
-                 FROM faculty f 
-                 JOIN departments d ON f.department_id = d.id 
-                 WHERE f.id = ?";
-$stmt = mysqli_prepare($conn, $faculty_query);
-mysqli_stmt_bind_param($stmt, "i", $faculty_id);
-mysqli_stmt_execute($stmt);
-$faculty = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
-
 // Prepare info_data array
 $info_data = array(
-    array('Label' => 'Name', 'Value' => $faculty['name']),
-    array('Label' => 'Faculty ID', 'Value' => $faculty['faculty_id']),
-    array('Label' => 'Department', 'Value' => $faculty['department_name']),
-    array('Label' => 'Designation', 'Value' => $faculty['designation']),
-    array('Label' => 'Experience', 'Value' => $faculty['experience'] . ' years'),
-    array('Label' => 'Qualification', 'Value' => $faculty['qualification']),
-    array('Label' => 'Specialization', 'Value' => $faculty['specialization'])
+    array('Label' => 'Faculty Name', 'Value' => $details['name']),
+    array('Label' => 'Faculty ID', 'Value' => $details['faculty_id']),
+    array('Label' => 'Department', 'Value' => $details['department_name']),
+    array('Label' => 'Subject', 'Value' => $details['code'] . ' - ' . $details['name']),
+    array('Label' => 'Year & Semester', 'Value' => 'Year ' . $details['year'] . ' - Semester ' . $details['semester']),
+    array('Label' => 'Section', 'Value' => $details['section']),
+    array('Label' => 'Academic Year', 'Value' => $details['academic_year'])
 );
 
 // Fetch performance metrics
 $metrics_query = "SELECT 
-    COUNT(DISTINCT s.id) as total_subjects,
     COUNT(DISTINCT f.id) as total_feedback,
     AVG(f.course_effectiveness_avg) as course_effectiveness,
     AVG(f.teaching_effectiveness_avg) as teaching_effectiveness,
@@ -309,14 +317,11 @@ $metrics_query = "SELECT
     AVG(f.cumulative_avg) as overall_avg,
     MIN(f.cumulative_avg) as min_rating,
     MAX(f.cumulative_avg) as max_rating
-FROM subjects s
-LEFT JOIN feedback f ON s.id = f.subject_id
-WHERE s.faculty_id = ? 
-AND f.academic_year_id = ?
-GROUP BY s.faculty_id";
+FROM feedback f
+WHERE f.assignment_id = ?";
 
 $stmt = mysqli_prepare($conn, $metrics_query);
-mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
 mysqli_stmt_execute($stmt);
 $metrics = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
@@ -363,50 +368,49 @@ foreach($parameters as $key => $label) {
     );
 }
 
-// Prepare subjects_data array
-$subjects_query = "SELECT 
-    s.name as subject_name,
-    s.code as subject_code,
-    COUNT(DISTINCT f.id) as feedback_count,
-    AVG(f.cumulative_avg) as avg_rating
-FROM subjects s
-LEFT JOIN feedback f ON s.id = f.subject_id
-WHERE s.faculty_id = ? 
-AND s.academic_year_id = ?
-GROUP BY s.id";
+// Fetch statement-wise analysis
+$statement_query = "SELECT 
+    fs.section,
+    fs.statement,
+    COUNT(fr.id) as response_count,
+    ROUND(AVG(fr.rating), 2) as avg_rating
+FROM feedback_statements fs
+LEFT JOIN feedback_ratings fr ON fs.id = fr.statement_id
+LEFT JOIN feedback f ON fr.feedback_id = f.id AND f.assignment_id = ?
+WHERE fs.is_active = TRUE
+GROUP BY fs.id, fs.section, fs.statement
+ORDER BY fs.section, fs.id";
 
-$stmt = mysqli_prepare($conn, $subjects_query);
-mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
+$stmt = mysqli_prepare($conn, $statement_query);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
 mysqli_stmt_execute($stmt);
-$subjects_result = mysqli_stmt_get_result($stmt);
+$statement_result = mysqli_stmt_get_result($stmt);
 
-$subjects_data = array();
-while($row = mysqli_fetch_assoc($subjects_result)) {
-    $subjects_data[] = array(
-        'Subject' => $row['subject_name'],
-        'Code' => $row['subject_code'],
-        'Responses' => $row['feedback_count'],
+$statement_data = array();
+while($row = mysqli_fetch_assoc($statement_result)) {
+    $statement_data[] = array(
+        'Statement' => $row['statement'],
+        'Section' => $row['section'],
+        'Responses' => $row['response_count'],
         'Rating' => number_format($row['avg_rating'] ?? 0, 2)
     );
 }
 
-// Prepare headers for tables
-$metrics_headers = array(
-    'Parameter' => 60,
-    'Rating' => 25,
-    'Status' => 35,
-    'Remarks' => 60
-);
+// Fetch and prepare comments
+$comments_query = "SELECT comments, submitted_at
+                  FROM feedback
+                  WHERE assignment_id = ?
+                  AND comments IS NOT NULL
+                  AND comments != ''
+                  ORDER BY submitted_at DESC";
 
-$subjects_headers = array(
-    'Subject' => 80,
-    'Code' => 30,
-    'Responses' => 30,
-    'Rating' => 30
-);
+$stmt = mysqli_prepare($conn, $comments_query);
+mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+mysqli_stmt_execute($stmt);
+$comments_result = mysqli_stmt_get_result($stmt);
 
 // Faculty Information Section
-$pdf->SectionTitle('Faculty Information');
+$pdf->SectionTitle('Subject and Faculty Information');
 foreach($info_data as $info) {
     $pdf->CreateInfoBox($info['Label'], $info['Value']);
 }
@@ -421,42 +425,33 @@ $metrics_labels = array_column($metrics_data, 'Parameter');
 $pdf->AddChart('Performance Metrics Overview', $metrics_values, $metrics_labels);
 
 // Create detailed metrics table
+$metrics_headers = array(
+    'Parameter' => 60,
+    'Rating' => 25,
+    'Status' => 35,
+    'Remarks' => 60
+);
 $pdf->CreateMetricsTable($metrics_headers, $metrics_data);
 
-// Subject-wise Analysis
+// Statement-wise Analysis
 $pdf->AddPage();
-$pdf->SectionTitle('Subject-wise Analysis');
-$pdf->CreateMetricsTable($subjects_headers, $subjects_data);
+$pdf->SectionTitle('Statement-wise Analysis');
+$statement_headers = array(
+    'Statement' => 100,
+    'Section' => 40,
+    'Responses' => 20,
+    'Rating' => 20
+);
+$pdf->CreateMetricsTable($statement_headers, $statement_data);
 
-// Add bar chart for subject ratings
-if (!empty($subjects_data)) {
-    $subject_ratings = array_column($subjects_data, 'Rating');
-    $subject_names = array_column($subjects_data, 'Subject');
-    $pdf->AddChart('Subject Rating Comparison', $subject_ratings, $subject_names);
-}
-
-// Fetch and display comments
-$comments_query = "SELECT f.comments, s.name as subject_name, f.submitted_at
-                  FROM feedback f
-                  JOIN subjects s ON f.subject_id = s.id
-                  WHERE s.faculty_id = ? 
-                  AND f.academic_year_id = ?
-                  AND f.comments IS NOT NULL
-                  AND f.comments != ''
-                  ORDER BY f.submitted_at DESC";
-
-$stmt = mysqli_prepare($conn, $comments_query);
-mysqli_stmt_bind_param($stmt, "ii", $faculty_id, $academic_year_id);
-mysqli_stmt_execute($stmt);
-$comments_result = mysqli_stmt_get_result($stmt);
-
+// Add comments if available
 if (mysqli_num_rows($comments_result) > 0) {
     $pdf->AddPage();
-    $pdf->SectionTitle('Student Feedback Comments');
+    $pdf->SectionTitle('Student Comments');
     
     while($comment = mysqli_fetch_assoc($comments_result)) {
         $pdf->AddCommentBox(
-            $comment['subject_name'],
+            $details['name'] . ' (' . $details['code'] . ')',
             date('F j, Y', strtotime($comment['submitted_at'])),
             $comment['comments']
         );
@@ -467,5 +462,5 @@ if (mysqli_num_rows($comments_result) > 0) {
 ob_clean();
 
 // Output PDF
-$pdf->Output('Faculty_Analysis_Report.pdf', 'D');
+$pdf->Output('Subject_Feedback_Report.pdf', 'D');
 ?>

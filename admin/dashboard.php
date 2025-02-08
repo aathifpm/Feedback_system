@@ -80,14 +80,14 @@ $user_query = "SELECT f.*,
      AND sa.academic_year_id = ?) as total_subjects,
     (SELECT COUNT(DISTINCT fb.id) 
      FROM feedback fb 
-     JOIN subject_assignments sa ON fb.subject_id = sa.subject_id 
+     JOIN subject_assignments sa ON fb.assignment_id = sa.id 
      WHERE sa.faculty_id = f.id 
-     AND fb.academic_year_id = ?) as total_feedback,
+     AND sa.academic_year_id = ?) as total_feedback,
     (SELECT AVG(fb.cumulative_avg)
      FROM feedback fb
-     JOIN subject_assignments sa ON fb.subject_id = sa.subject_id
+     JOIN subject_assignments sa ON fb.assignment_id = sa.id
      WHERE sa.faculty_id = f.id
-     AND fb.academic_year_id = ?) as avg_rating
+     AND sa.academic_year_id = ?) as avg_rating
 FROM faculty f
 JOIN departments d ON f.department_id = d.id
 WHERE f.id = ? AND f.is_active = TRUE";
@@ -114,8 +114,7 @@ $feedback_query = "SELECT
     COUNT(DISTINCT sa.id) as total_subjects,
     COUNT(DISTINCT CASE WHEN f.id IS NOT NULL THEN sa.id END) as completed_subjects
 FROM subject_assignments sa
-LEFT JOIN feedback f ON sa.subject_id = f.subject_id 
-    AND f.academic_year_id = sa.academic_year_id
+LEFT JOIN feedback f ON f.assignment_id = sa.id
 WHERE sa.academic_year_id = ?";
 
 $stmt = mysqli_prepare($conn, $feedback_query);

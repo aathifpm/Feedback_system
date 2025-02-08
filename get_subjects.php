@@ -1,39 +1,40 @@
 <?php
 session_start();
-require_once 'functions.php';
+require_once 'db_connection.php';
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'hod') {
-    header('HTTP/1.1 403 Forbidden');
-    exit('Access denied');
+// Check if user is HOD
+if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'hod') {
+    die(json_encode(['error' => 'Unauthorized access']));
 }
 
-$academic_year = isset($_GET['academic_year']) ? intval($_GET['academic_year']) : 0;
-$semester = isset($_GET['semester']) ? intval($_GET['semester']) : 0;
-$section = isset($_GET['section']) ? $_GET['section'] : '';
-$department_id = isset($_GET['department_id']) ? intval($_GET['department_id']) : 0;
-
-if (!$academic_year || !$semester || !$section || !$department_id) {
-    header('HTTP/1.1 400 Bad Request');
-    exit('Missing parameters');
+if (!isset($_POST['academic_year_id']) || !isset($_POST['department_id'])) {
+    die(json_encode(['error' => 'Missing parameters']));
 }
 
-$query = "SELECT id, code, name 
-          FROM subjects 
-          WHERE academic_year_id = ? 
-          AND semester = ? 
-          AND section = ? 
-          AND department_id = ?
-          AND is_active = TRUE
-          ORDER BY code";
+$academic_year_id = intval($_POST['academic_year_id']);
+$department_id = intval($_POST['department_id']);
+
+// Get subjects for the department and academic year
+$query = "SELECT DISTINCT s.id, s.code, s.name
+          FROM subjects s
+          JOIN subject_assignments sa ON s.id = sa.subject_id
+          WHERE s.department_id = ?
+          AND sa.academic_year_id = ?
+          AND sa.is_active = TRUE
+          ORDER BY s.code";
 
 $stmt = mysqli_prepare($conn, $query);
-mysqli_stmt_bind_param($stmt, "iisi", $academic_year, $semester, $section, $department_id);
+mysqli_stmt_bind_param($stmt, "ii", $department_id, $academic_year_id);
 mysqli_stmt_execute($stmt);
 $result = mysqli_stmt_get_result($stmt);
 
 $subjects = [];
 while ($row = mysqli_fetch_assoc($result)) {
-    $subjects[] = $row;
+    $subjects[] = [
+        'id' => $row['id'],
+        'code' => $row['code'],
+        'name' => $row['name']
+    ];
 }
 
 header('Content-Type: application/json');

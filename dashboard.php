@@ -64,20 +64,21 @@ switch ($role) {
         $user_query = "SELECT f.*,
                         d.name as department_name,
                         d.code as department_code,
-                        (SELECT COUNT(DISTINCT s.id) 
-                         FROM subjects s 
-                         WHERE s.faculty_id = f.id 
-                         AND s.academic_year_id = ?) as total_subjects,
+                        (SELECT COUNT(DISTINCT sa.id) 
+                         FROM subject_assignments sa 
+                         WHERE sa.faculty_id = f.id 
+                         AND sa.academic_year_id = ? 
+                         AND sa.is_active = TRUE) as total_subjects,
                         (SELECT COUNT(DISTINCT fb.id) 
                          FROM feedback fb 
-                         JOIN subjects s ON fb.subject_id = s.id 
-                         WHERE s.faculty_id = f.id 
-                         AND fb.academic_year_id = ?) as total_feedback,
+                         JOIN subject_assignments sa ON fb.assignment_id = sa.id 
+                         WHERE sa.faculty_id = f.id 
+                         AND sa.academic_year_id = ?) as total_feedback,
                         (SELECT AVG(fb.cumulative_avg)
                          FROM feedback fb
-                         JOIN subjects s ON fb.subject_id = s.id
-                         WHERE s.faculty_id = f.id
-                         AND fb.academic_year_id = ?) as avg_rating
+                         JOIN subject_assignments sa ON fb.assignment_id = sa.id
+                         WHERE sa.faculty_id = f.id
+                         AND sa.academic_year_id = ?) as avg_rating
                     FROM faculty f
                     JOIN departments d ON f.department_id = d.id
                     WHERE f.id = ? AND f.is_active = TRUE";
@@ -101,15 +102,18 @@ switch ($role) {
                          FROM faculty f 
                          WHERE f.department_id = h.department_id 
                          AND f.is_active = TRUE) as total_faculty,
-                        (SELECT COUNT(DISTINCT s.id)
-                         FROM subjects s
+                        (SELECT COUNT(DISTINCT sa.id)
+                         FROM subject_assignments sa
+                         JOIN subjects s ON sa.subject_id = s.id
                          WHERE s.department_id = h.department_id
-                         AND s.academic_year_id = ?) as total_subjects,
+                         AND sa.academic_year_id = ?
+                         AND sa.is_active = TRUE) as total_subjects,
                         (SELECT AVG(fb.cumulative_avg)
                          FROM feedback fb
-                         JOIN subjects s ON fb.subject_id = s.id
+                         JOIN subject_assignments sa ON fb.assignment_id = sa.id
+                         JOIN subjects s ON sa.subject_id = s.id
                          WHERE s.department_id = h.department_id
-                         AND fb.academic_year_id = ?) as dept_avg_rating
+                         AND sa.academic_year_id = ?) as dept_avg_rating
                     FROM hods h
                     JOIN departments d ON h.department_id = d.id
                     WHERE h.id = ? AND h.is_active = TRUE";
@@ -148,38 +152,31 @@ switch ($role) {
     case 'student':
         // Get student feedback status
         $stmt = mysqli_prepare($conn, "SELECT 
-            s.id, s.name, s.code,
+            sa.id as assignment_id,
+            s.name, s.code,
             f.name as faculty_name,
             CASE WHEN fb.id IS NOT NULL THEN 'Submitted' ELSE 'Pending' END as feedback_status,
             fb.submitted_at
-        FROM subjects s
-        JOIN faculty f ON s.faculty_id = f.id
-        LEFT JOIN feedback fb ON fb.subject_id = s.id 
+        FROM subject_assignments sa
+        JOIN subjects s ON sa.subject_id = s.id
+        JOIN faculty f ON sa.faculty_id = f.id
+        LEFT JOIN feedback fb ON fb.assignment_id = sa.id 
             AND fb.student_id = ?
-            AND fb.academic_year_id = ?
-        WHERE s.academic_year_id = ?
-        AND s.semester IN (
-            SELECT 
-                CASE 
-                    WHEN MONTH(CURDATE()) <= 5 THEN by2.current_year_of_study * 2
-                    ELSE by2.current_year_of_study * 2 - 1
-                END
-            FROM students st2
-            JOIN batch_years by2 ON st2.batch_id = by2.id
-            WHERE st2.id = ?
-        )
-        AND s.section = (
-            SELECT section 
-            FROM students 
-            WHERE id = ?
-        )");
+        JOIN students st ON st.id = ?
+        JOIN batch_years by2 ON st.batch_id = by2.id
+        WHERE sa.academic_year_id = ?
+        AND sa.year = by2.current_year_of_study
+        AND sa.semester = CASE 
+            WHEN MONTH(CURDATE()) <= 5 THEN by2.current_year_of_study * 2
+            ELSE by2.current_year_of_study * 2 - 1
+        END
+        AND sa.section = st.section
+        AND sa.is_active = TRUE");
         
-        mysqli_stmt_bind_param($stmt, "iiiii", 
-            $user_id, 
-            $current_academic_year['id'],
-            $current_academic_year['id'],
+        mysqli_stmt_bind_param($stmt, "iii", 
             $user_id,
-            $user_id
+            $user_id,
+            $current_academic_year['id']
         );
         mysqli_stmt_execute($stmt);
         $data['subjects'] = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
@@ -199,28 +196,28 @@ switch ($role) {
     case 'faculty':
         // Get faculty feedback summary
         $stmt = mysqli_prepare($conn, "SELECT 
-            s.id, s.name, s.code,
+            sa.id as assignment_id, 
+            s.name, 
+            s.code,
             COUNT(DISTINCT fb.id) as feedback_count,
             AVG(fb.cumulative_avg) as avg_rating,
-            s.semester,
-            s.section,
-            CASE 
-                WHEN s.semester % 2 = 0 THEN s.semester / 2
-                ELSE (s.semester + 1) / 2
-            END as year_of_study
-        FROM subjects s
-        LEFT JOIN feedback fb ON fb.subject_id = s.id 
-            AND fb.academic_year_id = ?
-        WHERE s.faculty_id = ?
-        AND s.academic_year_id = ?
-        GROUP BY s.id");
+            sa.semester,
+            sa.section,
+            sa.year as year_of_study
+        FROM subject_assignments sa
+        JOIN subjects s ON sa.subject_id = s.id
+        LEFT JOIN feedback fb ON fb.assignment_id = sa.id
+        WHERE sa.faculty_id = ?
+        AND sa.academic_year_id = ?
+        AND sa.is_active = TRUE
+        GROUP BY sa.id, s.name, s.code, sa.semester, sa.section, sa.year
+        ORDER BY sa.year, sa.semester, sa.section");
         
         if (!$stmt) {
             die("Error preparing statement: " . mysqli_error($conn));
         }
         
-        mysqli_stmt_bind_param($stmt, "iii", 
-            $current_academic_year['id'],
+        mysqli_stmt_bind_param($stmt, "ii", 
             $user_id,
             $current_academic_year['id']
         );
@@ -321,13 +318,13 @@ switch ($role) {
         $faculty_query = "SELECT 
             f.id, 
             f.name,
-            f.faculty_id,  -- Added faculty_id from DB structure
+            f.faculty_id,
             f.designation,
-            f.experience,  -- Added experience from DB structure
-            f.qualification,  -- Added qualification from DB structure
-            f.specialization,  -- Added specialization from DB structure
+            f.experience,
+            f.qualification,
+            f.specialization,
             d.name as department_name,
-            COUNT(DISTINCT s.id) as total_subjects,
+            COUNT(DISTINCT sa.id) as total_subjects,
             COUNT(DISTINCT fb.id) as total_feedback,
             AVG(fb.course_effectiveness_avg) as course_effectiveness,
             AVG(fb.teaching_effectiveness_avg) as teaching_effectiveness,
@@ -336,14 +333,17 @@ switch ($role) {
             AVG(fb.course_outcomes_avg) as course_outcomes,
             AVG(fb.cumulative_avg) as overall_avg,
             MIN(fb.cumulative_avg) as min_rating,
-            MAX(fb.cumulative_avg) as max_rating
+            MAX(fb.cumulative_avg) as max_rating,
+            GROUP_CONCAT(DISTINCT CONCAT(sa.year, '-', sa.semester, '-', sa.section) 
+                ORDER BY sa.year, sa.semester, sa.section) as sections,
+            GROUP_CONCAT(DISTINCT s.name ORDER BY s.name) as subjects
         FROM faculty f
         JOIN departments d ON f.department_id = d.id
-        LEFT JOIN subjects s ON s.faculty_id = f.id 
-            AND s.academic_year_id = ?
-            AND s.is_active = TRUE
-        LEFT JOIN feedback fb ON fb.subject_id = s.id 
-            AND fb.academic_year_id = ?
+        LEFT JOIN subject_assignments sa ON sa.faculty_id = f.id 
+            AND sa.academic_year_id = ?
+            AND sa.is_active = TRUE
+        LEFT JOIN subjects s ON sa.subject_id = s.id
+        LEFT JOIN feedback fb ON fb.assignment_id = sa.id
         WHERE f.department_id = ? 
         AND f.is_active = TRUE
         GROUP BY f.id, f.name, f.faculty_id, f.designation, f.experience, 
@@ -355,9 +355,8 @@ switch ($role) {
             error_log("Error preparing faculty query: " . mysqli_error($conn));
             $data['faculty'] = [];
         } else {
-            mysqli_stmt_bind_param($faculty_stmt, "iii", 
+            mysqli_stmt_bind_param($faculty_stmt, "ii", 
                 $current_academic_year['id'],
-                $current_academic_year['id'], 
                 $user['department_id']
             );
             
@@ -383,10 +382,45 @@ switch ($role) {
             }
         }
 
-        // Add debug information
-        error_log("Number of faculty members found: " . count($data['faculty']));
-        error_log("Faculty Query: " . $faculty_query);
-        error_log("Department ID: " . $user['department_id']);
+        // Get subject-wise feedback summary
+        $subject_query = "SELECT 
+            s.id as subject_id,
+            s.code,
+            s.name,
+            sa.id as assignment_id,
+            sa.year,
+            sa.semester,
+            sa.section,
+            f.name as faculty_name,
+            COUNT(DISTINCT fb.id) as feedback_count,
+            AVG(fb.cumulative_avg) as avg_rating
+        FROM subjects s
+        JOIN subject_assignments sa ON s.id = sa.subject_id
+        JOIN faculty f ON sa.faculty_id = f.id
+        LEFT JOIN feedback fb ON fb.assignment_id = sa.id
+        WHERE s.department_id = ?
+        AND sa.academic_year_id = ?
+        AND sa.is_active = TRUE
+        GROUP BY s.id, s.code, s.name, sa.id, sa.year, sa.semester, sa.section, f.name
+        ORDER BY s.code, sa.year, sa.semester, sa.section";
+
+        $subject_stmt = mysqli_prepare($conn, $subject_query);
+        if (!$subject_stmt) {
+            error_log("Error preparing subject query: " . mysqli_error($conn));
+            $data['subjects'] = [];
+        } else {
+            mysqli_stmt_bind_param($subject_stmt, "ii", 
+                $user['department_id'],
+                $current_academic_year['id']
+            );
+            
+            if (!mysqli_stmt_execute($subject_stmt)) {
+                error_log("Error executing subject query: " . mysqli_stmt_error($subject_stmt));
+                $data['subjects'] = [];
+            } else {
+                $data['subjects'] = mysqli_fetch_all(mysqli_stmt_get_result($subject_stmt), MYSQLI_ASSOC);
+            }
+        }
         break;
 }
 ?>
@@ -398,6 +432,11 @@ switch ($role) {
     <title>Dashboard - College Feedback System</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <!-- Add jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Add DataTables -->
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.min.css">
     <style>
         :root {
             --primary-color: #3498db;
@@ -865,6 +904,25 @@ switch ($role) {
             color: #666;
             font-size: 0.9rem;
             margin-bottom: 0.5rem;
+        }
+
+        .faculty-details {
+            margin-top: 1rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.5rem;
+        }
+
+        .faculty-details p {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            color: #666;
+            font-size: 0.9rem;
+        }
+
+        .faculty-details i {
+            color: var(--primary-color);
         }
 
         .faculty-details {
@@ -1521,6 +1579,91 @@ switch ($role) {
                 font-size: 0.9rem;
             }
         }
+
+        .faculty-assignments {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: var(--bg-color);
+            border-radius: 15px;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .faculty-assignments h4 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-color);
+        }
+
+        .assignments-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.8rem;
+        }
+
+        .assignment-item {
+            background: var(--bg-color);
+            padding: 0.8rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+        }
+
+        .assignment-item:hover {
+            transform: translateY(-2px);
+        }
+
+        .section-badge {
+            display: inline-block;
+            padding: 0.3rem 0.6rem;
+            background: var(--primary-color);
+            color: white;
+            border-radius: 4px;
+            margin-bottom: 0.4rem;
+        }
+
+        .subject-name {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--text-color);
+        }
+
+        .rating-categories {
+            margin: 1.5rem 0;
+        }
+
+        .rating-item {
+            margin-bottom: 1rem;
+        }
+
+        .rating-label {
+            font-size: 0.9rem;
+            margin-bottom: 0.4rem;
+            color: var(--text-color);
+        }
+
+        .rating-bar {
+            height: 25px;
+            background: var(--bg-color);
+            border-radius: 12.5px;
+            box-shadow: var(--inner-shadow);
+            overflow: hidden;
+        }
+
+        .rating-fill {
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: width 0.3s ease;
+        }
+
+        .rating-excellent { background: var(--secondary-color); }
+        .rating-good { background: #3498db; }
+        .rating-average { background: #f1c40f; }
+        .rating-poor { background: #e74c3c; }
     </style>
 </head>
 <body>
@@ -1588,7 +1731,7 @@ switch ($role) {
                                     <?php echo htmlspecialchars($subject['feedback_status']); ?>
                                 </span>
                                 <?php if ($subject['feedback_status'] === 'Pending'): ?>
-                                    <a href="give_feedback.php?subject_id=<?php echo $subject['id']; ?>" class="btn btn-primary">
+                                    <a href="give_feedback.php?assignment_id=<?php echo urlencode($subject['assignment_id']); ?>" class="btn btn-primary">
                                         <i class="fas fa-comment"></i> Give Feedback
                                     </a>
                                 <?php endif; ?>
@@ -1660,8 +1803,9 @@ switch ($role) {
                     f.submitted_at,
                     f.cumulative_avg
                 FROM feedback f
-                JOIN subjects s ON f.subject_id = s.id
-                JOIN faculty fac ON s.faculty_id = fac.id
+                JOIN subject_assignments sa ON f.assignment_id = sa.id
+                JOIN subjects s ON sa.subject_id = s.id
+                JOIN faculty fac ON sa.faculty_id = fac.id
                 WHERE f.student_id = ?
                 ORDER BY f.submitted_at DESC";
                 
@@ -1754,7 +1898,7 @@ switch ($role) {
                                         </span>
                                     <?php endif; ?>
                                 </div>
-                                <a href="faculty_detailed_feedback.php?subject_id=<?php echo $subject['id']; ?>" class="btn btn-primary">
+                                <a href="faculty_detailed_feedback.php?assignment_id=<?php echo $subject['assignment_id']; ?>" class="btn btn-primary">
                                     <i class="fas fa-chart-bar"></i> View Details
                                 </a>
                             </div>
@@ -1920,10 +2064,10 @@ switch ($role) {
                             </div>
 
                             <div class="form-actions">
-                                <button type="button" class="btn btn-primary" onclick="searchFaculty()">
+                                <button type="button" class="btn btn-primary" id="searchButton">
                                     <i class="fas fa-filter"></i> Apply Filters
                                 </button>
-                                <button type="button" class="btn btn-secondary" onclick="resetFilters()">
+                                <button type="button" class="btn btn-secondary" id="resetButton">
                                     <i class="fas fa-undo"></i> Reset
                                 </button>
                             </div>
@@ -2009,85 +2153,417 @@ switch ($role) {
                 </div>
             </div>
 
+            <!-- Subject Performance -->
+            <div class="content-section">
+                <h2 class="section-title">Subject Performance</h2>
+                <?php if (!empty($data['subjects'])): ?>
+                    <div class="table-container">
+                        <table id="subjectTable" class="table">
+                            <thead>
+                                <tr>
+                                    <th>Subject</th>
+                                    <th>Faculty</th>
+                                    <th>Year & Semester</th>
+                                    <th>Section</th>
+                                    <th>Feedback Count</th>
+                                    <th>Average Rating</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($data['subjects'] as $subject): ?>
+                                    <tr>
+                                        <td>
+                                            <strong><?php echo htmlspecialchars($subject['code']); ?></strong><br>
+                                            <?php echo htmlspecialchars($subject['name']); ?>
+                                        </td>
+                                        <td><?php echo htmlspecialchars($subject['faculty_name']); ?></td>
+                                        <td>Year <?php echo $subject['year']; ?> - Sem <?php echo $subject['semester']; ?></td>
+                                        <td><?php echo htmlspecialchars($subject['section']); ?></td>
+                                        <td><?php echo $subject['feedback_count']; ?></td>
+                                        <td>
+                                            <span class="rating-badge <?php echo getRatingClass($subject['avg_rating']); ?>">
+                                                <?php echo number_format($subject['avg_rating'] ?? 0, 2); ?>
+                                            </span>
+                                        </td>
+                                        <td>
+                                            <a href="view_feedback_details.php?assignment_id=<?php echo $subject['assignment_id']; ?>" 
+                                               class="btn btn-primary btn-sm">
+                                                <i class="fas fa-chart-bar"></i> View Details
+                                            </a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php else: ?>
+                    <p class="no-data">No subjects found for the current academic year.</p>
+                <?php endif; ?>
+            </div>
+
+            <!-- Faculty Performance -->
+            <div class="content-section">
+                <h2 class="section-title">Faculty Performance</h2>
+                <?php if (!empty($data['faculty'])): ?>
+                    <div class="faculty-grid">
+                        <?php foreach ($data['faculty'] as $faculty): ?>
+                            <div class="faculty-card">
+                                <div class="faculty-header">
+                                    <h3><?php echo htmlspecialchars($faculty['name']); ?></h3>
+                                    <p class="faculty-id"><?php echo htmlspecialchars($faculty['faculty_id']); ?></p>
+                                </div>
+                                <div class="faculty-details">
+                                    <p><i class="fas fa-graduation-cap"></i> <?php echo htmlspecialchars($faculty['designation']); ?></p>
+                                    <p><i class="fas fa-clock"></i> <?php echo $faculty['experience']; ?> years</p>
+                                    <p><i class="fas fa-book"></i> <?php echo $faculty['total_subjects']; ?> subjects</p>
+                                    <p><i class="fas fa-comments"></i> <?php echo $faculty['total_feedback']; ?> feedbacks</p>
+                                </div>
+                                
+                                <!-- Current Assignments -->
+                                <div class="faculty-assignments">
+                                    <h4>Current Assignments</h4>
+                                    <div class="assignments-grid">
+                                        <?php foreach ($faculty['sections'] as $index => $section): ?>
+                                            <div class="assignment-item">
+                                                <span class="section-badge"><?php echo htmlspecialchars($section); ?></span>
+                                                <?php if (isset($faculty['subjects'][$index])): ?>
+                                                    <span class="subject-name"><?php echo htmlspecialchars($faculty['subjects'][$index]); ?></span>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+
+                                <!-- Performance Metrics -->
+                                <div class="rating-categories">
+                                    <div class="rating-item">
+                                        <div class="rating-label">Overall Rating</div>
+                                        <div class="rating-bar">
+                                            <div class="rating-fill <?php echo getRatingClass($faculty['overall_avg']); ?>" 
+                                                 style="width: <?php echo ($faculty['overall_avg'] * 20); ?>%">
+                                                <?php echo $faculty['overall_avg']; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="rating-item">
+                                        <div class="rating-label">Course Effectiveness</div>
+                                        <div class="rating-bar">
+                                            <div class="rating-fill <?php echo getRatingClass($faculty['course_effectiveness']); ?>" 
+                                                 style="width: <?php echo ($faculty['course_effectiveness'] * 20); ?>%">
+                                                <?php echo $faculty['course_effectiveness']; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="rating-item">
+                                        <div class="rating-label">Teaching Effectiveness</div>
+                                        <div class="rating-bar">
+                                            <div class="rating-fill <?php echo getRatingClass($faculty['teaching_effectiveness']); ?>" 
+                                                 style="width: <?php echo ($faculty['teaching_effectiveness'] * 20); ?>%">
+                                                <?php echo $faculty['teaching_effectiveness']; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="rating-item">
+                                        <div class="rating-label">Assessment & Learning</div>
+                                        <div class="rating-bar">
+                                            <div class="rating-fill <?php echo getRatingClass($faculty['assessment_learning']); ?>" 
+                                                 style="width: <?php echo ($faculty['assessment_learning'] * 20); ?>%">
+                                                <?php echo $faculty['assessment_learning']; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="rating-item">
+                                        <div class="rating-label">Course Outcomes</div>
+                                        <div class="rating-bar">
+                                            <div class="rating-fill <?php echo getRatingClass($faculty['course_outcomes']); ?>" 
+                                                 style="width: <?php echo ($faculty['course_outcomes'] * 20); ?>%">
+                                                <?php echo $faculty['course_outcomes']; ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="faculty-actions">
+                                    <a href="view_faculty_report.php?faculty_id=<?php echo $faculty['id']; ?>" 
+                                       class="btn btn-primary">
+                                        <i class="fas fa-chart-line"></i> View Detailed Report
+                                    </a>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php else: ?>
+                    <p class="no-data">No faculty data available.</p>
+                <?php endif; ?>
+            </div>
+
             <script>
-                // Notification function
-                function showNotification(message, type = 'success') {
-                    const notification = document.getElementById('notification');
-                    notification.textContent = message;
-                    notification.className = `notification ${type}`;
-                    notification.style.display = 'block';
-                    
-                    setTimeout(() => {
-                        notification.style.display = 'none';
-                    }, 3000);
+                // Common JavaScript functions
+                function searchFaculty() {
+                    const searchTerm = $('#searchTerm').val().trim();
+                    const academicYear = $('#academicYear').val();
+                    const semester = $('#semester').val();
+                    const section = $('#section').val();
+                    const subject = $('#subject').val();
+                    const departmentId = <?php echo isset($user['department_id']) ? $user['department_id'] : 0; ?>;
+
+                    // Show loading state
+                    $('#facultyResults').html('<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>');
+
+                    $.ajax({
+                        url: 'search_faculty.php',
+                        method: 'POST',
+                        data: {
+                            search_term: searchTerm,
+                            academic_year_id: academicYear,
+                            semester: semester,
+                            section: section,
+                            subject_id: subject,
+                            department_id: departmentId
+                        },
+                        success: function(response) {
+                            try {
+                                const faculty = JSON.parse(response);
+                                displayFacultyResults(faculty);
+                            } catch (e) {
+                                console.error('Error parsing faculty data:', e);
+                                showNotification('Error processing faculty data', 'error');
+                                $('#facultyResults').html('<div class="no-data"><i class="fas fa-exclamation-circle"></i><p>Error processing faculty data</p></div>');
+                            }
+                        },
+                        error: function(xhr, status, error) {
+                            console.error('AJAX Error:', error);
+                            showNotification('Error fetching faculty data', 'error');
+                            $('#facultyResults').html('<div class="no-data"><i class="fas fa-exclamation-circle"></i><p>Error fetching faculty data</p></div>');
+                        }
+                    });
                 }
 
-                // Check for pending feedback
-                document.addEventListener('DOMContentLoaded', function() {
-                    <?php if ($role == 'student' && isset($data['feedback_stats'])): ?>
-                        const pendingFeedback = <?php echo $data['feedback_stats']['total_subjects'] - $data['feedback_stats']['completed_feedback']; ?>;
-                        if (pendingFeedback > 0) {
-                            showNotification(`You have ${pendingFeedback} pending feedback(s)`, 'warning');
-                        }
-                    <?php endif; ?>
-                });
+                function loadSubjects() {
+                    const academicYearId = $('#academicYear').val();
+                    const departmentId = <?php echo isset($user['department_id']) ? $user['department_id'] : 0; ?>;
+                    
+                    if (academicYearId) {
+                        $.ajax({
+                            url: 'get_subjects.php',
+                            method: 'POST',
+                            data: { 
+                                academic_year_id: academicYearId,
+                                department_id: departmentId
+                            },
+                            success: function(response) {
+                                try {
+                                    const subjects = JSON.parse(response);
+                                    let options = '<option value="">Select Subject</option>';
+                                    subjects.forEach(subject => {
+                                        options += `<option value="${subject.id}">${subject.code} - ${subject.name}</option>`;
+                                    });
+                                    $('#subject').html(options);
+                                    searchFaculty(); // Trigger search after loading subjects
+                                } catch (e) {
+                                    console.error('Error parsing subjects:', e);
+                                    showNotification('Error loading subjects', 'error');
+                                }
+                            },
+                            error: function(xhr, status, error) {
+                                console.error('AJAX Error:', error);
+                                showNotification('Error loading subjects', 'error');
+                            }
+                        });
+                    }
+                }
 
-                document.addEventListener('DOMContentLoaded', function() {
-                    // Update subjects when academic year, semester, or section changes
-                    ['academicYear', 'semester', 'section'].forEach(id => {
-                        document.getElementById(id).addEventListener('change', updateSubjects);
-                    });
+                function displayFacultyResults(faculty) {
+                    const container = $('#facultyResults');
+                    container.empty();
 
-                    // Initial subjects load
-                    updateSubjects();
-                });
-
-                function updateSubjects() {
-                    const academicYear = document.getElementById('academicYear').value;
-                    const semester = document.getElementById('semester').value;
-                    const section = document.getElementById('section').value;
-                    const subjectSelect = document.getElementById('subject');
-
-                    if (!academicYear || !semester || !section) {
+                    if (!Array.isArray(faculty) || faculty.length === 0) {
+                        container.html('<div class="no-data"><i class="fas fa-info-circle"></i><p>No faculty found matching the criteria.</p></div>');
                         return;
                     }
 
-                    // Fetch subjects based on selected filters
-                    fetch(`get_subjects.php?academic_year=${academicYear}&semester=${semester}&section=${section}&department_id=<?php echo $user['department_id']; ?>`)
-                        .then(response => response.json())
-                        .then(data => {
-                            subjectSelect.innerHTML = '<option value="">Select Subject</option>';
-                            data.forEach(subject => {
-                                subjectSelect.innerHTML += `<option value="${subject.id}">${subject.code} - ${subject.name}</option>`;
-                            });
-                        })
-                        .catch(error => console.error('Error:', error));
+                    const grid = $('<div class="faculty-grid"></div>');
+
+                    faculty.forEach(f => {
+                        const card = createFacultyCard(f);
+                        grid.append(card);
+                    });
+
+                    container.append(grid);
                 }
 
-                function searchFaculty() {
-                    const formData = new FormData(document.getElementById('facultySearchForm'));
-                    formData.append('department_id', '<?php echo $user['department_id']; ?>');
+                function createFacultyCard(faculty) {
+                    // Parse sections and subjects if they're strings
+                    const sections = faculty.sections ? faculty.sections.split(',') : [];
+                    const subjects = faculty.subjects ? faculty.subjects.split(',') : [];
 
-                    fetch('search_faculty.php', {
-                        method: 'POST',
-                        body: formData
-                    })
-                    .then(response => response.text())
-                    .then(html => {
-                        document.getElementById('facultyResults').innerHTML = html;
-                    })
-                    .catch(error => console.error('Error:', error));
+                    const card = $(`
+                        <div class="faculty-card">
+                            <div class="faculty-header">
+                                <h3>${escapeHtml(faculty.name)}</h3>
+                                <p class="faculty-id">${escapeHtml(faculty.faculty_id)}</p>
+                            </div>
+                            <div class="faculty-details">
+                                <p><i class="fas fa-graduation-cap"></i> ${escapeHtml(faculty.designation)}</p>
+                                <p><i class="fas fa-clock"></i> ${faculty.experience} years</p>
+                                <p><i class="fas fa-book"></i> ${faculty.total_subjects} subjects</p>
+                                <p><i class="fas fa-comments"></i> ${faculty.total_feedback} feedbacks</p>
+                            </div>
+                            
+                            <div class="faculty-assignments">
+                                <h4>Current Assignments</h4>
+                                <div class="assignments-grid">
+                                    ${createAssignmentsHtml(sections, subjects)}
+                                </div>
+                            </div>
+
+                            <div class="rating-categories">
+                                ${createRatingBar('Overall Rating', faculty.overall_avg)}
+                                ${createRatingBar('Course Effectiveness', faculty.course_effectiveness)}
+                                ${createRatingBar('Teaching Effectiveness', faculty.teaching_effectiveness)}
+                                ${createRatingBar('Assessment & Learning', faculty.assessment_learning)}
+                                ${createRatingBar('Course Outcomes', faculty.course_outcomes)}
+                            </div>
+
+                            <div class="faculty-actions">
+                                <a href="view_faculty_report.php?faculty_id=${faculty.id}" class="btn btn-primary">
+                                    <i class="fas fa-chart-line"></i> View Detailed Report
+                                </a>
+                            </div>
+                        </div>
+                    `);
+
+                    return card;
+                }
+
+                function createAssignmentsHtml(sections, subjects) {
+                    if (!sections.length) return '<p>No current assignments</p>';
+
+                    return sections.map((section, index) => `
+                        <div class="assignment-item">
+                            <span class="section-badge">${escapeHtml(section)}</span>
+                            ${subjects[index] ? `<span class="subject-name">${escapeHtml(subjects[index])}</span>` : ''}
+                        </div>
+                    `).join('');
+                }
+
+                function createRatingBar(label, rating) {
+                    const width = parseFloat(rating) * 20; // Convert rating to percentage
+                    const ratingClass = getRatingClass(rating);
+                    
+                    return `
+                        <div class="rating-item">
+                            <div class="rating-label">${label}</div>
+                            <div class="rating-bar">
+                                <div class="rating-fill ${ratingClass}" style="width: ${width}%">
+                                    ${rating}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                function getRatingClass(rating) {
+                    rating = parseFloat(rating);
+                    if (rating >= 4.5) return 'rating-excellent';
+                    if (rating >= 4.0) return 'rating-good';
+                    if (rating >= 3.0) return 'rating-average';
+                    return 'rating-poor';
                 }
 
                 function resetFilters() {
-                    document.getElementById('facultySearchForm').reset();
-                    document.getElementById('facultyResults').innerHTML = '';
-                    updateSubjects();
+                    $('#searchTerm').val('');
+                    $('#academicYear').val($('#academicYear option:first').val());
+                    $('#semester').val('');
+                    $('#section').val('');
+                    $('#subject').val('');
+                    searchFaculty();
                 }
+
+                function showNotification(message, type) {
+                    const notification = $('<div>')
+                        .addClass(`notification ${type}`)
+                        .text(message)
+                        .appendTo('body')
+                        .fadeIn();
+                    
+                    setTimeout(() => {
+                        notification.fadeOut(() => notification.remove());
+                    }, 3000);
+                }
+
+                function escapeHtml(unsafe) {
+                    if (!unsafe) return '';
+                    return unsafe
+                        .toString()
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                }
+
+                // Debounce function to limit API calls
+                function debounce(func, wait) {
+                    let timeout;
+                    return function executedFunction(...args) {
+                        const later = () => {
+                            clearTimeout(timeout);
+                            func(...args);
+                        };
+                        clearTimeout(timeout);
+                        timeout = setTimeout(later, wait);
+                    };
+                }
+
+                // Initialize when document is ready
+                $(document).ready(function() {
+                    // Initialize DataTable for subject table if it exists
+                    if ($.fn.DataTable && $('#subjectTable').length) {
+                        $('#subjectTable').DataTable({
+                            pageLength: 10,
+                            order: [[5, 'desc']], 
+                            responsive: true,
+                            dom: '<"top"lf>rt<"bottom"ip><"clear">',
+                            language: {
+                                search: "<i class='fas fa-search'></i>",
+                                searchPlaceholder: "Search subjects..."
+                            }
+                        });
+                    }
+
+                    // Add event listeners if the search functionality exists
+                    if ($('#academicYear').length) {
+                        // Add event listener for academic year change
+                        $('#academicYear').on('change', function() {
+                            loadSubjects();
+                        });
+
+                        // Add event listeners for real-time search
+                        $('#searchTerm').on('input', debounce(function() {
+                            searchFaculty();
+                        }, 300));
+
+                        // Add event listeners for all filter changes
+                        $('#semester, #section, #subject, #academicYear').on('change', function() {
+                            searchFaculty();
+                        });
+
+                        // Add event listeners for search and reset buttons
+                        $('#searchButton').on('click', function() {
+                            searchFaculty();
+                        });
+
+                        $('#resetButton').on('click', function() {
+                            resetFilters();
+                        });
+
+                        // Initial search on page load
+                        searchFaculty();
+                    }
+                });
             </script>
         <?php endif; ?>
-    </div>
-
-    <div class="notification" id="notification"></div>
-</body>
+    </body>
 </html>

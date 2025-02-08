@@ -98,7 +98,6 @@ CREATE TABLE faculty (
 -- Add index for faculty_id
 CREATE INDEX idx_faculty_id ON faculty(faculty_id);
 -- Create students table
--- Create students table
 CREATE TABLE students (
     id INT AUTO_INCREMENT PRIMARY KEY,
     roll_number VARCHAR(20) NOT NULL UNIQUE,
@@ -108,7 +107,7 @@ CREATE TABLE students (
     password VARCHAR(255) NOT NULL,
     department_id INT NOT NULL,
     batch_id INT NOT NULL,
-    section VARCHAR(1) NOT NULL,
+    section VARCHAR(1) COLLATE utf8mb4_unicode_ci NOT NULL,
     address TEXT,
     phone VARCHAR(15),
     is_active BOOLEAN DEFAULT TRUE,
@@ -152,7 +151,7 @@ CREATE TABLE subject_assignments (
     academic_year_id INT NOT NULL,
     year INT NOT NULL,
     semester INT NOT NULL,
-    section VARCHAR(1) NOT NULL,
+    section VARCHAR(1) COLLATE utf8mb4_unicode_ci NOT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (subject_id) REFERENCES subjects(id),
@@ -162,46 +161,6 @@ CREATE TABLE subject_assignments (
     CONSTRAINT chk_subject_semester CHECK (semester BETWEEN 1 AND 8),
     UNIQUE KEY unique_subject_assignment (subject_id, academic_year_id, year, semester, section)
 );
-
--- Add indexes for better performance
-CREATE INDEX idx_subject_assignments_faculty ON subject_assignments(faculty_id);
-CREATE INDEX idx_subject_assignments_academic_year ON subject_assignments(academic_year_id);
-CREATE INDEX idx_subject_assignments_active ON subject_assignments(is_active);
-
--- Migration script for existing data
-INSERT INTO subject_assignments (
-    subject_id,
-    faculty_id,
-    academic_year_id,
-    year,
-    semester,
-    section,
-    is_active,
-    created_at
-)
-SELECT 
-    id as subject_id,
-    faculty_id,
-    academic_year_id,
-    year,
-    semester,
-    section,
-    is_active,
-    created_at
-FROM subjects;
-
--- Update feedback table foreign key
-ALTER TABLE feedback 
-DROP FOREIGN KEY feedback_ibfk_2,
-ADD CONSTRAINT feedback_ibfk_2 
-FOREIGN KEY (subject_id) REFERENCES subjects(id);
-
--- Update course_outcomes table foreign key
-ALTER TABLE course_outcomes 
-DROP FOREIGN KEY course_outcomes_ibfk_1,
-ADD CONSTRAINT course_outcomes_ibfk_1 
-FOREIGN KEY (subject_id) REFERENCES subjects(id);
-
 -- Create course outcomes table
 CREATE TABLE course_outcomes (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -227,8 +186,8 @@ CREATE TABLE feedback_statements (
 CREATE TABLE feedback (
     id INT AUTO_INCREMENT PRIMARY KEY,
     student_id INT NOT NULL,
-    subject_id INT NOT NULL,
-    academic_year_id INT NOT NULL,
+    assignment_id INT NOT NULL,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     comments TEXT,
     course_effectiveness_avg DECIMAL(3,2),
     teaching_effectiveness_avg DECIMAL(3,2),
@@ -236,12 +195,10 @@ CREATE TABLE feedback (
     assessment_learning_avg DECIMAL(3,2),
     course_outcomes_avg DECIMAL(3,2),
     cumulative_avg DECIMAL(3,2),
-    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,  -- Added this line
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (student_id) REFERENCES students(id),
-    FOREIGN KEY (subject_id) REFERENCES subjects(id),
-    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id),
-    UNIQUE KEY unique_feedback (student_id, subject_id, academic_year_id)
+    FOREIGN KEY (assignment_id) REFERENCES subject_assignments(id),
+    UNIQUE KEY unique_feedback (student_id, assignment_id)
 );
 -- Create feedback_ratings table
 CREATE TABLE feedback_ratings (
@@ -249,7 +206,6 @@ CREATE TABLE feedback_ratings (
     feedback_id INT NOT NULL,
     statement_id INT NOT NULL,
     rating INT NOT NULL,
-    section VARCHAR(50) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (feedback_id) REFERENCES feedback(id),
     FOREIGN KEY (statement_id) REFERENCES feedback_statements(id),
@@ -310,9 +266,7 @@ CREATE TABLE notifications (
 );
 
 -- Create indexes for better performance
-CREATE INDEX idx_feedback_academic_year ON feedback(academic_year_id);
-CREATE INDEX idx_feedback_subject ON feedback(subject_id);
-CREATE INDEX idx_feedback_student ON feedback(student_id);
+
 CREATE INDEX idx_subject_faculty ON subjects(faculty_id);
 CREATE INDEX idx_subject_department ON subjects(department_id);
 CREATE INDEX idx_student_department ON students(department_id);
@@ -320,42 +274,65 @@ CREATE INDEX idx_faculty_department ON faculty(department_id);
 CREATE INDEX idx_exit_survey_academic_year ON exit_surveys(academic_year_id);
 CREATE INDEX idx_exit_survey_department ON exit_surveys(department_id);
 CREATE INDEX idx_feedback_created ON feedback(created_at);
-CREATE INDEX idx_feedback_ratings_section ON feedback_ratings(section);
+
 CREATE INDEX idx_subjects_academic_year ON subjects(academic_year_id);
 CREATE INDEX idx_students_batch ON students(batch_id);
 CREATE INDEX idx_faculty_active ON faculty(is_active);
 CREATE INDEX idx_hods_active ON hods(is_active);
 
--- Create views for data analysis
-CREATE OR REPLACE VIEW section_wise_feedback_summary AS
+
+-- Add indexes for better performance
+CREATE INDEX idx_subject_assignments_faculty ON subject_assignments(faculty_id);
+CREATE INDEX idx_subject_assignments_academic_year ON subject_assignments(academic_year_id);
+CREATE INDEX idx_subject_assignments_active ON subject_assignments(is_active);
+
+-- Migration script for existing data
+INSERT INTO subject_assignments (
+    subject_id,
+    faculty_id,
+    academic_year_id,
+    year,
+    semester,
+    section,
+    is_active,
+    created_at
+)
 SELECT 
-    f.subject_id,
-    s.name AS subject_name,
-    fr.section,
-    COUNT(DISTINCT f.id) AS total_responses,
-    AVG(fr.rating) AS average_rating
-FROM feedback f
-JOIN subjects s ON f.subject_id = s.id
-JOIN feedback_ratings fr ON f.id = fr.feedback_id
-GROUP BY f.subject_id, fr.section;
+    id as subject_id,
+    faculty_id,
+    academic_year_id,
+    year,
+    semester,
+    section,
+    is_active,
+    created_at
+FROM subjects;
+
+
+
+-- Create views for data analysis
+
 
 CREATE OR REPLACE VIEW feedback_summary AS
 SELECT 
-    f.subject_id,
+    sa.id as assignment_id,
+    s.code,
     s.name AS subject_name,
-    s.faculty_id,
-    fc.name AS faculty_name,
+    f.name AS faculty_name,
     d.name AS department_name,
     ay.year_range AS academic_year,
-    COUNT(DISTINCT f.id) AS total_feedback,
-    AVG(fr.rating) AS average_rating
-FROM feedback f
-JOIN subjects s ON f.subject_id = s.id
-JOIN faculty fc ON s.faculty_id = fc.id
+    sa.year,
+    sa.semester,
+    sa.section,
+    COUNT(DISTINCT fb.id) AS total_feedback,
+    AVG(fb.cumulative_avg) AS average_rating
+FROM subject_assignments sa
+JOIN subjects s ON sa.subject_id = s.id
+JOIN faculty f ON sa.faculty_id = f.id
 JOIN departments d ON s.department_id = d.id
-JOIN academic_years ay ON f.academic_year_id = ay.id
-JOIN feedback_ratings fr ON f.id = fr.feedback_id
-GROUP BY f.subject_id, s.faculty_id, ay.id;
+JOIN academic_years ay ON sa.academic_year_id = ay.id
+LEFT JOIN feedback fb ON sa.id = fb.assignment_id
+GROUP BY sa.id;
 
 -- Stored Procedures
 DELIMITER //
@@ -368,20 +345,17 @@ CREATE PROCEDURE GetFacultyFeedbackSummary(
 BEGIN
     SELECT 
         s.name AS subject_name,
-        s.semester,
-        fr.section,
+        sa.semester,
+        sa.section,
         COUNT(DISTINCT f.id) AS feedback_count,
-        AVG(fr.rating) AS average_rating,
-        MIN(fr.rating) AS min_rating,
-        MAX(fr.rating) AS max_rating,
-        STDDEV(fr.rating) AS rating_deviation
-    FROM subjects s
-    LEFT JOIN feedback f ON s.id = f.subject_id
-    LEFT JOIN feedback_ratings fr ON f.id = fr.feedback_id
-    WHERE s.faculty_id = faculty_id 
-    AND f.academic_year_id = academic_year_id
-    GROUP BY s.id, s.semester, fr.section
-    ORDER BY s.semester, fr.section, average_rating DESC;
+        AVG(fb.cumulative_avg) AS average_rating
+    FROM subject_assignments sa
+    JOIN subjects s ON sa.subject_id = s.id
+    LEFT JOIN feedback f ON sa.id = f.assignment_id
+    WHERE sa.faculty_id = faculty_id
+    AND sa.academic_year_id = academic_year_id
+    GROUP BY sa.id
+    ORDER BY sa.semester, sa.section;
 END//
 
 -- Calculate Feedback Averages
@@ -438,17 +412,17 @@ BEGIN
     VALUES (NEW.student_id, 'student', 
             'Submitted feedback', 
             JSON_OBJECT(
-                'subject_id', NEW.subject_id,
-                'academic_year_id', NEW.academic_year_id
+                'assignment_id', NEW.assignment_id
             ));
             
     INSERT INTO notifications (user_id, role, message)
     SELECT 
-        faculty_id,
+        sa.faculty_id,
         'faculty',
-        CONCAT('New feedback received for ', name)
-    FROM subjects
-    WHERE id = NEW.subject_id;
+        CONCAT('New feedback received for ', s.name)
+    FROM subject_assignments sa
+    JOIN subjects s ON sa.subject_id = s.id
+    WHERE sa.id = NEW.assignment_id;
 END//
 
 -- Insert default data
@@ -465,11 +439,13 @@ INSERT INTO academic_years (year_range, start_date, end_date, is_current) VALUES
 ('2023-24', '2023-05-01', '2024-05-31', FALSE),
 ('2024-25', '2024-05-01', '2025-05-31', TRUE);
 
-INSERT INTO batch_years (batch_name, admission_year, graduation_year) VALUES
-('2021-25', 2021, 2025),
-('2022-26', 2022, 2026),
-('2023-27', 2023, 2027),
-('2024-28', 2024, 2028);
+INSERT INTO batch_years (batch_name, admission_year, graduation_year, current_year_of_study) VALUES
+('2021-25', 2021, 2025, 4),
+('2022-26', 2022, 2026, 3),
+('2023-27', 2023, 2027, 2),
+('2024-28', 2024, 2028, 1);
+
+
 
 -- Insert feedback statements for all sections
 INSERT INTO feedback_statements (statement, section, is_active) VALUES

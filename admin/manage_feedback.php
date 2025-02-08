@@ -33,26 +33,24 @@ $query = "SELECT
     sa.id as assignment_id,
     sa.year,
     sa.semester,
-    sa.section COLLATE utf8mb4_unicode_ci as section,
+    sa.section,
     f.id as faculty_id,
     f.name as faculty_name,
     d.name as department_name,
     ay.year_range as academic_year,
-    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.id END) as feedback_count,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.course_effectiveness_avg END), 2) as course_effectiveness,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.teaching_effectiveness_avg END), 2) as teaching_effectiveness,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.resources_admin_avg END), 2) as resources_admin,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.assessment_learning_avg END), 2) as assessment_learning,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.course_outcomes_avg END), 2) as course_outcomes,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.cumulative_avg END), 2) as overall_rating
+    COUNT(DISTINCT fb.id) as feedback_count,
+    ROUND(AVG(fb.course_effectiveness_avg), 2) as course_effectiveness,
+    ROUND(AVG(fb.teaching_effectiveness_avg), 2) as teaching_effectiveness,
+    ROUND(AVG(fb.resources_admin_avg), 2) as resources_admin,
+    ROUND(AVG(fb.assessment_learning_avg), 2) as assessment_learning,
+    ROUND(AVG(fb.course_outcomes_avg), 2) as course_outcomes,
+    ROUND(AVG(fb.cumulative_avg), 2) as overall_rating
 FROM subjects sub
 JOIN subject_assignments sa ON sub.id = sa.subject_id
 JOIN faculty f ON sa.faculty_id = f.id
 JOIN departments d ON sub.department_id = d.id
 JOIN academic_years ay ON sa.academic_year_id = ay.id
-LEFT JOIN feedback fb ON sub.id = fb.subject_id 
-    AND fb.academic_year_id = sa.academic_year_id
-LEFT JOIN students s ON fb.student_id = s.id
+LEFT JOIN feedback fb ON fb.assignment_id = sa.id
 WHERE sub.is_active = 1 
 AND sa.is_active = 1";
 
@@ -81,15 +79,14 @@ $result = mysqli_query($conn, $query);
 
 // Update the overall statistics query
 $stats_query = "SELECT 
-    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.id END) as total_feedback,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.cumulative_avg END), 2) as avg_rating,
-    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.student_id END) as total_students,
+    COUNT(DISTINCT fb.id) as total_feedback,
+    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating,
+    COUNT(DISTINCT fb.student_id) as total_students,
     COUNT(DISTINCT sub.id) as total_subjects,
     COUNT(DISTINCT sa.faculty_id) as total_faculty
 FROM feedback fb
-JOIN subjects sub ON fb.subject_id = sub.id
-JOIN subject_assignments sa ON sub.id = sa.subject_id 
-    AND sa.academic_year_id = fb.academic_year_id
+JOIN subject_assignments sa ON fb.assignment_id = sa.id
+JOIN subjects sub ON sa.subject_id = sub.id
 JOIN students s ON fb.student_id = s.id
 WHERE sa.is_active = 1";
 
@@ -99,13 +96,12 @@ $stats = mysqli_fetch_assoc($stats_result);
 // Update the department-wise statistics query
 $dept_stats_query = "SELECT 
     d.name as department_name,
-    COUNT(DISTINCT CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.id END) as feedback_count,
-    ROUND(AVG(CASE WHEN s.section COLLATE utf8mb4_unicode_ci = sa.section COLLATE utf8mb4_unicode_ci THEN fb.cumulative_avg END), 2) as avg_rating
+    COUNT(DISTINCT fb.id) as feedback_count,
+    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
 FROM departments d
 LEFT JOIN subjects sub ON d.id = sub.department_id
 LEFT JOIN subject_assignments sa ON sub.id = sa.subject_id
-LEFT JOIN feedback fb ON sub.id = fb.subject_id 
-    AND fb.academic_year_id = sa.academic_year_id
+LEFT JOIN feedback fb ON fb.assignment_id = sa.id
 LEFT JOIN students s ON fb.student_id = s.id
 WHERE (sa.is_active = 1 OR sa.is_active IS NULL)
 GROUP BY d.id, d.name
