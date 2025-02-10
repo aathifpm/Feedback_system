@@ -243,7 +243,14 @@ switch ($role) {
                 CASE 
                     WHEN po_ratings IS NOT NULL 
                     THEN (
-                        SELECT CAST(REPLACE(REPLACE(po_ratings, '[', ''), ']', '') AS DECIMAL(10,2))
+                        SELECT AVG(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(BOTH '[]' FROM po_ratings), ',', n.n), ',', -1) AS DECIMAL(10,2)))
+                        FROM (
+                            SELECT 1 + units.i + tens.i * 10 n
+                            FROM (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) units
+                            CROSS JOIN (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) tens
+                            ORDER BY n
+                        ) n
+                        WHERE LENGTH(TRIM(BOTH '[]' FROM po_ratings)) - LENGTH(REPLACE(TRIM(BOTH '[]' FROM po_ratings), ',', '')) >= n.n - 1
                     )
                     ELSE 0 
                 END
@@ -252,7 +259,14 @@ switch ($role) {
                 CASE 
                     WHEN pso_ratings IS NOT NULL 
                     THEN (
-                        SELECT CAST(REPLACE(REPLACE(pso_ratings, '[', ''), ']', '') AS DECIMAL(10,2))
+                        SELECT AVG(CAST(SUBSTRING_INDEX(SUBSTRING_INDEX(TRIM(BOTH '[]' FROM pso_ratings), ',', n.n), ',', -1) AS DECIMAL(10,2)))
+                        FROM (
+                            SELECT 1 + units.i + tens.i * 10 n
+                            FROM (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) units
+                            CROSS JOIN (SELECT 0 i UNION SELECT 1 UNION SELECT 2 UNION SELECT 3 UNION SELECT 4 UNION SELECT 5 UNION SELECT 6 UNION SELECT 7 UNION SELECT 8 UNION SELECT 9) tens
+                            ORDER BY n
+                        ) n
+                        WHERE LENGTH(TRIM(BOTH '[]' FROM pso_ratings)) - LENGTH(REPLACE(TRIM(BOTH '[]' FROM pso_ratings), ',', '')) >= n.n - 1
                     )
                     ELSE 0 
                 END
@@ -1664,6 +1678,76 @@ switch ($role) {
         .rating-good { background: #3498db; }
         .rating-average { background: #f1c40f; }
         .rating-poor { background: #e74c3c; }
+
+        .initial-state {
+            text-align: center;
+            padding: 3rem;
+            background: var(--bg-color);
+            border-radius: 15px;
+            box-shadow: var(--inner-shadow);
+            margin: 2rem 0;
+        }
+
+        .initial-state i {
+            font-size: 3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .initial-state p {
+            color: #666;
+            font-size: 1.2rem;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        .modal-content {
+            position: relative;
+            background: var(--bg-color);
+            margin: 10% auto;
+            padding: 2rem;
+            width: 90%;
+            max-width: 500px;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .close {
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-color);
+        }
+
+        .form-actions {
+            text-align: right;
+            margin-top: 2rem;
+        }
     </style>
 </head>
 <body>
@@ -1990,94 +2074,277 @@ switch ($role) {
                         </p>
                     </div>
 
-                    <!-- Search and Filter Form -->
+                    <!-- Search and Filter Container -->
                     <div class="search-filter-container">
                         <form id="facultySearchForm" class="search-filter-form">
-                            <!-- Search Box -->
                             <div class="search-box">
-                                <label for="searchTerm">Search Faculty</label>
+                                <label>Search Faculty</label>
                                 <div class="search-input-group">
                                     <i class="fas fa-search search-icon"></i>
-                                    <input type="text" 
-                                           id="searchTerm" 
-                                           name="searchTerm" 
-                                           placeholder="Enter faculty name or ID"
-                                           class="input-field">
+                                    <input type="text" id="facultySearch" class="input-field" placeholder="Search by name or faculty ID...">
                                 </div>
                             </div>
 
-                            <!-- Filters -->
                             <div class="filter-group">
                                 <div class="filter-item">
-                                    <label for="academicYear">Academic Year</label>
+                                    <label>Experience</label>
                                     <div class="select-wrapper">
-                                        <select id="academicYear" name="academicYear" class="input-field" required>
-                                            <option value="">Select Academic Year</option>
+                                        <select id="experienceFilter" class="input-field">
+                                            <option value="">All Experience</option>
+                                            <option value="0-5">0-5 years</option>
+                                            <option value="6-10">6-10 years</option>
+                                            <option value="11-15">11-15 years</option>
+                                            <option value="15+">15+ years</option>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+
+                                <div class="filter-item">
+                                    <label>Designation</label>
+                                    <div class="select-wrapper">
+                                        <select id="designationFilter" class="input-field">
+                                            <option value="">All Designations</option>
+                                            <option value="Assistant Professor">Assistant Professor</option>
+                                            <option value="Associate Professor">Associate Professor</option>
+                                            <option value="Professor">Professor</option>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+
+                                <div class="filter-item">
+                                    <label>Sort By</label>
+                                    <div class="select-wrapper">
+                                        <select id="sortBy" class="input-field">
+                                            <option value="name">Name</option>
+                                            <option value="rating">Rating</option>
+                                            <option value="experience">Experience</option>
+                                            <option value="feedback_count">Feedback Count</option>
+                                        </select>
+                                        <i class="fas fa-chevron-down select-icon"></i>
+                                    </div>
+                                </div>
+                                    </div>
+                        </form>
+                    </div>
+
+                    <!-- Faculty Results Container -->
+                    <div id="facultyResults" class="faculty-results">
+                        <div class="initial-state">
+                            <i class="fas fa-search"></i>
+                            <p>Enter faculty name or ID to search</p>
+                                </div>
+                            </div>
+
+                    <!-- Report Generation Modal -->
+                    <div class="modal" id="reportModal">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h3>Generate Faculty Report</h3>
+                                <span class="close">&times;</span>
+                            </div>
+                            <div class="modal-body">
+                                <form id="reportForm">
+                                    <div class="form-group">
+                                        <label>Academic Year</label>
+                                        <select id="reportAcademicYear" class="input-field" required>
                                             <?php
-                                            $academic_years_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
+                                            $academic_years_query = "SELECT * FROM academic_years ORDER BY year_range DESC";
                                             $academic_years_result = mysqli_query($conn, $academic_years_query);
                                             while ($year = mysqli_fetch_assoc($academic_years_result)) {
-                                                $selected = ($year['id'] == $current_academic_year['id']) ? 'selected' : '';
+                                                $selected = $year['is_current'] ? 'selected' : '';
                                                 echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
                                             }
                                             ?>
                                         </select>
-                                        <i class="fas fa-chevron-down select-icon"></i>
                                     </div>
-                                </div>
-
-                                <div class="filter-item">
-                                    <label for="semester">Semester</label>
-                                    <div class="select-wrapper">
-                                        <select id="semester" name="semester" class="input-field">
-                                            <option value="">Select Semester</option>
+                                    <div class="form-group">
+                                        <label>Semester</label>
+                                        <select id="reportSemester" class="input-field">
+                                            <option value="">All Semesters</option>
                                             <?php for($i = 1; $i <= 8; $i++): ?>
                                                 <option value="<?php echo $i; ?>">Semester <?php echo $i; ?></option>
                                             <?php endfor; ?>
                                         </select>
-                                        <i class="fas fa-chevron-down select-icon"></i>
                                     </div>
-                                </div>
-
-                                <div class="filter-item">
-                                    <label for="section">Section</label>
-                                    <div class="select-wrapper">
-                                        <select id="section" name="section" class="input-field">
-                                            <option value="">Select Section</option>
-                                            <?php for($i = 65; $i <= 70; $i++): ?>
-                                                <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
-                                            <?php endfor; ?>
-                                        </select>
-                                        <i class="fas fa-chevron-down select-icon"></i>
-                                    </div>
-                                </div>
-
-                                <div class="filter-item">
-                                    <label for="subject">Subject</label>
-                                    <div class="select-wrapper">
-                                        <select id="subject" name="subject" class="input-field">
-                                            <option value="">Select Subject</option>
-                                        </select>
-                                        <i class="fas fa-chevron-down select-icon"></i>
-                                    </div>
-                                </div>
-                            </div>
-
                             <div class="form-actions">
-                                <button type="button" class="btn btn-primary" id="searchButton">
-                                    <i class="fas fa-filter"></i> Apply Filters
-                                </button>
-                                <button type="button" class="btn btn-secondary" id="resetButton">
-                                    <i class="fas fa-undo"></i> Reset
+                                        <button type="submit" class="btn btn-primary">
+                                            <i class="fas fa-file-pdf"></i> Generate Report
                                 </button>
                             </div>
                         </form>
+                            </div>
+                        </div>
                     </div>
 
-                    <!-- Results Container -->
-                    <div id="facultyResults" class="faculty-results">
-                        <!-- Results will be loaded here via AJAX -->
+                    <!-- Add CSS for modal and initial state -->
+                    <style>
+                    .initial-state {
+                        text-align: center;
+                        padding: 3rem;
+                        background: var(--bg-color);
+                        border-radius: 15px;
+                        box-shadow: var(--inner-shadow);
+                        margin: 2rem 0;
+                    }
+
+                    .initial-state i {
+                        font-size: 3rem;
+                        color: var(--primary-color);
+                        margin-bottom: 1rem;
+                    }
+
+                    .initial-state p {
+                        color: #666;
+                        font-size: 1.2rem;
+                    }
+
+                    .modal {
+                        display: none;
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: rgba(0, 0, 0, 0.5);
+                        z-index: 1000;
+                    }
+
+                    .modal-content {
+                        position: relative;
+                        background: var(--bg-color);
+                        margin: 10% auto;
+                        padding: 2rem;
+                        width: 90%;
+                        max-width: 500px;
+                        border-radius: 15px;
+                        box-shadow: var(--shadow);
+                    }
+
+                    .modal-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 1.5rem;
+                    }
+
+                    .close {
+                        font-size: 1.5rem;
+                        cursor: pointer;
+                        color: #666;
+                    }
+
+                    .form-group {
+                        margin-bottom: 1.5rem;
+                    }
+
+                    .form-group label {
+                        display: block;
+                        margin-bottom: 0.5rem;
+                        color: var(--text-color);
+                    }
+
+                    .form-actions {
+                        text-align: right;
+                        margin-top: 2rem;
+                    }
+                    </style>
+
+                    <!-- Modify JavaScript for search and report generation -->
+                    <script>
+                    $(document).ready(function() {
+                        let typingTimer;
+                        const doneTypingInterval = 500;
+                        
+                        // Function to update faculty results
+                        function updateFacultyResults() {
+                            const searchQuery = $('#facultySearch').val().trim();
+                            
+                            // Only search if query is not empty
+                            if (searchQuery.length < 2) {
+                                $('#facultyResults').html(`
+                                    <div class="initial-state">
+                                        <i class="fas fa-search"></i>
+                                        <p>Enter faculty name or ID to search</p>
                     </div>
+                                `);
+                                return;
+                            }
+                            
+                            const experience = $('#experienceFilter').val();
+                            const designation = $('#designationFilter').val();
+                            const sortBy = $('#sortBy').val();
+                            
+                            $.ajax({
+                                url: 'get_faculty_results.php',
+                                method: 'POST',
+                                data: {
+                                    search: searchQuery,
+                                    experience: experience,
+                                    designation: designation,
+                                    sort_by: sortBy,
+                                    department_id: <?php echo $user['department_id']; ?>
+                                },
+                                beforeSend: function() {
+                                    $('#facultyResults').html('<div class="loading"><i class="fas fa-spinner fa-spin"></i></div>');
+                                },
+                                success: function(response) {
+                                    $('#facultyResults').html(response);
+                                },
+                                error: function() {
+                                    $('#facultyResults').html('<div class="no-results">Error loading faculty data.</div>');
+                                }
+                            });
+                        }
+                        
+                        // Event handlers for search input with debouncing
+                        $('#facultySearch').on('keyup', function() {
+                            clearTimeout(typingTimer);
+                            typingTimer = setTimeout(updateFacultyResults, doneTypingInterval);
+                        });
+                        
+                        $('#facultySearch').on('keydown', function() {
+                            clearTimeout(typingTimer);
+                        });
+                        
+                        // Event handlers for filters
+                        $('#experienceFilter, #designationFilter, #sortBy').on('change', function() {
+                            const searchQuery = $('#facultySearch').val().trim();
+                            if (searchQuery.length >= 2) {
+                                updateFacultyResults();
+                            }
+                        });
+
+                        // Modal handling
+                        $(document).on('click', '.generate-report-btn', function(e) {
+                            e.preventDefault();
+                            const facultyId = $(this).data('faculty-id');
+                            $('#reportForm').data('faculty-id', facultyId);
+                            $('#reportModal').show();
+                        });
+
+                        $('.close').click(function() {
+                            $('#reportModal').hide();
+                        });
+
+                        $(window).click(function(e) {
+                            if ($(e.target).is('.modal')) {
+                                $('.modal').hide();
+                            }
+                        });
+
+                        // Handle report generation
+                        $('#reportForm').on('submit', function(e) {
+                            e.preventDefault();
+                            const facultyId = $(this).data('faculty-id');
+                            const academicYear = $('#reportAcademicYear').val();
+                            const semester = $('#reportSemester').val();
+
+                            window.location.href = `generate_faculty_report.php?faculty_id=${facultyId}&academic_year=${academicYear}&semester=${semester}`;
+                        });
+                    });
+                    </script>
                 </div>
 
                 <!-- Exit Survey Analysis -->
@@ -2152,418 +2419,7 @@ switch ($role) {
                     <?php endif; ?>
                 </div>
             </div>
-
-            <!-- Subject Performance -->
-            <div class="content-section">
-                <h2 class="section-title">Subject Performance</h2>
-                <?php if (!empty($data['subjects'])): ?>
-                    <div class="table-container">
-                        <table id="subjectTable" class="table">
-                            <thead>
-                                <tr>
-                                    <th>Subject</th>
-                                    <th>Faculty</th>
-                                    <th>Year & Semester</th>
-                                    <th>Section</th>
-                                    <th>Feedback Count</th>
-                                    <th>Average Rating</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($data['subjects'] as $subject): ?>
-                                    <tr>
-                                        <td>
-                                            <strong><?php echo htmlspecialchars($subject['code']); ?></strong><br>
-                                            <?php echo htmlspecialchars($subject['name']); ?>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($subject['faculty_name']); ?></td>
-                                        <td>Year <?php echo $subject['year']; ?> - Sem <?php echo $subject['semester']; ?></td>
-                                        <td><?php echo htmlspecialchars($subject['section']); ?></td>
-                                        <td><?php echo $subject['feedback_count']; ?></td>
-                                        <td>
-                                            <span class="rating-badge <?php echo getRatingClass($subject['avg_rating']); ?>">
-                                                <?php echo number_format($subject['avg_rating'] ?? 0, 2); ?>
-                                            </span>
-                                        </td>
-                                        <td>
-                                            <a href="view_feedback_details.php?assignment_id=<?php echo $subject['assignment_id']; ?>" 
-                                               class="btn btn-primary btn-sm">
-                                                <i class="fas fa-chart-bar"></i> View Details
-                                            </a>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                    </div>
-                <?php else: ?>
-                    <p class="no-data">No subjects found for the current academic year.</p>
                 <?php endif; ?>
             </div>
-
-            <!-- Faculty Performance -->
-            <div class="content-section">
-                <h2 class="section-title">Faculty Performance</h2>
-                <?php if (!empty($data['faculty'])): ?>
-                    <div class="faculty-grid">
-                        <?php foreach ($data['faculty'] as $faculty): ?>
-                            <div class="faculty-card">
-                                <div class="faculty-header">
-                                    <h3><?php echo htmlspecialchars($faculty['name']); ?></h3>
-                                    <p class="faculty-id"><?php echo htmlspecialchars($faculty['faculty_id']); ?></p>
-                                </div>
-                                <div class="faculty-details">
-                                    <p><i class="fas fa-graduation-cap"></i> <?php echo htmlspecialchars($faculty['designation']); ?></p>
-                                    <p><i class="fas fa-clock"></i> <?php echo $faculty['experience']; ?> years</p>
-                                    <p><i class="fas fa-book"></i> <?php echo $faculty['total_subjects']; ?> subjects</p>
-                                    <p><i class="fas fa-comments"></i> <?php echo $faculty['total_feedback']; ?> feedbacks</p>
-                                </div>
-                                
-                                <!-- Current Assignments -->
-                                <div class="faculty-assignments">
-                                    <h4>Current Assignments</h4>
-                                    <div class="assignments-grid">
-                                        <?php foreach ($faculty['sections'] as $index => $section): ?>
-                                            <div class="assignment-item">
-                                                <span class="section-badge"><?php echo htmlspecialchars($section); ?></span>
-                                                <?php if (isset($faculty['subjects'][$index])): ?>
-                                                    <span class="subject-name"><?php echo htmlspecialchars($faculty['subjects'][$index]); ?></span>
-                                                <?php endif; ?>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-
-                                <!-- Performance Metrics -->
-                                <div class="rating-categories">
-                                    <div class="rating-item">
-                                        <div class="rating-label">Overall Rating</div>
-                                        <div class="rating-bar">
-                                            <div class="rating-fill <?php echo getRatingClass($faculty['overall_avg']); ?>" 
-                                                 style="width: <?php echo ($faculty['overall_avg'] * 20); ?>%">
-                                                <?php echo $faculty['overall_avg']; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="rating-item">
-                                        <div class="rating-label">Course Effectiveness</div>
-                                        <div class="rating-bar">
-                                            <div class="rating-fill <?php echo getRatingClass($faculty['course_effectiveness']); ?>" 
-                                                 style="width: <?php echo ($faculty['course_effectiveness'] * 20); ?>%">
-                                                <?php echo $faculty['course_effectiveness']; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="rating-item">
-                                        <div class="rating-label">Teaching Effectiveness</div>
-                                        <div class="rating-bar">
-                                            <div class="rating-fill <?php echo getRatingClass($faculty['teaching_effectiveness']); ?>" 
-                                                 style="width: <?php echo ($faculty['teaching_effectiveness'] * 20); ?>%">
-                                                <?php echo $faculty['teaching_effectiveness']; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="rating-item">
-                                        <div class="rating-label">Assessment & Learning</div>
-                                        <div class="rating-bar">
-                                            <div class="rating-fill <?php echo getRatingClass($faculty['assessment_learning']); ?>" 
-                                                 style="width: <?php echo ($faculty['assessment_learning'] * 20); ?>%">
-                                                <?php echo $faculty['assessment_learning']; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div class="rating-item">
-                                        <div class="rating-label">Course Outcomes</div>
-                                        <div class="rating-bar">
-                                            <div class="rating-fill <?php echo getRatingClass($faculty['course_outcomes']); ?>" 
-                                                 style="width: <?php echo ($faculty['course_outcomes'] * 20); ?>%">
-                                                <?php echo $faculty['course_outcomes']; ?>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div class="faculty-actions">
-                                    <a href="view_faculty_report.php?faculty_id=<?php echo $faculty['id']; ?>" 
-                                       class="btn btn-primary">
-                                        <i class="fas fa-chart-line"></i> View Detailed Report
-                                    </a>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php else: ?>
-                    <p class="no-data">No faculty data available.</p>
-                <?php endif; ?>
-            </div>
-
-            <script>
-                // Common JavaScript functions
-                function searchFaculty() {
-                    const searchTerm = $('#searchTerm').val().trim();
-                    const academicYear = $('#academicYear').val();
-                    const semester = $('#semester').val();
-                    const section = $('#section').val();
-                    const subject = $('#subject').val();
-                    const departmentId = <?php echo isset($user['department_id']) ? $user['department_id'] : 0; ?>;
-
-                    // Show loading state
-                    $('#facultyResults').html('<div class="loading"><i class="fas fa-spinner fa-spin"></i> Loading...</div>');
-
-                    $.ajax({
-                        url: 'search_faculty.php',
-                        method: 'POST',
-                        data: {
-                            search_term: searchTerm,
-                            academic_year_id: academicYear,
-                            semester: semester,
-                            section: section,
-                            subject_id: subject,
-                            department_id: departmentId
-                        },
-                        success: function(response) {
-                            try {
-                                const faculty = JSON.parse(response);
-                                displayFacultyResults(faculty);
-                            } catch (e) {
-                                console.error('Error parsing faculty data:', e);
-                                showNotification('Error processing faculty data', 'error');
-                                $('#facultyResults').html('<div class="no-data"><i class="fas fa-exclamation-circle"></i><p>Error processing faculty data</p></div>');
-                            }
-                        },
-                        error: function(xhr, status, error) {
-                            console.error('AJAX Error:', error);
-                            showNotification('Error fetching faculty data', 'error');
-                            $('#facultyResults').html('<div class="no-data"><i class="fas fa-exclamation-circle"></i><p>Error fetching faculty data</p></div>');
-                        }
-                    });
-                }
-
-                function loadSubjects() {
-                    const academicYearId = $('#academicYear').val();
-                    const departmentId = <?php echo isset($user['department_id']) ? $user['department_id'] : 0; ?>;
-                    
-                    if (academicYearId) {
-                        $.ajax({
-                            url: 'get_subjects.php',
-                            method: 'POST',
-                            data: { 
-                                academic_year_id: academicYearId,
-                                department_id: departmentId
-                            },
-                            success: function(response) {
-                                try {
-                                    const subjects = JSON.parse(response);
-                                    let options = '<option value="">Select Subject</option>';
-                                    subjects.forEach(subject => {
-                                        options += `<option value="${subject.id}">${subject.code} - ${subject.name}</option>`;
-                                    });
-                                    $('#subject').html(options);
-                                    searchFaculty(); // Trigger search after loading subjects
-                                } catch (e) {
-                                    console.error('Error parsing subjects:', e);
-                                    showNotification('Error loading subjects', 'error');
-                                }
-                            },
-                            error: function(xhr, status, error) {
-                                console.error('AJAX Error:', error);
-                                showNotification('Error loading subjects', 'error');
-                            }
-                        });
-                    }
-                }
-
-                function displayFacultyResults(faculty) {
-                    const container = $('#facultyResults');
-                    container.empty();
-
-                    if (!Array.isArray(faculty) || faculty.length === 0) {
-                        container.html('<div class="no-data"><i class="fas fa-info-circle"></i><p>No faculty found matching the criteria.</p></div>');
-                        return;
-                    }
-
-                    const grid = $('<div class="faculty-grid"></div>');
-
-                    faculty.forEach(f => {
-                        const card = createFacultyCard(f);
-                        grid.append(card);
-                    });
-
-                    container.append(grid);
-                }
-
-                function createFacultyCard(faculty) {
-                    // Parse sections and subjects if they're strings
-                    const sections = faculty.sections ? faculty.sections.split(',') : [];
-                    const subjects = faculty.subjects ? faculty.subjects.split(',') : [];
-
-                    const card = $(`
-                        <div class="faculty-card">
-                            <div class="faculty-header">
-                                <h3>${escapeHtml(faculty.name)}</h3>
-                                <p class="faculty-id">${escapeHtml(faculty.faculty_id)}</p>
-                            </div>
-                            <div class="faculty-details">
-                                <p><i class="fas fa-graduation-cap"></i> ${escapeHtml(faculty.designation)}</p>
-                                <p><i class="fas fa-clock"></i> ${faculty.experience} years</p>
-                                <p><i class="fas fa-book"></i> ${faculty.total_subjects} subjects</p>
-                                <p><i class="fas fa-comments"></i> ${faculty.total_feedback} feedbacks</p>
-                            </div>
-                            
-                            <div class="faculty-assignments">
-                                <h4>Current Assignments</h4>
-                                <div class="assignments-grid">
-                                    ${createAssignmentsHtml(sections, subjects)}
-                                </div>
-                            </div>
-
-                            <div class="rating-categories">
-                                ${createRatingBar('Overall Rating', faculty.overall_avg)}
-                                ${createRatingBar('Course Effectiveness', faculty.course_effectiveness)}
-                                ${createRatingBar('Teaching Effectiveness', faculty.teaching_effectiveness)}
-                                ${createRatingBar('Assessment & Learning', faculty.assessment_learning)}
-                                ${createRatingBar('Course Outcomes', faculty.course_outcomes)}
-                            </div>
-
-                            <div class="faculty-actions">
-                                <a href="view_faculty_report.php?faculty_id=${faculty.id}" class="btn btn-primary">
-                                    <i class="fas fa-chart-line"></i> View Detailed Report
-                                </a>
-                            </div>
-                        </div>
-                    `);
-
-                    return card;
-                }
-
-                function createAssignmentsHtml(sections, subjects) {
-                    if (!sections.length) return '<p>No current assignments</p>';
-
-                    return sections.map((section, index) => `
-                        <div class="assignment-item">
-                            <span class="section-badge">${escapeHtml(section)}</span>
-                            ${subjects[index] ? `<span class="subject-name">${escapeHtml(subjects[index])}</span>` : ''}
-                        </div>
-                    `).join('');
-                }
-
-                function createRatingBar(label, rating) {
-                    const width = parseFloat(rating) * 20; // Convert rating to percentage
-                    const ratingClass = getRatingClass(rating);
-                    
-                    return `
-                        <div class="rating-item">
-                            <div class="rating-label">${label}</div>
-                            <div class="rating-bar">
-                                <div class="rating-fill ${ratingClass}" style="width: ${width}%">
-                                    ${rating}
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                }
-
-                function getRatingClass(rating) {
-                    rating = parseFloat(rating);
-                    if (rating >= 4.5) return 'rating-excellent';
-                    if (rating >= 4.0) return 'rating-good';
-                    if (rating >= 3.0) return 'rating-average';
-                    return 'rating-poor';
-                }
-
-                function resetFilters() {
-                    $('#searchTerm').val('');
-                    $('#academicYear').val($('#academicYear option:first').val());
-                    $('#semester').val('');
-                    $('#section').val('');
-                    $('#subject').val('');
-                    searchFaculty();
-                }
-
-                function showNotification(message, type) {
-                    const notification = $('<div>')
-                        .addClass(`notification ${type}`)
-                        .text(message)
-                        .appendTo('body')
-                        .fadeIn();
-                    
-                    setTimeout(() => {
-                        notification.fadeOut(() => notification.remove());
-                    }, 3000);
-                }
-
-                function escapeHtml(unsafe) {
-                    if (!unsafe) return '';
-                    return unsafe
-                        .toString()
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/"/g, "&quot;")
-                        .replace(/'/g, "&#039;");
-                }
-
-                // Debounce function to limit API calls
-                function debounce(func, wait) {
-                    let timeout;
-                    return function executedFunction(...args) {
-                        const later = () => {
-                            clearTimeout(timeout);
-                            func(...args);
-                        };
-                        clearTimeout(timeout);
-                        timeout = setTimeout(later, wait);
-                    };
-                }
-
-                // Initialize when document is ready
-                $(document).ready(function() {
-                    // Initialize DataTable for subject table if it exists
-                    if ($.fn.DataTable && $('#subjectTable').length) {
-                        $('#subjectTable').DataTable({
-                            pageLength: 10,
-                            order: [[5, 'desc']], 
-                            responsive: true,
-                            dom: '<"top"lf>rt<"bottom"ip><"clear">',
-                            language: {
-                                search: "<i class='fas fa-search'></i>",
-                                searchPlaceholder: "Search subjects..."
-                            }
-                        });
-                    }
-
-                    // Add event listeners if the search functionality exists
-                    if ($('#academicYear').length) {
-                        // Add event listener for academic year change
-                        $('#academicYear').on('change', function() {
-                            loadSubjects();
-                        });
-
-                        // Add event listeners for real-time search
-                        $('#searchTerm').on('input', debounce(function() {
-                            searchFaculty();
-                        }, 300));
-
-                        // Add event listeners for all filter changes
-                        $('#semester, #section, #subject, #academicYear').on('change', function() {
-                            searchFaculty();
-                        });
-
-                        // Add event listeners for search and reset buttons
-                        $('#searchButton').on('click', function() {
-                            searchFaculty();
-                        });
-
-                        $('#resetButton').on('click', function() {
-                            resetFilters();
-                        });
-
-                        // Initial search on page load
-                        searchFaculty();
-                    }
-                });
-            </script>
-        <?php endif; ?>
-    </body>
+</body>
 </html>

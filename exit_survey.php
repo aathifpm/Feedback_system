@@ -82,14 +82,49 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $pso_ratings = json_encode(isset($_POST['pso_ratings']) ? $_POST['pso_ratings'] : []);
         $program_satisfaction = json_encode(isset($_POST['program_satisfaction']) ? $_POST['program_satisfaction'] : []);
         $infrastructure_satisfaction = json_encode(isset($_POST['infrastructure_satisfaction']) ? $_POST['infrastructure_satisfaction'] : []);
-        $employment_status = json_encode([
-            'status' => $_POST['employment']['status'],
-            'employer_details' => $_POST['employment']['employer_details'] ?? '',
-            'starting_salary' => $_POST['employment']['starting_salary'] ?? '',
-            'job_offers' => $_POST['employment']['job_offers'] ?? '',
-            'satisfaction' => $_POST['employment']['satisfaction'] ?? '',
-            'interviews' => $_POST['employment']['interviews'] ?? ''
-        ]);
+        
+        // Prepare employment status data based on selected status
+        $employment_data = ['status' => $_POST['employment']['status']];
+        
+        switch ($_POST['employment']['status']) {
+            case 'employed':
+                $employment_data['employer_details'] = [
+                    'company' => $_POST['employment']['employer_details']['company'] ?? '',
+                    'position' => $_POST['employment']['employer_details']['position'] ?? '',
+                    'location' => $_POST['employment']['employer_details']['location'] ?? ''
+                ];
+                $employment_data['starting_salary'] = $_POST['employment']['starting_salary'] ?? '';
+                $employment_data['job_offers'] = $_POST['employment']['job_offers'] ?? '';
+                $employment_data['satisfaction'] = $_POST['employment']['satisfaction'] ?? '';
+                break;
+                
+            case 'higher_studies':
+                $employment_data['higher_studies'] = [
+                    'institution' => $_POST['employment']['higher_studies']['institution'] ?? '',
+                    'course' => $_POST['employment']['higher_studies']['course'] ?? '',
+                    'location' => $_POST['employment']['higher_studies']['location'] ?? '',
+                    'admission_type' => $_POST['employment']['higher_studies']['admission_type'] ?? ''
+                ];
+                break;
+                
+            case 'self_employed':
+                $employment_data['self_employed'] = [
+                    'business_name' => $_POST['employment']['self_employed']['business_name'] ?? '',
+                    'business_type' => $_POST['employment']['self_employed']['business_type'] ?? '',
+                    'location' => $_POST['employment']['self_employed']['location'] ?? '',
+                    'monthly_revenue' => $_POST['employment']['self_employed']['monthly_revenue'] ?? ''
+                ];
+                break;
+                
+            case 'unemployed':
+                $employment_data['unemployed'] = [
+                    'reason' => $_POST['employment']['unemployed']['reason'] ?? '',
+                    'future_plans' => $_POST['employment']['unemployed']['future_plans'] ?? ''
+                ];
+                break;
+        }
+        
+        $employment_status = json_encode($employment_data);
 
         // Insert into exit_surveys table
         $query = "INSERT INTO exit_surveys (
@@ -380,6 +415,63 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 padding: 0.8rem;
             }
         }
+
+        .conditional-section {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            margin-top: 1rem;
+            box-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
+                       inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            transition: all 0.3s ease;
+        }
+
+        .conditional-section .form-group {
+            margin-bottom: 1.2rem;
+        }
+
+        .input-field {
+            transition: all 0.3s ease;
+        }
+
+        .input-field:focus {
+            box-shadow: var(--shadow);
+            transform: translateY(-2px);
+        }
+
+        select.input-field {
+            cursor: pointer;
+        }
+
+        textarea.input-field {
+            resize: vertical;
+            min-height: 100px;
+            border-radius: 15px;
+        }
+
+        /* Add transition for smooth show/hide effect */
+        .conditional-section {
+            opacity: 0;
+            max-height: 0;
+            overflow: hidden;
+            transition: opacity 0.3s ease, max-height 0.3s ease;
+        }
+
+        .conditional-section[style*="display: block"] {
+            opacity: 1;
+            max-height: 2000px; /* Large enough to fit content */
+        }
+
+        /* Add visual feedback for required fields */
+        .input-field[required] {
+            border-left: 3px solid var(--primary-color);
+        }
+
+        .input-field.error {
+            border-color: #dc3545;
+            box-shadow: inset 6px 6px 10px 0 rgba(220, 53, 69, 0.2),
+                       inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
@@ -415,13 +507,57 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             return valid;
         }
 
-        document.getElementById('employment_status').addEventListener('change', function() {
-            const employmentDetails = document.getElementById('employment_details');
-            if (this.value === 'employed') {
-                employmentDetails.style.display = 'block';
-            } else {
-                employmentDetails.style.display = 'none';
+        // Function to handle employment status change
+        function handleEmploymentStatusChange() {
+            const selectedStatus = document.getElementById('employment_status').value;
+            const allSections = ['employed_details', 'higher_studies_details', 'self_employed_details', 'unemployed_details'];
+            
+            // First hide all sections and remove required attributes
+            allSections.forEach(sectionId => {
+                const section = document.getElementById(sectionId);
+                if (section) {
+                    section.style.display = 'none';
+                    const inputs = section.querySelectorAll('input, select, textarea');
+                    inputs.forEach(input => {
+                        input.required = false;
+                        input.value = ''; // Clear values when hidden
+                    });
+                }
+            });
+
+            // Show selected section and set required fields
+            if (selectedStatus) {
+                const selectedSection = document.getElementById(selectedStatus + '_details');
+                if (selectedSection) {
+                    selectedSection.style.display = 'block';
+                    const inputs = selectedSection.querySelectorAll('input, select');
+                    inputs.forEach(input => {
+                        if (!input.classList.contains('optional')) {
+                            input.required = true;
+                        }
+                    });
+                }
             }
+        }
+
+        // Add event listeners when document is ready
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add change event listener to employment status select
+            const employmentStatus = document.getElementById('employment_status');
+            if (employmentStatus) {
+                employmentStatus.addEventListener('change', handleEmploymentStatusChange);
+            }
+
+            // Add animation effects to input fields
+            document.querySelectorAll('.input-field').forEach(input => {
+                input.addEventListener('focus', function() {
+                    this.parentElement.style.transform = 'translateY(-5px)';
+                });
+
+                input.addEventListener('blur', function() {
+                    this.parentElement.style.transform = 'translateY(0)';
+                });
+            });
         });
     </script>
 </head>
@@ -583,33 +719,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 <div class="form-group">
                     <label for="employment_status">Status of employment after completion of degree:</label>
-                    <select id="employment_status" name="employment[status]" required>
+                    <select id="employment_status" name="employment[status]" class="input-field" required>
                         <option value="">Select Status</option>
                         <option value="employed">Employed</option>
-                        <option value="unemployed">Unemployed</option>
                         <option value="higher_studies">Pursuing Higher Studies</option>
+                        <option value="self_employed">Self Employed</option>
+                        <option value="unemployed">Unemployed</option>
                     </select>
                 </div>
                 
-                <div id="employment_details" class="conditional-section">
+                <!-- Employed Section -->
+                <div id="employed_details" class="conditional-section" style="display: none;">
                     <div class="form-group">
-                        <label for="employer_details">Employer Details:</label>
-                        <textarea id="employer_details" name="employment[employer_details]" rows="2"></textarea>
+                        <label for="company_name">Company Name:</label>
+                        <input type="text" id="company_name" name="employment[employer_details][company]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="job_title">Job Title/Position:</label>
+                        <input type="text" id="job_title" name="employment[employer_details][position]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="job_location">Job Location:</label>
+                        <input type="text" id="job_location" name="employment[employer_details][location]" class="input-field">
                     </div>
                     
                     <div class="form-group">
-                        <label for="starting_salary">Starting Salary (per annum):</label>
-                        <input type="number" id="starting_salary" name="employment[starting_salary]" min="0">
+                        <label for="starting_salary">Annual Package (LPA):</label>
+                        <input type="number" id="starting_salary" name="employment[starting_salary]" min="0" step="0.1" class="input-field">
                     </div>
                     
                     <div class="form-group">
                         <label for="job_offers">Number of job offers received:</label>
-                        <input type="number" id="job_offers" name="employment[job_offers]" min="0">
+                        <input type="number" id="job_offers" name="employment[job_offers]" min="0" class="input-field">
                     </div>
                     
                     <div class="form-group">
-                        <label for="job_satisfaction">Satisfaction with job offers received:</label>
-                        <select id="job_satisfaction" name="employment[satisfaction]">
+                        <label for="job_satisfaction">Satisfaction with current job:</label>
+                        <select id="job_satisfaction" name="employment[satisfaction]" class="input-field">
                             <option value="">Select Satisfaction Level</option>
                             <option value="very_satisfied">Very Satisfied</option>
                             <option value="satisfied">Satisfied</option>
@@ -618,10 +766,76 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <option value="very_dissatisfied">Very Dissatisfied</option>
                         </select>
                     </div>
-                    
+                </div>
+
+                <!-- Higher Studies Section -->
+                <div id="higher_studies_details" class="conditional-section" style="display: none;">
                     <div class="form-group">
-                        <label for="interviews">Number of interview opportunities:</label>
-                        <input type="number" id="interviews" name="employment[interviews]" min="0">
+                        <label for="institution_name">Institution Name:</label>
+                        <input type="text" id="institution_name" name="employment[higher_studies][institution]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="course_name">Course/Program Name:</label>
+                        <input type="text" id="course_name" name="employment[higher_studies][course]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="study_location">Location:</label>
+                        <input type="text" id="study_location" name="employment[higher_studies][location]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="admission_type">Admission Type:</label>
+                        <select id="admission_type" name="employment[higher_studies][admission_type]" class="input-field">
+                            <option value="">Select Admission Type</option>
+                            <option value="regular">Regular</option>
+                            <option value="scholarship">Scholarship</option>
+                            <option value="sponsored">Sponsored</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Self Employed Section -->
+                <div id="self_employed_details" class="conditional-section" style="display: none;">
+                    <div class="form-group">
+                        <label for="business_name">Business/Venture Name:</label>
+                        <input type="text" id="business_name" name="employment[self_employed][business_name]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="business_type">Type of Business:</label>
+                        <input type="text" id="business_type" name="employment[self_employed][business_type]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="business_location">Location:</label>
+                        <input type="text" id="business_location" name="employment[self_employed][location]" class="input-field">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="monthly_revenue">Average Monthly Revenue:</label>
+                        <input type="number" id="monthly_revenue" name="employment[self_employed][monthly_revenue]" min="0" class="input-field">
+                    </div>
+                </div>
+
+                <!-- Unemployed Section -->
+                <div id="unemployed_details" class="conditional-section" style="display: none;">
+                    <div class="form-group">
+                        <label for="reason_unemployed">Reason for being unemployed:</label>
+                        <select id="reason_unemployed" name="employment[unemployed][reason]" class="input-field">
+                            <option value="">Select Reason</option>
+                            <option value="searching">Still Searching</option>
+                            <option value="preparing">Preparing for Higher Studies</option>
+                            <option value="health">Health Issues</option>
+                            <option value="family">Family Responsibilities</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="future_plans">Future Plans:</label>
+                        <textarea id="future_plans" name="employment[unemployed][future_plans]" rows="3" class="input-field"></textarea>
                     </div>
                 </div>
             </div>
