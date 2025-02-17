@@ -1,6 +1,6 @@
 <?php
-session_start();
-session_destroy();
+require_once 'session_config.php';
+BrowserSessionHandler::destroySession();
 header('Location: index.php');
 exit();
 ?>

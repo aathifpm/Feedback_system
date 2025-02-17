@@ -18,10 +18,11 @@ $query = "SELECT f.*,
           d.name AS department_name,
           ay.year_range AS academic_year
           FROM feedback f
-          JOIN subjects s ON f.subject_id = s.id
-          JOIN faculty fac ON s.faculty_id = fac.id
+          JOIN subject_assignments sa ON f.assignment_id = sa.id
+          JOIN subjects s ON sa.subject_id = s.id
+          JOIN faculty fac ON sa.faculty_id = fac.id
           JOIN departments d ON s.department_id = d.id
-          JOIN academic_years ay ON f.academic_year_id = ay.id
+          JOIN academic_years ay ON sa.academic_year_id = ay.id
           WHERE f.id = ? AND f.student_id = ?";
 
 $stmt = mysqli_prepare($conn, $query);

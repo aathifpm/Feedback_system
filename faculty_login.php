@@ -46,8 +46,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 // Helper functions
 function checkLoginAttempts($ip) {
-    // Implementation for rate limiting
-    return 0; // Placeholder
+    global $conn;
+    
+    // Check failed attempts in the last 15 minutes
+    $query = "SELECT COUNT(*) as attempts 
+              FROM user_logs 
+              WHERE ip_address = ? 
+              AND action = 'login' 
+              AND status = 'failure' 
+              AND created_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)";
+              
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, "s", $ip);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $row = mysqli_fetch_assoc($result);
+    
+    return $row['attempts'];
+}
+
+function recordFailedAttempt($ip) {
+    global $conn;
+    
+    // Log the failed attempt
+    $details = json_encode([
+        'ip_address' => $ip,
+        'user_agent' => $_SERVER['HTTP_USER_AGENT']
+    ]);
+    
+    $query = "INSERT INTO user_logs (user_id, role, action, details, status, ip_address, user_agent) 
+              VALUES (0, 'faculty', 'login', ?, 'failure', ?, ?)";
+              
+    $stmt = mysqli_prepare($conn, $query);
+    mysqli_stmt_bind_param($stmt, "sss", 
+        $details,
+        $ip,
+        $_SERVER['HTTP_USER_AGENT']
+    );
+    
+    mysqli_stmt_execute($stmt);
 }
 
 function generateRememberMeToken() {
