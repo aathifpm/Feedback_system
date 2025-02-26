@@ -1,0 +1,479 @@
+-- Set character set and collation
+SET NAMES utf8mb4;
+SET CHARACTER SET utf8mb4;
+
+-- Create and use database with proper character set
+CREATE DATABASE IF NOT EXISTS college_feedback CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE college_feedback;
+
+-- Set database character set and collation
+ALTER DATABASE college_feedback CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Create admin users table
+CREATE TABLE admin_users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login TIMESTAMP NULL,
+    password_changed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create departments table
+CREATE TABLE departments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(10) NOT NULL UNIQUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create academic_years table with May-May cycle
+CREATE TABLE academic_years (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    year_range VARCHAR(10) NOT NULL UNIQUE,
+    start_date DATE NOT NULL,  -- Will be May of start year
+    end_date DATE NOT NULL,    -- Will be May of end year
+    is_current BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_academic_dates CHECK (
+        MONTH(start_date) = 5 AND 
+        MONTH(end_date) = 5 AND 
+        YEAR(end_date) = YEAR(start_date) + 1
+    )
+);
+
+-- Create batch_years table for 4-year engineering batches
+CREATE TABLE batch_years (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    batch_name VARCHAR(10) NOT NULL UNIQUE,  -- Example: "2022-26"
+    admission_year INT NOT NULL,             -- Year of admission (2022)
+    graduation_year INT NOT NULL,            -- Year of graduation (2026)
+    current_year_of_study INT,              -- Calculated field (1 to 4)
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_batch_years CHECK (graduation_year = admission_year + 4)
+);
+
+-- Create feedback_periods table
+CREATE TABLE feedback_periods (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    academic_year_id INT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id),
+    CONSTRAINT chk_date_range CHECK (end_date >= start_date)
+);
+
+-- Create hods table
+CREATE TABLE hods (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    department_id INT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login TIMESTAMP NULL,
+    password_changed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(id)
+);
+
+-- Create faculty table
+CREATE TABLE faculty (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    faculty_id VARCHAR(20) NOT NULL UNIQUE,  -- Added this line
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    department_id INT NOT NULL,
+    designation VARCHAR(50),
+    experience INT,
+    qualification VARCHAR(100),
+    specialization VARCHAR(200),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login TIMESTAMP NULL,
+    password_changed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(id)
+);
+
+-- Add index for faculty_id
+CREATE INDEX idx_faculty_id ON faculty(faculty_id);
+-- Create students table
+CREATE TABLE students (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    roll_number VARCHAR(20) NOT NULL UNIQUE,
+    register_number VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    department_id INT NOT NULL,
+    batch_id INT NOT NULL,
+    section VARCHAR(1) COLLATE utf8mb4_unicode_ci NOT NULL,
+    address TEXT,
+    phone VARCHAR(15),
+    is_active BOOLEAN DEFAULT TRUE,
+    last_login TIMESTAMP NULL,
+    password_changed_at TIMESTAMP NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(id),
+    FOREIGN KEY (batch_id) REFERENCES batch_years(id)
+);
+-- Create password reset tokens table
+CREATE TABLE password_reset_tokens (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    user_type ENUM('admin', 'faculty', 'hod', 'student') NOT NULL,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    expires_at TIMESTAMP NOT NULL,
+    is_used BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_token (token),
+    INDEX idx_expiry (expires_at)
+);
+
+-- Create subjects table (Updated)
+CREATE TABLE subjects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    code VARCHAR(20) NOT NULL UNIQUE,
+    name VARCHAR(100) NOT NULL,
+    department_id INT NOT NULL,
+    credits INT NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (department_id) REFERENCES departments(id),
+    CONSTRAINT chk_credits CHECK (credits > 0)
+);
+
+-- Create subject_assignments table (New)
+CREATE TABLE subject_assignments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subject_id INT NOT NULL,
+    faculty_id INT NOT NULL,
+    academic_year_id INT NOT NULL,
+    year INT NOT NULL,
+    semester INT NOT NULL,
+    section VARCHAR(1) COLLATE utf8mb4_unicode_ci NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+    FOREIGN KEY (faculty_id) REFERENCES faculty(id),
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id),
+    CONSTRAINT chk_subject_year CHECK (year BETWEEN 1 AND 4),
+    CONSTRAINT chk_subject_semester CHECK (semester BETWEEN 1 AND 8),
+    UNIQUE KEY unique_subject_assignment (subject_id, academic_year_id, year, semester, section)
+);
+-- Create course outcomes table
+CREATE TABLE course_outcomes (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    subject_id INT NOT NULL,
+    outcome_number INT NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (subject_id) REFERENCES subjects(id),
+    UNIQUE KEY unique_course_outcome (subject_id, outcome_number)
+);
+
+-- Create feedback_statements table
+CREATE TABLE feedback_statements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    statement TEXT NOT NULL,
+    section VARCHAR(50) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_section (section)
+);
+
+-- Create feedback table
+CREATE TABLE feedback (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    assignment_id INT NOT NULL,
+    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    comments TEXT,
+    course_effectiveness_avg DECIMAL(3,2),
+    teaching_effectiveness_avg DECIMAL(3,2),
+    resources_admin_avg DECIMAL(3,2),
+    assessment_learning_avg DECIMAL(3,2),
+    course_outcomes_avg DECIMAL(3,2),
+    cumulative_avg DECIMAL(3,2),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id),
+    FOREIGN KEY (assignment_id) REFERENCES subject_assignments(id),
+    UNIQUE KEY unique_feedback (student_id, assignment_id)
+);
+-- Create feedback_ratings table
+CREATE TABLE feedback_ratings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    feedback_id INT NOT NULL,
+    statement_id INT NOT NULL,
+    rating INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (feedback_id) REFERENCES feedback(id),
+    FOREIGN KEY (statement_id) REFERENCES feedback_statements(id),
+    CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5)
+);
+-- Create exit_surveys table
+CREATE TABLE exit_surveys (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    academic_year_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    department_id INT NOT NULL,
+    roll_number VARCHAR(20) NOT NULL,
+    register_number VARCHAR(20) NOT NULL,
+    passing_year INT NOT NULL,
+    contact_address TEXT NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    contact_number VARCHAR(20) NOT NULL,
+    po_ratings JSON NOT NULL,
+    pso_ratings JSON NOT NULL,
+    employment_status JSON NOT NULL,
+    program_satisfaction JSON NOT NULL,
+    infrastructure_satisfaction JSON NOT NULL,
+    date DATE NOT NULL,
+    station VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id),
+    FOREIGN KEY (department_id) REFERENCES departments(id),
+    FOREIGN KEY (academic_year_id) REFERENCES academic_years(id),
+    UNIQUE KEY unique_exit_survey (student_id, academic_year_id)
+);
+
+-- Create user_logs table
+CREATE TABLE user_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    action VARCHAR(255) NOT NULL,
+    details JSON,
+    status ENUM('success', 'failure') NOT NULL DEFAULT 'success',
+    ip_address VARCHAR(45),
+    user_agent VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user (user_id, role),
+    INDEX idx_created (created_at)
+);
+
+-- Create notifications table
+CREATE TABLE notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    message TEXT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_role (user_id, role),
+    INDEX idx_unread (is_read)
+);
+
+-- Create indexes for better performance
+
+
+CREATE INDEX idx_subject_department ON subjects(department_id);
+CREATE INDEX idx_student_department ON students(department_id);
+CREATE INDEX idx_faculty_department ON faculty(department_id);
+CREATE INDEX idx_exit_survey_academic_year ON exit_surveys(academic_year_id);
+CREATE INDEX idx_exit_survey_department ON exit_surveys(department_id);
+CREATE INDEX idx_feedback_created ON feedback(created_at);
+
+
+CREATE INDEX idx_students_batch ON students(batch_id);
+CREATE INDEX idx_faculty_active ON faculty(is_active);
+CREATE INDEX idx_hods_active ON hods(is_active);
+
+
+-- Add indexes for better performance
+CREATE INDEX idx_subject_assignments_faculty ON subject_assignments(faculty_id);
+CREATE INDEX idx_subject_assignments_academic_year ON subject_assignments(academic_year_id);
+CREATE INDEX idx_subject_assignments_active ON subject_assignments(is_active);
+
+-- Create views for data analysis
+
+CREATE OR REPLACE VIEW feedback_summary AS
+SELECT 
+    sa.id as assignment_id,
+    s.code,
+    s.name AS subject_name,
+    f.name AS faculty_name,
+    d.name AS department_name,
+    ay.year_range AS academic_year,
+    sa.year,
+    sa.semester,
+    sa.section,
+    COUNT(DISTINCT fb.id) AS total_feedback,
+    AVG(fb.cumulative_avg) AS average_rating
+FROM subject_assignments sa
+JOIN subjects s ON sa.subject_id = s.id
+JOIN faculty f ON sa.faculty_id = f.id
+JOIN departments d ON s.department_id = d.id
+JOIN academic_years ay ON sa.academic_year_id = ay.id
+LEFT JOIN feedback fb ON sa.id = fb.assignment_id
+GROUP BY sa.id, s.code, s.name, f.name, d.name, ay.year_range, sa.year, sa.semester, sa.section;
+
+-- Stored Procedures (modified for Cloud SQL compatibility)
+DELIMITER //
+
+CREATE PROCEDURE GetFacultyFeedbackSummary(
+    IN faculty_id INT,
+    IN academic_year_id INT
+)
+BEGIN
+    SELECT 
+        s.name AS subject_name,
+        sa.semester,
+        sa.section,
+        COUNT(DISTINCT f.id) AS feedback_count,
+        AVG(fb.cumulative_avg) AS average_rating
+    FROM subject_assignments sa
+    JOIN subjects s ON sa.subject_id = s.id
+    LEFT JOIN feedback f ON sa.id = f.assignment_id
+    WHERE sa.faculty_id = faculty_id
+    AND sa.academic_year_id = academic_year_id
+    GROUP BY s.name, sa.semester, sa.section
+    ORDER BY sa.semester, sa.section;
+END //
+
+CREATE PROCEDURE CalculateFeedbackAverages(
+    IN feedback_id INT
+)
+BEGIN
+    DECLARE ce_avg, te_avg, ra_avg, al_avg, co_avg, cum_avg DECIMAL(3,2);
+    
+    SELECT AVG(rating) INTO ce_avg
+    FROM feedback_ratings 
+    WHERE feedback_id = feedback_id 
+    AND section = 'COURSE_EFFECTIVENESS';
+    
+    SELECT AVG(rating) INTO te_avg
+    FROM feedback_ratings 
+    WHERE feedback_id = feedback_id 
+    AND section = 'TEACHING_EFFECTIVENESS';
+    
+    SELECT AVG(rating) INTO ra_avg
+    FROM feedback_ratings 
+    WHERE feedback_id = feedback_id 
+    AND section = 'RESOURCES_ADMIN';
+    
+    SELECT AVG(rating) INTO al_avg
+    FROM feedback_ratings 
+    WHERE feedback_id = feedback_id 
+    AND section = 'ASSESSMENT_LEARNING';
+    
+    SELECT AVG(rating) INTO co_avg
+    FROM feedback_ratings 
+    WHERE feedback_id = feedback_id 
+    AND section = 'COURSE_OUTCOMES';
+    
+    SET cum_avg = (COALESCE(ce_avg, 0) + COALESCE(te_avg, 0) + COALESCE(ra_avg, 0) + 
+                  COALESCE(al_avg, 0) + COALESCE(co_avg, 0)) / 5;
+    
+    UPDATE feedback 
+    SET course_effectiveness_avg = ce_avg,
+        teaching_effectiveness_avg = te_avg,
+        resources_admin_avg = ra_avg,
+        assessment_learning_avg = al_avg,
+        course_outcomes_avg = co_avg,
+        cumulative_avg = cum_avg
+    WHERE id = feedback_id;
+END //
+
+DELIMITER ;
+
+-- Create trigger
+DELIMITER //
+
+CREATE TRIGGER after_feedback_insert
+AFTER INSERT ON feedback
+FOR EACH ROW
+BEGIN
+    INSERT INTO user_logs (user_id, role, action, details)
+    VALUES (NEW.student_id, 'student', 
+            'Submitted feedback', 
+            JSON_OBJECT(
+                'assignment_id', NEW.assignment_id
+            ));
+            
+    INSERT INTO notifications (user_id, role, message)
+    SELECT 
+        sa.faculty_id,
+        'faculty',
+        CONCAT('New feedback received for ', s.name)
+    FROM subject_assignments sa
+    JOIN subjects s ON sa.subject_id = s.id
+    WHERE sa.id = NEW.assignment_id;
+END //
+
+DELIMITER ;
+
+-- Insert default data
+INSERT INTO admin_users (username, email, password, is_active) VALUES
+('admin', 'admin@college.edu', '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', TRUE);
+
+INSERT INTO departments (name, code) VALUES
+('Computer Science and Engineering', 'CSE'),
+('Electronics and Communication Engineering', 'ECE'),
+('Mechanical Engineering', 'MECH'),
+('Information Technology', 'IT');
+
+INSERT INTO academic_years (year_range, start_date, end_date, is_current) VALUES
+('2023-24', '2023-05-01', '2024-05-31', FALSE),
+('2024-25', '2024-05-01', '2025-05-31', TRUE);
+
+INSERT INTO batch_years (batch_name, admission_year, graduation_year, current_year_of_study) VALUES
+('2021-25', 2021, 2025, 4),
+('2022-26', 2022, 2026, 3),
+('2023-27', 2023, 2027, 2),
+('2024-28', 2024, 2028, 1);
+
+
+
+-- Insert feedback statements for all sections
+INSERT INTO feedback_statements (statement, section, is_active) VALUES
+-- Course Effectiveness statements
+('Does the course stimulate self-interest?', 'COURSE_EFFECTIVENESS', TRUE),
+('The course was delivered as outlined in the syllabus.', 'COURSE_EFFECTIVENESS', TRUE),
+('The syllabus was explained at the beginning of the course.', 'COURSE_EFFECTIVENESS', TRUE),
+('Well-organized presentations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Given good examples and illustrations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Encouraged questions and class participation.', 'COURSE_EFFECTIVENESS', TRUE),
+('Learnt new techniques and methods from this course.', 'COURSE_EFFECTIVENESS', TRUE),
+('Understood the relevance of the course for real-world application.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course assignments and lectures complemented each other for design development/Projects.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course will help in competitive examinations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course objectives mapped with outcomes.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course outcomes help to attain Program Educational Objectives (PEOs).', 'COURSE_EFFECTIVENESS', TRUE),
+
+-- Teaching Effectiveness statements
+('Deliverance by course instructor stimulates interest.', 'TEACHING_EFFECTIVENESS', TRUE),
+('The instructor managed classroom time and place well.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor meets students'' expectations.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor demonstrates thorough preparation for the course.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor encourages discussions and responds to questions.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor appeared enthusiastic and interested.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Instructor was accessible outside the classroom.', 'TEACHING_EFFECTIVENESS', TRUE),
+
+-- Resources and Administration statements
+('Course supported by adequate library resources.', 'RESOURCES_ADMIN', TRUE),
+('Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).', 'RESOURCES_ADMIN', TRUE),
+('Instructor provided guidance on finding resources.', 'RESOURCES_ADMIN', TRUE),
+('Course material/Lecture notes were effective.', 'RESOURCES_ADMIN', TRUE),
+
+-- Assessment and Learning statements
+('Exams measure the knowledge acquired in the course.', 'ASSESSMENT_LEARNING', TRUE),
+('Problems set help in understanding the course.', 'ASSESSMENT_LEARNING', TRUE),
+('Feedback on assignments was useful.', 'ASSESSMENT_LEARNING', TRUE),
+('Tutorial sessions help in understanding course concepts.', 'ASSESSMENT_LEARNING', TRUE),
+
+-- Course Outcomes statements
+('COURSE OUTCOME 1', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 2', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 3', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 4', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 5', 'COURSE_OUTCOMES', TRUE),
+('COURSE OUTCOME 6', 'COURSE_OUTCOMES', TRUE);

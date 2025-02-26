@@ -1,0 +1,8 @@
+.git
+.gitattributes
+.dockerignore
+docker-compose.yml
+render.yaml
+README.md
+vendor/
+*.log 
