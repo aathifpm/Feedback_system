@@ -426,10 +426,6 @@ session_start();
                     <i class="fas fa-user-shield"></i>
                     Admin Login
                 </a>
-                <a href="alumni_survey.php" class="login-btn">
-                    <i class="fas fa-graduation-cap"></i>
-                    Alumni Survey
-                </a>
             </div>
         </div>
     </div>

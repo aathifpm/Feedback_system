@@ -448,7 +448,7 @@ switch ($role) {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <!-- Add jQuery -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <?php include 'header.php'; ?>
+    <!-- Add DataTables -->
     <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
     <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.min.css">
     <style>
@@ -1559,6 +1559,41 @@ switch ($role) {
             margin-bottom: 1rem;
         }
 
+        .logout-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 0.8rem 1.5rem;
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .logout-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
+            background: #c0392b;
+        }
+
+        @media (max-width: 768px) {
+            .logout-btn {
+                top: 10px;
+                right: 10px;
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+
         .faculty-assignments {
             margin: 1.5rem 0;
             padding: 1rem;
@@ -1716,8 +1751,11 @@ switch ($role) {
     </style>
 </head>
 <body>
+    <a href="logout.php" class="logout-btn">
+        <i class="fas fa-sign-out-alt"></i> Logout
+    </a>
+    <?php include 'header.php'; ?>
 
-    
     <div class="dashboard-container">
         <div class="dashboard-header">
             <h1>Welcome, <?php echo htmlspecialchars($user['name'] ?? $user['username']); ?></h1>
@@ -1918,12 +1956,6 @@ switch ($role) {
                     <div class="number"><?php echo number_format($data['overall_stats']['average_rating'], 2); ?></div>
                     <div class="label">Average Rating</div>
                 </div>
-                <div class="stat-card">
-                    <i class="fas fa-graduation-cap icon"></i>
-                    <a href="alumni_survey_analytics.php" class="btn btn-primary" style="text-decoration: none;">
-                        <i class="fas fa-chart-line"></i> Alumni Analytics
-                    </a>
-                </div>
             </div>
 
             <div class="content-section">
@@ -2023,9 +2055,9 @@ switch ($role) {
                             <i class="fas fa-comments"></i>
                             <span>Feedback Summary</span>
                         </a>
-                        <a href="alumni_survey_analytics.php" class="action-btn">
-                            <i class="fas fa-graduation-cap"></i>
-                            <span>Alumni Analytics</span>
+                        <a href="generate_report.php" class="action-btn">
+                            <i class="fas fa-file-pdf"></i>
+                            <span>Generate Report</span>
                         </a>
                     </div>
                 </div>
@@ -2375,16 +2407,9 @@ switch ($role) {
                             <a href="survey_analytics.php" class="btn btn-primary">
                                 <i class="fas fa-chart-bar"></i> View Detailed Analysis
                             </a>
-                            <?php if ($user['department_id']): ?>
-                                <a href="generate_survey_report.php?department_id=<?php echo $user['department_id']; ?>" 
-                                   class="btn btn-secondary" target="_blank">
-                                    <i class="fas fa-file-pdf"></i> Generate Detailed Report
-                                </a>
-                            <?php else: ?>
-                                <div class="alert alert-warning">
-                                    Please select a Department to generate report.
-                                </div>
-                            <?php endif; ?>
+                            <a href="generate_report.php?type=exit_survey" class="btn btn-secondary">
+                                <i class="fas fa-file-pdf"></i> Generate Report
+                            </a>
                         </div>
                     <?php else: ?>
                         <div class="no-data">

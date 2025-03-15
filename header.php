@@ -3,10 +3,14 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-// Set default values for unknown users
-$user_name = $_SESSION['name'] ?? $_SESSION['username'] ?? 'Guest';
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit();
+}
+
+// Get user's name and role for display
+$user_name = $_SESSION['name'] ?? $_SESSION['username'] ?? 'User';
 $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
-$is_logged_in = isset($_SESSION['user_id']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -179,6 +183,7 @@ $is_logged_in = isset($_SESSION['user_id']);
         .nav-link i {
             font-size: 1.1rem;
         }
+
         .user-profile {
             position: relative;
             display: flex;
@@ -191,7 +196,7 @@ $is_logged_in = isset($_SESSION['user_id']);
             cursor: pointer;
             transition: all 0.3s ease;
             margin: 0.5rem 0;
-            min-width: 150px; /* Increased min-width */
+            min-width: auto;
         }
 
         .user-avatar {
@@ -207,28 +212,20 @@ $is_logged_in = isset($_SESSION['user_id']);
             box-shadow: inset 2px 2px 5px rgba(0,0,0,0.2);
         }
 
-        .user-info1 {
+        .user-info {
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            flex: 1; /* Take up remaining space */
-            padding: 0 0.3rem;
+            min-width: 80px;
         }
 
         .user-name {
-            font-size: 0.95rem;
+            font-size: 0.85rem;
             font-weight: 500;
             color: var(--text-color);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            width: 100%; /* Use full width */
-            height: 100%;
-            text-align: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            max-width: 120px;
         }
 
         .user-role {
@@ -329,8 +326,8 @@ $is_logged_in = isset($_SESSION['user_id']);
                 font-size: 1.2rem;
                 letter-spacing: 0.4px;
             }
-        .college-info p {
-            font-size: 0.8rem;
+            .college-info p {
+                font-size: 0.8rem;
             }
             .logo-container {
                 width: 50px;
@@ -350,7 +347,7 @@ $is_logged_in = isset($_SESSION['user_id']);
             .header-right {
                 gap: 1rem;
             }
-            .user-info1 {
+            .user-info {
                 display: none;
             }
             .user-profile {
@@ -505,17 +502,16 @@ $is_logged_in = isset($_SESSION['user_id']);
     <header class="header">
         <div class="header-left">
             <div class="logo-container">
-                <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo">
+        <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo">
             </div>
-            <div class="college-info">
-                <h1>Panimalar Engineering College</h1>
+        <div class="college-info">
+            <h1>Panimalar Engineering College</h1>
                 <p>An Autonomous Institution, Affiliated to Anna University</p>
                 <p>Bangalore Trunk Road, Varadharajapuram, Poonamallee, Chennai – 600 123</p>
             </div>
         </div>
         
         <div class="header-right">
-            <?php if ($is_logged_in): ?>
             <nav>
                 <ul class="nav-menu">
                     <li><a href="dashboard.php" class="nav-link"><i class="fas fa-home"></i> Dashboard</a></li>
@@ -532,7 +528,7 @@ $is_logged_in = isset($_SESSION['user_id']);
                 <div class="user-avatar">
                     <i class="fas fa-user"></i>
                 </div>
-                <div class="user-info1">
+                <div class="user-info">
                     <span class="user-name"><?php echo htmlspecialchars($user_name); ?></span>
                 </div>
                 <div class="dropdown-menu">
@@ -551,11 +547,9 @@ $is_logged_in = isset($_SESSION['user_id']);
             <button class="mobile-menu-btn">
                 <i class="fas fa-bars"></i>
             </button>
-            <?php endif; ?>
-        </div>
+    </div>
     </header>
 
-    <?php if ($is_logged_in): ?>
     <!-- Mobile Navigation -->
     <nav class="mobile-nav">
         <ul class="mobile-nav-menu">
@@ -595,10 +589,7 @@ $is_logged_in = isset($_SESSION['user_id']);
             </li>
         </ul>
     </nav>
-    <?php endif; ?>
 
-    <!-- Update the script section to only run for logged-in users -->
-    <?php if ($is_logged_in): ?>
     <script>
         // Mobile menu functionality
         const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
@@ -622,6 +613,5 @@ $is_logged_in = isset($_SESSION['user_id']);
             }
         });
     </script>
-    <?php endif; ?>
 </body>
 </html> 
