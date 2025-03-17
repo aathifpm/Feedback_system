@@ -5,7 +5,7 @@ require_once '../functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../login.php');
+    header('Location: ../admin_login.php');
     exit();
 }
 
@@ -24,7 +24,11 @@ $stats = [
     'faculty' => [
         'total' => 0,
         'active' => 0,
-        'by_department' => []
+        'by_department' => [],
+        'professors' => 0,
+        'associate_professors' => 0,
+        'assistant_professors' => 0,
+        'avg_experience' => 0
     ],
     'feedback' => [
         'total' => 0,
@@ -71,42 +75,50 @@ $stats['students'] = [
 ];
 
 // Get faculty statistics
-$user_query = "SELECT f.*,
-    d.name as department_name,
-    d.code as department_code,
-    (SELECT COUNT(DISTINCT sa.id) 
-     FROM subject_assignments sa 
-     WHERE sa.faculty_id = f.id 
-     AND sa.academic_year_id = ?) as total_subjects,
-    (SELECT COUNT(DISTINCT fb.id) 
-     FROM feedback fb 
-     JOIN subject_assignments sa ON fb.assignment_id = sa.id 
-     WHERE sa.faculty_id = f.id 
-     AND sa.academic_year_id = ?) as total_feedback,
-    (SELECT AVG(fb.cumulative_avg)
-     FROM feedback fb
-     JOIN subject_assignments sa ON fb.assignment_id = sa.id
-     WHERE sa.faculty_id = f.id
-     AND sa.academic_year_id = ?) as avg_rating
-FROM faculty f
-JOIN departments d ON f.department_id = d.id
-WHERE f.id = ? AND f.is_active = TRUE";
+$faculty_query = "SELECT 
+    COUNT(*) as total,
+    SUM(CASE WHEN is_active = TRUE THEN 1 ELSE 0 END) as active,
+    COUNT(CASE WHEN designation = 'Professor' THEN 1 END) as professors,
+    COUNT(CASE WHEN designation = 'Associate Professor' THEN 1 END) as associate_professors,
+    COUNT(CASE WHEN designation = 'Assistant Professor' THEN 1 END) as assistant_professors,
+    AVG(experience) as avg_experience
+FROM faculty";
 
-$stmt = mysqli_prepare($conn, $user_query);
-mysqli_stmt_bind_param($stmt, "iiii", $current_academic_year['id'], $current_academic_year['id'], $current_academic_year['id'], $current_academic_year['id']);
-mysqli_stmt_execute($stmt);
-$faculty_stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+$faculty_result = mysqli_query($conn, $faculty_query);
+if (!$faculty_result) {
+    die("Error in faculty query: " . mysqli_error($conn));
+}
+$faculty_stats = mysqli_fetch_assoc($faculty_result);
 
+// Initialize faculty stats with default values if null
 $stats['faculty'] = [
     'total' => $faculty_stats['total'] ?? 0,
     'active' => $faculty_stats['active'] ?? 0,
-    'by_department' => [
-        $faculty_stats['department_name'] => [
-            'total' => $faculty_stats['total'] ?? 0,
-            'active' => $faculty_stats['active'] ?? 0
-        ]
-    ]
+    'by_department' => [],
+    'professors' => $faculty_stats['professors'] ?? 0,
+    'associate_professors' => $faculty_stats['associate_professors'] ?? 0,
+    'assistant_professors' => $faculty_stats['assistant_professors'] ?? 0,
+    'avg_experience' => round($faculty_stats['avg_experience'] ?? 0, 1)
 ];
+
+// Get department-wise faculty count
+$dept_faculty_query = "SELECT 
+    d.name as department_name,
+    COUNT(*) as total,
+    SUM(CASE WHEN f.is_active = TRUE THEN 1 ELSE 0 END) as active
+FROM faculty f
+JOIN departments d ON f.department_id = d.id
+GROUP BY d.id, d.name";
+
+$dept_faculty_result = mysqli_query($conn, $dept_faculty_query);
+if ($dept_faculty_result) {
+    while ($row = mysqli_fetch_assoc($dept_faculty_result)) {
+        $stats['faculty']['by_department'][$row['department_name']] = [
+            'total' => $row['total'],
+            'active' => $row['active']
+        ];
+    }
+}
 
 // Get feedback statistics
 $feedback_query = "SELECT 
@@ -166,7 +178,7 @@ $pending_tasks = [
     <title>Admin Dashboard - College Feedback System</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <!-- Include Chart.js -->
+    
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         :root {
@@ -426,6 +438,239 @@ $pending_tasks = [
                 gap: 0.5rem;
             }
         }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: var(--bg-color);
+            margin: 5% auto;
+            padding: 2rem;
+            border-radius: 20px;
+            box-shadow: var(--shadow);
+            width: 90%;
+            max-width: 800px;
+            max-height: 85vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 2px solid rgba(0,0,0,0.1);
+        }
+
+        .modal-header h2 {
+            color: var(--text-color);
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .close {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: var(--text-color);
+            font-size: 1.5rem;
+            border: none;
+        }
+
+        .close:hover {
+            box-shadow: var(--inner-shadow);
+            color: #e74c3c;
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            font-size: 1rem;
+            color: var(--text-color);
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            outline: none;
+            box-shadow: var(--shadow);
+        }
+
+        select.form-control {
+            cursor: pointer;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232c3e50' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1em;
+            padding-right: 2.5rem;
+        }
+
+        .file-upload-wrapper {
+            position: relative;
+            width: 100%;
+            height: 180px;
+            border-radius: 15px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload-wrapper:hover {
+            box-shadow: var(--shadow);
+        }
+
+        .file-upload-wrapper input[type="file"] {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-content {
+            text-align: center;
+            padding: 20px;
+        }
+
+        .upload-icon {
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+        }
+
+        .upload-text {
+            color: var(--text-color);
+            font-size: 1.1rem;
+        }
+
+        .upload-text span {
+            color: var(--primary-color);
+            font-weight: 500;
+        }
+
+        .upload-text small {
+            display: block;
+            margin-top: 0.5rem;
+            opacity: 0.7;
+        }
+
+        .template-info {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin: 1rem 0;
+            box-shadow: var(--shadow);
+        }
+
+        .template-info h4 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .template-info p {
+            margin: 0.8rem 0;
+            color: var(--text-color);
+        }
+
+        .template-info ol, .template-info ul {
+            margin: 1rem 0 1rem 1.5rem;
+            color: var(--text-color);
+        }
+
+        .template-info li {
+            margin: 0.5rem 0;
+            line-height: 1.5;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            margin-top: 2rem;
+        }
+
+        .btn {
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1rem;
+            color: var(--text-color);
+        }
+
+        .btn:hover {
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.8);
+            transform: translateY(-2px);
+        }
+
+        .btn:active {
+            box-shadow: var(--inner-shadow);
+            transform: translateY(0);
+        }
+
+        .btn-secondary {
+            background: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 95%;
+                margin: 2% auto;
+                padding: 1rem;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -469,6 +714,9 @@ $pending_tasks = [
                 <p>Current Academic Year: <?php echo $current_academic_year['year_range']; ?></p>
             </div>
             <div class="header-actions">
+                <button onclick="showImportModal()" class="btn">
+                    <i class="fas fa-file-import"></i> Import Data
+                </button>
                 <button onclick="location.href='settings.php'" class="btn">
                     <i class="fas fa-cog"></i> Settings
                 </button>
@@ -526,6 +774,74 @@ $pending_tasks = [
                     <span class="activity-time"><?php echo date('M d, Y H:i', strtotime($activity['created_at'])); ?></span>
                 </div>
             <?php endforeach; ?>
+        </div>
+
+        <!-- Import Modal -->
+        <div id="importModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2><i class="fas fa-file-import"></i> Import Data</h2>
+                    <button class="close" onclick="closeImportModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form method="POST" action="import_data.php" enctype="multipart/form-data" id="importForm">
+                        <div class="form-group">
+                            <label for="import_type">Select Import Type</label>
+                            <select name="import_type" id="import_type" class="form-control" required onchange="showTemplate()">
+                                <option value="">Choose type of data to import...</option>
+                                <option value="students">Student Data</option>
+                                <option value="faculty">Faculty Data</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Upload Excel File</label>
+                            <div class="file-upload-wrapper">
+                                <input type="file" name="excel_file" id="excel_file" accept=".xlsx,.xls" required>
+                                <div class="upload-content">
+                                    <div class="upload-icon">
+                                        <i class="fas fa-file-excel"></i>
+                                    </div>
+                                    <div class="upload-text">
+                                        Drag and drop your Excel file here or <span>browse</span>
+                                        <small>Supported formats: .xlsx, .xls</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-info" id="studentTemplate" style="display: none;">
+                            <h4><i class="fas fa-user-graduate"></i> Student Import Template</h4>
+                            <p>Required columns:</p>
+                            <ul>
+                                <li><strong>roll_number</strong> - Unique identifier</li>
+                                <li><strong>name</strong> - Full name</li>
+                                <li><strong>department_id</strong> - Department ID</li>
+                                <li><strong>batch_name</strong> - e.g., 2023-27</li>
+                            </ul>
+                        </div>
+
+                        <div class="template-info" id="facultyTemplate" style="display: none;">
+                            <h4><i class="fas fa-chalkboard-teacher"></i> Faculty Import Template</h4>
+                            <p>Required columns:</p>
+                            <ul>
+                                <li><strong>faculty_id</strong> - Unique identifier</li>
+                                <li><strong>name</strong> - Full name</li>
+                                <li><strong>department_id</strong> - Department ID</li>
+                            </ul>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit" class="btn">
+                                <i class="fas fa-upload"></i> Import Data
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="closeImportModal()">
+                                <i class="fas fa-times"></i> Cancel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -634,6 +950,37 @@ $pending_tasks = [
                 }
             }
         });
+
+        function showImportModal() {
+            document.getElementById('importModal').style.display = 'block';
+        }
+
+        function closeImportModal() {
+            document.getElementById('importModal').style.display = 'none';
+            document.getElementById('importForm').reset();
+            document.getElementById('studentTemplate').style.display = 'none';
+            document.getElementById('facultyTemplate').style.display = 'none';
+        }
+
+        function showTemplate() {
+            const importType = document.getElementById('import_type').value;
+            document.getElementById('studentTemplate').style.display = 'none';
+            document.getElementById('facultyTemplate').style.display = 'none';
+            
+            if (importType === 'students') {
+                document.getElementById('studentTemplate').style.display = 'block';
+            } else if (importType === 'faculty') {
+                document.getElementById('facultyTemplate').style.display = 'block';
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('importModal');
+            if (event.target === modal) {
+                closeImportModal();
+            }
+        }
     </script>
 </body>
 </html>

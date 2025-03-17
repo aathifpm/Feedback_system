@@ -3,14 +3,10 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
-    exit();
-}
-
-// Get user's name and role for display
-$user_name = $_SESSION['name'] ?? $_SESSION['username'] ?? 'User';
+// Set default values for unknown users
+$user_name = $_SESSION['name'] ?? $_SESSION['username'] ?? 'Guest';
 $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
+$is_logged_in = isset($_SESSION['user_id']);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -183,7 +179,6 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
         .nav-link i {
             font-size: 1.1rem;
         }
-
         .user-profile {
             position: relative;
             display: flex;
@@ -196,7 +191,7 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
             cursor: pointer;
             transition: all 0.3s ease;
             margin: 0.5rem 0;
-            min-width: auto;
+            min-width: 150px; /* Increased min-width */
         }
 
         .user-avatar {
@@ -212,20 +207,28 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
             box-shadow: inset 2px 2px 5px rgba(0,0,0,0.2);
         }
 
-        .user-info {
+        .user-info1 {
             display: flex;
             flex-direction: column;
-            min-width: 80px;
+            align-items: center;
+            justify-content: center;
+            flex: 1; /* Take up remaining space */
+            padding: 0 0.3rem;
         }
 
         .user-name {
-            font-size: 0.85rem;
+            font-size: 0.95rem;
             font-weight: 500;
             color: var(--text-color);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 120px;
+            width: 100%; /* Use full width */
+            height: 100%;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .user-role {
@@ -326,8 +329,8 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
                 font-size: 1.2rem;
                 letter-spacing: 0.4px;
             }
-            .college-info p {
-                font-size: 0.8rem;
+        .college-info p {
+            font-size: 0.8rem;
             }
             .logo-container {
                 width: 50px;
@@ -347,7 +350,7 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
             .header-right {
                 gap: 1rem;
             }
-            .user-info {
+            .user-info1 {
                 display: none;
             }
             .user-profile {
@@ -502,16 +505,17 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
     <header class="header">
         <div class="header-left">
             <div class="logo-container">
-        <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo">
+                <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo">
             </div>
-        <div class="college-info">
-            <h1>Panimalar Engineering College</h1>
+            <div class="college-info">
+                <h1>Panimalar Engineering College</h1>
                 <p>An Autonomous Institution, Affiliated to Anna University</p>
                 <p>Bangalore Trunk Road, Varadharajapuram, Poonamallee, Chennai – 600 123</p>
             </div>
         </div>
         
         <div class="header-right">
+            <?php if ($is_logged_in): ?>
             <nav>
                 <ul class="nav-menu">
                     <li><a href="dashboard.php" class="nav-link"><i class="fas fa-home"></i> Dashboard</a></li>
@@ -528,7 +532,7 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
                 <div class="user-avatar">
                     <i class="fas fa-user"></i>
                 </div>
-                <div class="user-info">
+                <div class="user-info1">
                     <span class="user-name"><?php echo htmlspecialchars($user_name); ?></span>
                 </div>
                 <div class="dropdown-menu">
@@ -547,9 +551,11 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
             <button class="mobile-menu-btn">
                 <i class="fas fa-bars"></i>
             </button>
-    </div>
+            <?php endif; ?>
+        </div>
     </header>
 
+    <?php if ($is_logged_in): ?>
     <!-- Mobile Navigation -->
     <nav class="mobile-nav">
         <ul class="mobile-nav-menu">
@@ -589,7 +595,10 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
             </li>
         </ul>
     </nav>
+    <?php endif; ?>
 
+    <!-- Update the script section to only run for logged-in users -->
+    <?php if ($is_logged_in): ?>
     <script>
         // Mobile menu functionality
         const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
@@ -613,5 +622,6 @@ $user_role = ucfirst($_SESSION['role'] ?? 'Guest');
             }
         });
     </script>
+    <?php endif; ?>
 </body>
 </html> 

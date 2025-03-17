@@ -1234,7 +1234,7 @@ if (!$subject) {
                     <tbody>
                         <?php
                         $courseEffectiveness = [
-                            "Does the course stimulate self-interest?",
+                            "Syllabus structure was clearly outlined at the beginning of the course.",
                             "The course was delivered as outlined in the syllabus.",
                             "The syllabus was explained at the beginning of the course.",
                             "Well-organized presentations.",

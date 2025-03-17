@@ -1,303 +1,326 @@
 <?php
 session_start();
-include 'functions.php';
+require_once 'db_connection.php';
+require_once 'functions.php';
 
-if (!isset($_SESSION['user_id'])) {
+// Check if user is logged in
+if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
     header('Location: login.php');
     exit();
 }
 
-$user_id = $_SESSION['user_id'];
 $error = $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $current_password = $_POST['current_password'];
     $new_password = $_POST['new_password'];
     $confirm_password = $_POST['confirm_password'];
-
-    // Verify current password
-    $verify_query = "SELECT password FROM users WHERE id = ?";
-    $stmt = mysqli_prepare($conn, $verify_query);
-    mysqli_stmt_bind_param($stmt, "i", $user_id);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $user = mysqli_fetch_assoc($result);
-
-    if ($user && password_verify($current_password, $user['password'])) {
-        if ($new_password == $confirm_password) {
-            $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
-            // Update password
-            $update_query = "UPDATE users SET password = ? WHERE id = ?";
-            $stmt = mysqli_prepare($conn, $update_query);
-            mysqli_stmt_bind_param($stmt, "si", $hashed_password, $user_id);
-            if (mysqli_stmt_execute($stmt)) {
-                $success = "Password changed successfully!";
-            } else {
-                $error = "Error changing password. Please try again.";
-            }
-        } else {
-            $error = "New passwords do not match.";
-        }
+    
+    // Validate password match
+    if ($new_password !== $confirm_password) {
+        $error = "New passwords do not match!";
     } else {
-        $error = "Current password is incorrect.";
+        // Get the correct table name based on user role
+        $table = '';
+        switch ($_SESSION['role']) {
+            case 'admin':
+                $table = 'admin_users';
+                break;
+            case 'faculty':
+                $table = 'faculty';
+                break;
+            case 'hod':
+                $table = 'hods';
+                break;
+            case 'student':
+                $table = 'students';
+                break;
+            default:
+                $error = "Invalid user role!";
+                break;
+        }
+
+        if (!empty($table)) {
+            // Verify current password
+            $query = "SELECT password FROM $table WHERE id = ?";
+            $stmt = mysqli_prepare($conn, $query);
+            mysqli_stmt_bind_param($stmt, "i", $_SESSION['user_id']);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            $user = mysqli_fetch_assoc($result);
+
+            if ($user && password_verify($current_password, $user['password'])) {
+                // Update password
+                $hashed_password = password_hash($new_password, PASSWORD_DEFAULT);
+                $update_query = "UPDATE $table SET password = ?, password_changed_at = CURRENT_TIMESTAMP WHERE id = ?";
+                $stmt = mysqli_prepare($conn, $update_query);
+                mysqli_stmt_bind_param($stmt, "si", $hashed_password, $_SESSION['user_id']);
+                
+                if (mysqli_stmt_execute($stmt)) {
+                    $success = "Password changed successfully!";
+                    
+                    // Log the password change
+                    $log_query = "INSERT INTO user_logs (user_id, role, action, status) VALUES (?, ?, 'Changed password', 'success')";
+                    $log_stmt = mysqli_prepare($conn, $log_query);
+                    mysqli_stmt_bind_param($log_stmt, "is", $_SESSION['user_id'], $_SESSION['role']);
+                    mysqli_stmt_execute($log_stmt);
+                } else {
+                    $error = "Error updating password. Please try again.";
+                }
+            } else {
+                $error = "Current password is incorrect!";
+            }
+        }
     }
 }
 
+// Include the header
 include 'header.php';
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Change Password - College Feedback System</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <style>
-        :root {
-            --primary-color: #3498db;
-            --secondary-color: #2ecc71;
-            --warning-color: #f1c40f;
-            --danger-color: #e74c3c;
-            --text-color: #2c3e50;
-            --bg-color: #e0e5ec;
-            --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
-                     -9px -9px 16px rgba(255,255,255, 0.5);
-            --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
-                           inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
-        }
+<style>
+    :root {
+        --primary-color: #3498db;
+        --text-color: #2c3e50;
+        --bg-color: #e0e5ec;
+        --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
+                 -9px -9px 16px rgba(255,255,255, 0.5);
+        --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
+                       inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+    }
 
-        .container {
-            max-width: 500px;
-            margin: 2rem auto;
-            padding: 0 1rem;
-        }
+    .main-content {
+        min-height: calc(100vh - var(--header-height));
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        padding: 2rem;
+    }
 
-        .card {
-            background: var(--bg-color);
-            border-radius: 20px;
-            box-shadow: var(--shadow);
-            padding: 2rem;
-        }
+    .change-password-container {
+        background: var(--bg-color);
+        padding: 2rem;
+        border-radius: 15px;
+        box-shadow: var(--shadow);
+        width: 100%;
+        max-width: 450px;
+    }
 
-        .card-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
+    .header {
+        text-align: center;
+        margin-bottom: 2rem;
+    }
 
-        .card-title {
-            font-size: 1.8rem;
-            color: var(--text-color);
-            margin-bottom: 0.5rem;
-            font-weight: 600;
-        }
+    .header h1 {
+        color: var(--text-color);
+        font-size: 1.8rem;
+        margin-bottom: 0.5rem;
+    }
 
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
+    .header p {
+        color: #666;
+        font-size: 0.9rem;
+    }
 
-        .form-label {
-            display: block;
-            font-size: 0.95rem;
-            color: var(--text-color);
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
 
-        .form-control {
-            width: 100%;
-            padding: 0.8rem 1.2rem;
-            border: none;
-            border-radius: 12px;
-            background: var(--bg-color);
-            box-shadow: var(--inner-shadow);
-            color: var(--text-color);
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
+    label {
+        display: block;
+        margin-bottom: 0.5rem;
+        color: var(--text-color);
+        font-size: 0.9rem;
+    }
 
-        .form-control:focus {
-            outline: none;
-            box-shadow: var(--shadow);
-        }
+    .input-group {
+        position: relative;
+    }
 
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.8rem 1.5rem;
-            border: none;
-            border-radius: 12px;
-            background: var(--bg-color);
-            box-shadow: var(--shadow);
-            color: var(--text-color);
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            text-decoration: none;
-        }
+    .form-control {
+        width: 100%;
+        padding: 0.8rem 1rem;
+        border: none;
+        border-radius: 10px;
+        background: var(--bg-color);
+        box-shadow: var(--inner-shadow);
+        font-size: 0.9rem;
+        color: var(--text-color);
+        transition: all 0.3s ease;
+    }
 
-        .btn-primary {
-            background: var(--primary-color);
-            color: white;
-        }
+    .form-control:focus {
+        outline: none;
+        box-shadow: var(--shadow);
+    }
 
-        .btn-secondary {
-            background: var(--bg-color);
-            color: var(--text-color);
-        }
+    .toggle-password {
+        position: absolute;
+        right: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        color: #666;
+        opacity: 0.7;
+        transition: all 0.3s ease;
+    }
 
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
-                       -12px -12px 20px rgba(255,255,255, 0.6);
-        }
+    .toggle-password:hover {
+        opacity: 1;
+        color: var(--primary-color);
+    }
 
-        .alert {
+    .btn {
+        width: 100%;
+        padding: 0.8rem;
+        border: none;
+        border-radius: 10px;
+        background: var(--bg-color);
+        box-shadow: var(--shadow);
+        color: var(--text-color);
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .btn:hover {
+        transform: translateY(-2px);
+        color: var(--primary-color);
+    }
+
+    .btn:active {
+        transform: translateY(0);
+        box-shadow: var(--inner-shadow);
+    }
+
+    .alert {
+        padding: 0.8rem 1rem;
+        border-radius: 10px;
+        margin-bottom: 1.5rem;
+        background: var(--bg-color);
+        box-shadow: var(--inner-shadow);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .alert-success {
+        color: #2ecc71;
+        border-left: 3px solid #2ecc71;
+    }
+
+    .alert-danger {
+        color: #e74c3c;
+        border-left: 3px solid #e74c3c;
+    }
+
+    .password-requirements {
+        margin-top: 0.5rem;
+        font-size: 0.8rem;
+        color: #666;
+    }
+
+    .password-requirements ul {
+        list-style: none;
+        margin: 0.3rem 0;
+        padding-left: 0.5rem;
+    }
+
+    .password-requirements li {
+        margin: 0.2rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+
+    .password-requirements li i {
+        font-size: 0.7rem;
+        color: #666;
+    }
+
+    @media (max-width: 768px) {
+        .main-content {
             padding: 1rem;
-            border-radius: 12px;
-            margin-bottom: 1.5rem;
-            box-shadow: var(--inner-shadow);
-            display: flex;
-            align-items: center;
-            gap: 0.8rem;
         }
+    }
+</style>
 
-        .alert i {
-            font-size: 1.2rem;
-        }
+<div class="main-content">
+    <?php include 'header.php'; ?>
+    <div class="change-password-container">
+       
 
-        .alert-error {
-            background: rgba(231, 76, 60, 0.1);
-            color: var(--danger-color);
-        }
+        <?php if ($error): ?>
+            <div class="alert alert-danger">
+                <i class="fas fa-exclamation-circle"></i>
+                <?php echo $error; ?>
+            </div>
+        <?php endif; ?>
 
-        .alert-success {
-            background: rgba(46, 204, 113, 0.1);
-            color: var(--secondary-color);
-        }
+        <?php if ($success): ?>
+            <div class="alert alert-success">
+                <i class="fas fa-check-circle"></i>
+                <?php echo $success; ?>
+            </div>
+        <?php endif; ?>
 
-        .form-actions {
-            display: flex;
-            gap: 1rem;
-            margin-top: 2rem;
-            justify-content: flex-end;
-        }
-
-        .password-field {
-            position: relative;
-        }
-
-        .toggle-password {
-            position: absolute;
-            right: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-color);
-            cursor: pointer;
-            opacity: 0.7;
-            transition: all 0.3s ease;
-        }
-
-        .toggle-password:hover {
-            opacity: 1;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                margin: 1rem auto;
-            }
-            .card {
-                padding: 1.5rem;
-            }
-            .card-title {
-                font-size: 1.5rem;
-            }
-            .form-actions {
-                flex-direction: column;
-            }
-            .btn {
-                width: 100%;
-            }
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="card">
-            <div class="card-header">
-                <h2 class="card-title">Change Password</h2>
+        <form method="POST" action="">
+            <div class="form-group">
+                <label for="current_password">Current Password</label>
+                <div class="input-group">
+                    <input type="password" id="current_password" name="current_password" class="form-control" required>
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword('current_password')"></i>
+                </div>
             </div>
 
-            <?php if ($error): ?>
-                <div class="alert alert-error">
-                    <i class="fas fa-exclamation-circle"></i>
-                    <?php echo $error; ?>
+            <div class="form-group">
+                <label for="new_password">New Password</label>
+                <div class="input-group">
+                    <input type="password" id="new_password" name="new_password" class="form-control" required>
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword('new_password')"></i>
                 </div>
-            <?php endif; ?>
+                <div class="password-requirements">
+                    <ul>
+                        <li><i class="fas fa-circle"></i> At least 8 characters</li>
+                        <li><i class="fas fa-circle"></i> Uppercase & lowercase letters</li>
+                        <li><i class="fas fa-circle"></i> Numbers and special characters</li>
+                    </ul>
+                </div>
+            </div>
 
-            <?php if ($success): ?>
-                <div class="alert alert-success">
-                    <i class="fas fa-check-circle"></i>
-                    <?php echo $success; ?>
+            <div class="form-group">
+                <label for="confirm_password">Confirm New Password</label>
+                <div class="input-group">
+                    <input type="password" id="confirm_password" name="confirm_password" class="form-control" required>
+                    <i class="fas fa-eye toggle-password" onclick="togglePassword('confirm_password')"></i>
                 </div>
-            <?php endif; ?>
+            </div>
 
-            <form method="post">
-                <div class="form-group">
-                    <label class="form-label" for="current_password">Current Password</label>
-                    <div class="password-field">
-                        <input type="password" class="form-control" id="current_password" name="current_password" required>
-                        <i class="fas fa-eye toggle-password" onclick="togglePassword('current_password')"></i>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="new_password">New Password</label>
-                    <div class="password-field">
-                        <input type="password" class="form-control" id="new_password" name="new_password" required>
-                        <i class="fas fa-eye toggle-password" onclick="togglePassword('new_password')"></i>
-                    </div>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label" for="confirm_password">Confirm New Password</label>
-                    <div class="password-field">
-                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
-                        <i class="fas fa-eye toggle-password" onclick="togglePassword('confirm_password')"></i>
-                    </div>
-                </div>
-
-                <div class="form-actions">
-                    <a href="dashboard.php" class="btn btn-secondary">
-                        <i class="fas fa-arrow-left"></i> Back
-                    </a>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="fas fa-key"></i> Change Password
-                    </button>
-                </div>
-            </form>
-        </div>
+            <button type="submit" class="btn">
+                <i class="fas fa-key"></i> Update Password
+            </button>
+        </form>
     </div>
+</div>
 
-    <script>
-        function togglePassword(inputId) {
-            const input = document.getElementById(inputId);
-            const icon = input.nextElementSibling;
-            
-            if (input.type === 'password') {
-                input.type = 'text';
-                icon.classList.remove('fa-eye');
-                icon.classList.add('fa-eye-slash');
-            } else {
-                input.type = 'password';
-                icon.classList.remove('fa-eye-slash');
-                icon.classList.add('fa-eye');
-            }
+<script>
+    function togglePassword(inputId) {
+        const input = document.getElementById(inputId);
+        const icon = input.nextElementSibling;
+        
+        if (input.type === 'password') {
+            input.type = 'text';
+            icon.classList.remove('fa-eye');
+            icon.classList.add('fa-eye-slash');
+        } else {
+            input.type = 'password';
+            icon.classList.remove('fa-eye-slash');
+            icon.classList.add('fa-eye');
         }
-    </script>
-</body>
-</html>
+    }
+</script>

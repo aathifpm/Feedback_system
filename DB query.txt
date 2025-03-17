@@ -450,7 +450,7 @@ INSERT INTO batch_years (batch_name, admission_year, graduation_year, current_ye
 -- Insert feedback statements for all sections
 INSERT INTO feedback_statements (statement, section, is_active) VALUES
 -- Course Effectiveness statements
-('Does the course stimulate self-interest?', 'COURSE_EFFECTIVENESS', TRUE),
+('Syllabus structure was clearly outlined at the beginning of the course.', 'COURSE_EFFECTIVENESS', TRUE),
 ('The course was delivered as outlined in the syllabus.', 'COURSE_EFFECTIVENESS', TRUE),
 ('The syllabus was explained at the beginning of the course.', 'COURSE_EFFECTIVENESS', TRUE),
 ('Well-organized presentations.', 'COURSE_EFFECTIVENESS', TRUE),

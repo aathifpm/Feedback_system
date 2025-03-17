@@ -251,7 +251,7 @@ if (!empty($faculty)) {
             </div>
 
             <div class="faculty-actions">
-                <a href="faculty_detailed_report.php?id=<?php echo $member['id']; ?>" class="btn btn-primary">
+                <a href="view_faculty_feedback.php?faculty_id=<?php echo $member['id']; ?>" class="btn btn-primary">
                     <i class="fas fa-chart-line"></i> View Detailed Report
                 </a>
                 <button class="btn btn-secondary generate-report-btn" data-faculty-id="<?php echo $member['id']; ?>">
