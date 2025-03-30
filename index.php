@@ -7,7 +7,8 @@ session_start();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Panimalar Engineering College - Feedback System</title>
+    <title>Panimalar Engineering College - Student Portal</title>
+    <link rel="icon" href="college_logo.png" type="image/png">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <style>
@@ -364,27 +365,27 @@ session_start();
 
     <div class="container">
         <div class="welcome-section">
-            <h2>Welcome to Our Feedback System</h2>
-            <p>A comprehensive platform designed to gather, analyze, and improve the academic experience through valuable feedback from our students and faculty members.</p>
+            <h2>Welcome to Panimalar Engineering College</h2>
+            <p>Fostering excellence in education, innovation, and research. We are committed to providing a transformative learning experience that prepares students for successful careers and meaningful contributions to society.</p>
         </div>
 
         <div class="features-grid">
             <div class="feature-card">
-                <i class="fas fa-comments feature-icon"></i>
-                <h3>Student Feedback</h3>
-                <p>Share your thoughts about courses, teaching methods, and facilities to help us improve your learning experience.</p>
-            </div>
-
-            <div class="feature-card">
-                <i class="fas fa-chart-line feature-icon"></i>
-                <h3>Faculty Analysis</h3>
-                <p>Access detailed analytics and insights to enhance teaching methodologies and course delivery.</p>
-            </div>
-
-            <div class="feature-card">
                 <i class="fas fa-graduation-cap feature-icon"></i>
-                <h3>Exit Survey</h3>
-                <p>Graduating students can provide comprehensive feedback about their overall academic journey.</p>
+                <h3>Academic Excellence</h3>
+                <p>Benefit from our rigorous academic programs designed to foster critical thinking, innovation, and practical skills development.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-flask feature-icon"></i>
+                <h3>Research Opportunities</h3>
+                <p>Engage in cutting-edge research with state-of-the-art laboratories and guidance from experienced faculty members.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-laptop-code feature-icon"></i>
+                <h3>Industry Connections</h3>
+                <p>Access internships, placements, and collaborative projects with our extensive network of industry partners.</p>
             </div>
         </div>
 
@@ -398,17 +399,17 @@ session_start();
                 <div class="stat-label">Faculty Members</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">50+</div>
-                <div class="stat-label">Courses</div>
+                <div class="stat-number">95%</div>
+                <div class="stat-label">Placement Rate</div>
             </div>
             <div class="stat-card">
-                <div class="stat-number">98%</div>
-                <div class="stat-label">Satisfaction Rate</div>
+                <div class="stat-number">30+</div>
+                <div class="stat-label">Years of Excellence</div>
             </div>
         </div>
 
         <div class="login-section">
-            <h2>Access the System</h2>
+            <h2>Access Student Portal</h2>
             <div class="login-buttons">
                 <a href="student_login.php" class="login-btn">
                     <i class="fas fa-user-graduate"></i>
@@ -438,7 +439,7 @@ session_start();
         <div class="footer-content">
             <div class="footer-section">
                 <h3>About Us</h3>
-                <p>Panimalar Engineering College strives for excellence in education and feedback.</p>
+                <p>Panimalar Engineering College is committed to excellence in education, research, and innovation.</p>
             </div>
             <div class="footer-section">
                 <h3>Contact</h3>

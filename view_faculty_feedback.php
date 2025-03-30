@@ -1321,10 +1321,18 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                     <h2>Select Report Parameters</h2>
                     <span class="close" onclick="closeReportModal()">&times;</span>
                 </div>
-                <form id="reportForm" action="generate_report.php" method="get">
+                <form id="reportForm" method="get">
                     <div class="modal-body">
                         <input type="hidden" name="faculty_id" value="<?php echo $faculty_id; ?>">
                         
+                        <div class="form-group">
+                            <label>Export Format</label>
+                            <select name="export_format" class="input-field">
+                                <option value="pdf">PDF Document</option>
+                                <option value="excel">Excel Spreadsheet</option>
+                            </select>
+                        </div>
+
                         <div class="form-group">
                             <label>Report Type</label>
                             <select name="report_type" class="input-field" onchange="toggleParameters(this.value)">
@@ -1391,7 +1399,7 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
 
                     <div class="modal-footer">
                         <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-file-pdf"></i> Generate Report
+                            <i class="fas fa-file-export"></i> Export Report
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="closeReportModal()">
                             <i class="fas fa-times"></i> Cancel
@@ -1444,6 +1452,21 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                 closeReportModal();
             }
         }
+
+        // Handle form submission based on export format
+        document.getElementById('reportForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const format = document.querySelector('select[name="export_format"]').value;
+            const form = this;
+            
+            if (format === 'pdf') {
+                form.action = 'generate_report.php';
+            } else if (format === 'excel') {
+                form.action = 'generate_excel.php';
+            }
+            
+            form.submit();
+        });
     </script>
 </body>
 </html>

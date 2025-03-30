@@ -90,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Login - Panimalar Engineering College</title>
+    <link rel="icon" href="college_logo.png" type="image/png">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <style>
@@ -349,10 +350,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="links">
                 <a href="forgot_password.php">
                     <i class="fas fa-key"></i> Forgot Password?
-                </a>
-                <span class="divider">|</span>
-                <a href="register.php">
-                    <i class="fas fa-user-plus"></i> Register
                 </a>
                 <span class="divider">|</span>
                 <a href="index.php">

@@ -5,7 +5,7 @@ require_once '../fpdf.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../login.php');
+    header('Location: ../index.php');
     exit();
 }
 

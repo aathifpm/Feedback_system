@@ -1,16 +1,5 @@
 <?php
-// Database connection
-$host = 'localhost'; // Replace with your database host
-$username = 'root'; // Replace with your database username
-$password = ''; // Replace with your database password
-$database = 'college_feedback1'; // Replace with your database name
-
-$conn = mysqli_connect($host, $username, $password, $database);
-
-if (!$conn) {
-    die("Connection failed: " . mysqli_connect_error());
-}
-
+include 'db_connection.php';
 // Check if functions are already defined
 if (!function_exists('authenticate_user')) {
     function authenticate_user($email, $password) {

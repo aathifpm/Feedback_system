@@ -4,7 +4,7 @@ require_once 'db_connection.php';
 
 // Check if user is logged in and has appropriate role
 if (!isset($_SESSION['role']) || !in_array($_SESSION['role'], ['hod', 'faculty'])) {
-    header("Location: login.php");
+    header("Location: index.php");
     exit();
 }
 

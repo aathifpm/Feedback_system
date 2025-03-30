@@ -1,11 +1,11 @@
 <?php
 session_start();
-require_once 'db_connection.php';
-require_once 'functions.php';
+require_once '../../db_connection.php';
+require_once '../../functions.php';
 
 // Check if user is logged in
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
-    header('Location: index.php');
+    header('Location: ../../index.php');
     exit();
 }
 
@@ -203,6 +203,7 @@ switch ($role) {
     case 'admin':
         $query = "SELECT 
             a.*,
+            a.username as name,
             DATE_FORMAT(a.created_at, '%d-%m-%Y') as joined_date,
             DATE_FORMAT(a.last_login, '%d-%m-%Y %H:%i') as last_login_date,
             (SELECT COUNT(*) FROM departments) as total_departments,
@@ -229,7 +230,7 @@ include 'header.php';
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profile - <?php echo htmlspecialchars($user_data['name'] ?? 'User'); ?></title>
+    <title>Profile - <?php echo htmlspecialchars(isset($user_data['name']) ? $user_data['name'] : $user_data['username']); ?></title>
     <style>
         .profile-container {
             max-width: 800px;
@@ -450,7 +451,7 @@ include 'header.php';
             <div class="profile-avatar">
                 <i class="fas fa-user"></i>
             </div>
-            <h1 class="profile-name"><?php echo htmlspecialchars($user_data['name']); ?></h1>
+            <h1 class="profile-name"><?php echo htmlspecialchars(isset($user_data['name']) ? $user_data['name'] : $user_data['username']); ?></h1>
             <div class="profile-role"><?php echo ucfirst($role); ?></div>
             <?php if (isset($user_data['faculty_id'])): ?>
                 <div class="profile-id">Faculty ID: <?php echo htmlspecialchars($user_data['faculty_id']); ?></div>

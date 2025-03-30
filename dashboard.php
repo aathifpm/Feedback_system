@@ -5,7 +5,7 @@ require_once 'functions.php';
 
 // Check login status
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 
@@ -2027,6 +2027,10 @@ switch ($role) {
                             <i class="fas fa-graduation-cap"></i>
                             <span>Alumni Analytics</span>
                         </a>
+                        <a href="section_report.php" class="action-btn">
+                            <i class="fas fa-layer-group"></i>
+                            <span>Section-wise Report</span>
+                        </a>
                     </div>
                 </div>
 
@@ -2396,5 +2400,127 @@ switch ($role) {
             </div>
                 <?php endif; ?>
             </div>
+
+            <!-- Section Report Generation Modal -->
+            <div class="modal" id="sectionReportModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3>Generate Section-wise Report</h3>
+                        <span class="close" onclick="closeSectionReportModal()">&times;</span>
+                    </div>
+                    <div class="modal-body">
+                        <form id="sectionReportForm">
+                            <div class="form-group">
+                                <label>Academic Year</label>
+                                <select name="academic_year" class="input-field" required>
+                                    <?php
+                                    $academic_years_query = "SELECT * FROM academic_years ORDER BY year_range DESC";
+                                    $academic_years_result = mysqli_query($conn, $academic_years_query);
+                                    while ($year = mysqli_fetch_assoc($academic_years_result)) {
+                                        $selected = $year['is_current'] ? 'selected' : '';
+                                        echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
+                                    }
+                                    ?>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Year of Study</label>
+                                <select name="year" class="input-field" required>
+                                    <option value="">Select Year</option>
+                                    <option value="1">1st Year</option>
+                                    <option value="2">2nd Year</option>
+                                    <option value="3">3rd Year</option>
+                                    <option value="4">4th Year</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Semester</label>
+                                <select name="semester" class="input-field" required>
+                                    <option value="">Select Semester</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Section</label>
+                                <select name="section" class="input-field" required>
+                                    <option value="">Select Section</option>
+                                    <option value="A">Section A</option>
+                                    <option value="B">Section B</option>
+                                    <option value="C">Section C</option>
+                                    <option value="D">Section D</option>
+                                    <option value="E">Section E</option>
+                                    <option value="F">Section F</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Report Format</label>
+                                <select name="format" class="input-field" required>
+                                    <option value="pdf">PDF Document</option>
+                                    <option value="excel">Excel Spreadsheet</option>
+                                </select>
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="fas fa-file-export"></i> Generate Report
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Add this script before the closing body tag -->
+            <script>
+            // Update semester options based on selected year
+            document.querySelector('select[name="year"]').addEventListener('change', function() {
+                const year = parseInt(this.value);
+                const semesterSelect = document.querySelector('select[name="semester"]');
+                semesterSelect.innerHTML = '<option value="">Select Semester</option>';
+                
+                if (year) {
+                    const sem1 = (year * 2) - 1;
+                    const sem2 = year * 2;
+                    semesterSelect.innerHTML += `
+                        <option value="${sem1}">Semester ${sem1}</option>
+                        <option value="${sem2}">Semester ${sem2}</option>
+                    `;
+                }
+            });
+
+            // Modal functions
+            function openSectionReportModal() {
+                document.getElementById('sectionReportModal').style.display = 'block';
+            }
+
+            function closeSectionReportModal() {
+                document.getElementById('sectionReportModal').style.display = 'none';
+            }
+
+            // Handle form submission
+            document.getElementById('sectionReportForm').addEventListener('submit', function(e) {
+                e.preventDefault();
+                const formData = new FormData(this);
+                const queryString = new URLSearchParams(formData).toString();
+                const format = formData.get('format');
+                
+                // Redirect to appropriate report generation script
+                if (format === 'pdf') {
+                    window.location.href = `generate_section_report.php?${queryString}`;
+                } else {
+                    window.location.href = `generate_section_excel.php?${queryString}`;
+                }
+            });
+
+            // Close modal when clicking outside
+            window.onclick = function(event) {
+                if (event.target.className === 'modal') {
+                    event.target.style.display = 'none';
+                }
+            }
+            </script>
 </body>
 </html>

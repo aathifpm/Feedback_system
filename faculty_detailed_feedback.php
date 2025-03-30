@@ -4,7 +4,7 @@ include 'functions.php';
 
 // Check if user is logged in and is faculty
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'faculty') {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 

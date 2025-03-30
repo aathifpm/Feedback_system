@@ -5,7 +5,7 @@ require_once 'functions.php';
 
 // Check if user is HOD
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'hod') {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 

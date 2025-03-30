@@ -5,7 +5,7 @@ require_once '../functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../login.php');
+    header('Location: ../index.php');
     exit();
 }
 
@@ -40,6 +40,82 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         mysqli_stmt_execute($stmt);
         
         $_SESSION['success_msg'] = "New academic year added successfully!";
+        header('Location: settings.php');
+        exit();
+    }
+    
+    if (isset($_POST['complete_academic_year'])) {
+        // Start transaction
+        mysqli_begin_transaction($conn);
+        
+        try {
+            // Get current academic year
+            $curr_year_query = "SELECT * FROM academic_years WHERE is_current = TRUE LIMIT 1";
+            $curr_year_result = mysqli_query($conn, $curr_year_query);
+            $curr_year = mysqli_fetch_assoc($curr_year_result);
+            
+            if (!$curr_year) {
+                throw new Exception("No current academic year found!");
+            }
+            
+            // Get the next academic year (should already be added)
+            $next_year_id = intval($_POST['next_academic_year']);
+            $next_year_query = "SELECT * FROM academic_years WHERE id = ?";
+            $stmt = mysqli_prepare($conn, $next_year_query);
+            mysqli_stmt_bind_param($stmt, "i", $next_year_id);
+            mysqli_stmt_execute($stmt);
+            $next_year_result = mysqli_stmt_get_result($stmt);
+            $next_year = mysqli_fetch_assoc($next_year_result);
+            
+            if (!$next_year) {
+                throw new Exception("Next academic year not found!");
+            }
+            // Get batches that were already in 4th year before incrementing (these are the graduating batches)
+            $graduate_batches_query = "UPDATE batch_years SET is_active = FALSE WHERE current_year_of_study >= 4";
+            mysqli_query($conn, $graduate_batches_query);
+            // Update all batches to increment their current year of study
+            $update_batches_query = "UPDATE batch_years SET current_year_of_study = current_year_of_study + 1 WHERE is_active = TRUE AND current_year_of_study < 4";
+            mysqli_query($conn, $update_batches_query);
+            
+            
+            // Set next year as current
+            $reset_query = "UPDATE academic_years SET is_current = FALSE";
+            mysqli_query($conn, $reset_query);
+            
+            $set_current_query = "UPDATE academic_years SET is_current = TRUE WHERE id = ?";
+            $stmt = mysqli_prepare($conn, $set_current_query);
+            mysqli_stmt_bind_param($stmt, "i", $next_year_id);
+            mysqli_stmt_execute($stmt);
+            
+            // Create a new feedback period for the new academic year if needed
+            $check_period_query = "SELECT * FROM feedback_periods WHERE academic_year_id = ?";
+            $stmt = mysqli_prepare($conn, $check_period_query);
+            mysqli_stmt_bind_param($stmt, "i", $next_year_id);
+            mysqli_stmt_execute($stmt);
+            $period_result = mysqli_stmt_get_result($stmt);
+            
+            if (mysqli_num_rows($period_result) == 0) {
+                // Calculate default period dates (first month of semester)
+                $start_date = date('Y-m-d', strtotime($next_year['start_date']));
+                $end_date = date('Y-m-d', strtotime($start_date . ' + 30 days'));
+                
+                $insert_period_query = "INSERT INTO feedback_periods (academic_year_id, start_date, end_date, is_active) 
+                                        VALUES (?, ?, ?, TRUE)";
+                $stmt = mysqli_prepare($conn, $insert_period_query);
+                mysqli_stmt_bind_param($stmt, "iss", $next_year_id, $start_date, $end_date);
+                mysqli_stmt_execute($stmt);
+            }
+            
+            // Commit transaction
+            mysqli_commit($conn);
+            $_SESSION['success_msg'] = "Academic year completion process successful! Batches have been updated.";
+        } 
+        catch (Exception $e) {
+            // Rollback on error
+            mysqli_rollback($conn);
+            $_SESSION['error_msg'] = "Error: " . $e->getMessage();
+        }
+        
         header('Location: settings.php');
         exit();
     }
@@ -86,6 +162,10 @@ $years_result = mysqli_query($conn, $years_query);
 $current_year_query = "SELECT * FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $current_year_result = mysqli_query($conn, $current_year_query);
 $current_year = mysqli_fetch_assoc($current_year_result);
+
+// Get non-current academic years for transition selector
+$next_years_query = "SELECT * FROM academic_years WHERE is_current = FALSE ORDER BY start_date DESC";
+$next_years_result = mysqli_query($conn, $next_years_query);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -96,6 +176,7 @@ $current_year = mysqli_fetch_assoc($current_year_result);
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="icon" href="../college_logo.png" type="image/png">
     <style>
         :root {
             --primary-color: #9b59b6;  /* Purple theme */
@@ -107,6 +188,7 @@ $current_year = mysqli_fetch_assoc($current_year_result);
                      -9px -9px 16px rgba(255,255,255, 0.5);
             --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                            inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --header-height: 90px;
         }
 
         * {
@@ -119,7 +201,28 @@ $current_year = mysqli_fetch_assoc($current_year_result);
         body {
             background: var(--bg-color);
             min-height: 100vh;
+            padding-top: var(--header-height);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            margin-left: 280px;
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0; /* Remove margin on mobile */
+            }
+        }
+
+        .page-title {
+            color: var(--text-color);
+            font-size: 1.8rem;
+            margin-bottom: 1.5rem;
             display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
 
         .sidebar {
@@ -162,25 +265,6 @@ $current_year = mysqli_fetch_assoc($current_year_result);
 
         .nav-link i {
             margin-right: 1rem;
-            color: var(--primary-color);
-        }
-
-        .main-content {
-            flex: 1;
-            padding: 2rem;
-            margin-left: 280px;
-        }
-
-        .page-title {
-            color: var(--text-color);
-            font-size: 1.8rem;
-            margin-bottom: 1.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .page-title i {
             color: var(--primary-color);
         }
 
@@ -295,13 +379,6 @@ $current_year = mysqli_fetch_assoc($current_year_result);
         }
 
         @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                height: auto;
-                position: relative;
-                border-radius: 0;
-            }
-
             .main-content {
                 margin-left: 0;
                 padding: 1rem;
@@ -318,38 +395,8 @@ $current_year = mysqli_fetch_assoc($current_year_result);
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <h2><i class="fas fa-graduation-cap"></i> Admin Panel</h2>
-        <nav>
-            <a href="dashboard.php" class="nav-link">
-                <i class="fas fa-home"></i> Dashboard
-            </a>
-            <a href="manage_departments.php" class="nav-link">
-                <i class="fas fa-building"></i> Departments
-            </a>
-            <a href="manage_faculty.php" class="nav-link">
-                <i class="fas fa-chalkboard-teacher"></i> Faculty
-            </a>
-            <a href="manage_students.php" class="nav-link">
-                <i class="fas fa-user-graduate"></i> Students
-            </a>
-            <a href="manage_subjects.php" class="nav-link">
-                <i class="fas fa-book"></i> Subjects
-            </a>
-            <a href="manage_feedback.php" class="nav-link">
-                <i class="fas fa-comments"></i> Feedback
-            </a>
-            <a href="reports.php" class="nav-link">
-                <i class="fas fa-chart-bar"></i> Reports
-            </a>
-            <a href="settings.php" class="nav-link active">
-                <i class="fas fa-cog"></i> Settings
-            </a>
-            <a href="../logout.php" class="nav-link">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </a>
-        </nav>
-    </div>
+    <?php include_once 'includes/header.php'; ?>
+    <?php include_once 'includes/sidebar.php'; ?>
 
     <div class="main-content">
         <h1 class="page-title"><i class="fas fa-cog"></i> System Settings</h1>
@@ -413,6 +460,41 @@ $current_year = mysqli_fetch_assoc($current_year_result);
                     </div>
                     <button type="submit" name="add_academic_year" class="btn btn-primary">
                         Add Academic Year
+                    </button>
+                </form>
+                
+                <hr>
+                
+                <h6 class="mb-3">Complete Academic Year(promote the students to the next year)</h6>
+                <div class="alert alert-warning">
+                    <strong>Warning:</strong> This process will:
+                    <ul>
+                        <li>Increment the year of study for all active batches</li>
+                        <li>Mark graduating batches (4th year) as inactive</li>
+                        <li>Change current academic year to the selected one</li>
+                        <li>Create a new feedback period for the next academic year</li>
+                    </ul>
+                    Make sure you have added the next academic year before proceeding.
+                </div>
+                
+                <form method="POST" onsubmit="return confirm('Are you sure you want to complete the current academic year? This action will update all student batches.');">
+                    <div class="mb-3">
+                        <label class="form-label">Current Academic Year</label>
+                        <input type="text" class="form-control" value="<?php echo htmlspecialchars($current_year['year_range']); ?>" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Next Academic Year</label>
+                        <select name="next_academic_year" class="form-control" required>
+                            <option value="">-- Select Next Academic Year --</option>
+                            <?php while ($year = mysqli_fetch_assoc($next_years_result)): ?>
+                                <option value="<?php echo $year['id']; ?>">
+                                    <?php echo htmlspecialchars($year['year_range']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <button type="submit" name="complete_academic_year" class="btn btn-primary">
+                        Complete Academic Year
                     </button>
                 </form>
             </div>

@@ -9,7 +9,7 @@ require_once 'functions.php';
 require('fpdf.php');
 
 if (!isset($_SESSION['user_id']) || ($_SESSION['role'] != 'hod' && $_SESSION['role'] != 'faculty' && $_SESSION['role'] != 'admin')) {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 

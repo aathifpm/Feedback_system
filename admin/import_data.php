@@ -5,7 +5,7 @@ require_once '../functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../login.php');
+    header('Location: ../index.php');
     exit();
 }
 
@@ -249,6 +249,7 @@ mysqli_data_seek($departments, 0);
     <title>Import Data - College Feedback System</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link rel="icon" href="../college_logo.png" type="image/png">
     <style>
         :root {
             --primary-color: #2ecc71;
@@ -258,6 +259,7 @@ mysqli_data_seek($departments, 0);
                      -9px -9px 16px rgba(255,255,255, 0.5);
             --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                            inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --header-height: 90px;
         }
 
         * {
@@ -270,8 +272,7 @@ mysqli_data_seek($departments, 0);
         body {
             background: var(--bg-color);
             min-height: 100vh;
-            display: flex;
-            color: var(--text-color);
+            padding-top: var(--header-height);
         }
 
         .main-content {
@@ -281,6 +282,7 @@ mysqli_data_seek($departments, 0);
             background: var(--bg-color);
             border-radius: 20px;
             box-shadow: var(--shadow);
+            margin-left: 280px; /* Add margin to accommodate fixed sidebar */
         }
 
         .dashboard-header {
@@ -499,6 +501,7 @@ mysqli_data_seek($departments, 0);
             .main-content {
                 margin: 10px;
                 padding: 1rem;
+                margin-left: 0; /* Remove left margin on mobile */
             }
 
             .dashboard-header {
@@ -516,98 +519,11 @@ mysqli_data_seek($departments, 0);
                 justify-content: center;
             }
         }
-
-        .sidebar {
-            width: 280px;
-            background: var(--bg-color);
-            padding: 2rem;
-            box-shadow: var(--shadow);
-            border-radius: 0 20px 20px 0;
-            z-index: 1000;
-            position: sticky;
-            top: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sidebar h2 {
-            color: var(--primary-color);
-            margin-bottom: 2rem;
-            font-size: 1.5rem;
-            text-align: center;
-            padding: 1rem;
-            border-radius: 15px;
-            background: var(--bg-color);
-            box-shadow: var(--inner-shadow);
-        }
-
-        .sidebar nav {
-            display: flex;
-            flex-direction: column;
-            gap: 0.8rem;
-        }
-
-        .nav-link {
-            display: flex;
-            align-items: center;
-            padding: 1rem 1.5rem;
-            color: var(--text-color);
-            text-decoration: none;
-            border-radius: 12px;
-            transition: all 0.3s ease;
-            background: var(--bg-color);
-            box-shadow: var(--shadow);
-        }
-
-        .nav-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 8px 8px 16px rgb(163,177,198,0.7), 
-                       -8px -8px 16px rgba(255,255,255, 0.8);
-        }
-
-        .nav-link.active {
-            background: var(--bg-color);
-            box-shadow: var(--inner-shadow);
-            color: var(--primary-color);
-            transform: translateY(0);
-        }
-
-        .nav-link i {
-            margin-right: 1rem;
-            font-size: 1.2rem;
-            color: var(--primary-color);
-            transition: all 0.3s ease;
-        }
-
-        .nav-link:hover i {
-            transform: scale(1.1);
-        }
-
-        .nav-link.active i {
-            color: var(--primary-color);
-        }
-
-        @media (max-width: 768px) {
-            .sidebar {
-                position: fixed;
-                left: -280px;
-                transition: all 0.3s ease;
-            }
-
-            .sidebar.active {
-                left: 0;
-            }
-
-            .main-content {
-                margin-left: 0;
-                width: 100%;
-            }
-        }
     </style>
 </head>
 <body>
-    <?php include 'includes/sidebar.php'; ?>
+    <?php include_once 'includes/header.php'; ?>
+    <?php include_once 'includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="dashboard-header">

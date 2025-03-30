@@ -4,7 +4,7 @@ include 'functions.php';
 
 // Check authorization
 if (!isset($_SESSION['user_id']) || !in_array($_SESSION['role'], ['admin', 'hod', 'faculty'])) {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 

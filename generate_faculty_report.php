@@ -9,7 +9,7 @@ require_once 'fpdf.php';
 
 // Check if user is logged in and is a HOD
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['role']) || $_SESSION['role'] !== 'hod') {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 

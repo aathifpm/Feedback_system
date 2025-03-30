@@ -5,7 +5,7 @@ ini_set('display_errors', 1);
 include 'functions.php';
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'student') {
-    header('Location: login.php');
+    header('Location: index.php');
     exit();
 }
 
@@ -267,6 +267,7 @@ if (!$subject) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Student Feedback Form - Panimalar Engineering College</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -302,7 +303,7 @@ if (!$subject) {
             background: #e0e5ec;
             border-radius: 15px;
             padding: 1.5rem;
-            margin-bottom: 2rem;
+            margin-bottom: 1.5rem;
             box-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                        inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
         }
@@ -959,18 +960,7 @@ if (!$subject) {
 
             return confirm("Are you sure you want to submit this feedback? This action cannot be undone.");
         }
-    </script>
-
-    <!-- Add this rating legend before the table -->
-    <div class="rating-legend">
-        <div class="rating-legend-item">1 = Strongly Disagree</div>
-        <div class="rating-legend-item">2 = Disagree</div>
-        <div class="rating-legend-item">3 = Neutral</div>
-        <div class="rating-legend-item">4 = Agree</div>
-        <div class="rating-legend-item">5 = Excellent</div>
-    </div>
-
-    <!-- Add this JavaScript for better user experience -->
+    </script>    <!-- Add this JavaScript for better user experience -->
     <script>
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('feedbackForm');
@@ -1122,15 +1112,7 @@ if (!$subject) {
     </script>
 </head>
 <body>
-    <div class="header">
-        <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo">
-        <div class="college-info">
-            <h1>Panimalar Engineering College</h1>
-            <p>An Autonomous Institution, Affiliated to Anna University, Chennai</p>
-            <p>Bangalore Trunk Road, Varadharajapuram, Poonamallee, Chennai – 600 123.</p>
-        </div>
-    </div>
-
+    <?php include 'header.php'; ?>
     <div class="container">
         <div class="purpose-box">
             <h3>PURPOSE</h3>

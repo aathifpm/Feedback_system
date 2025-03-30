@@ -122,11 +122,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     );
 
                     if (mysqli_stmt_execute($stmt)) {
-                        logAction($conn, $_SESSION['user_id'], 'admin', 'edit_faculty', [
+                        // Log the action directly
+                        $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
+                                     VALUES (?, 'admin', 'edit_faculty', ?, ?, ?)";
+                        $log_stmt = mysqli_prepare($conn, $log_query);
+                        $details = json_encode([
                             'faculty_id' => $faculty_id,
                             'name' => $name,
                             'department_id' => $department_id
                         ]);
+                        $ip_address = $_SERVER['REMOTE_ADDR'];
+                        $user_agent = $_SERVER['HTTP_USER_AGENT'];
+                        
+                        mysqli_stmt_bind_param($log_stmt, "isss", 
+                            $_SESSION['user_id'], 
+                            $details,
+                            $ip_address,
+                            $user_agent
+                        );
+                        mysqli_stmt_execute($log_stmt);
+                        
                         $success_msg = "Faculty updated successfully!";
                     } else {
                         throw new Exception("Error updating faculty!");
@@ -205,6 +220,7 @@ $faculty_result = mysqli_query($conn, $faculty_query);
     <title>Manage Faculty - College Feedback System</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link rel="icon" href="../college_logo.png" type="image/png">
     <style>
         :root {
             --primary-color: #e74c3c;  /* Red theme for Admin */
@@ -214,6 +230,7 @@ $faculty_result = mysqli_query($conn, $faculty_query);
                      -9px -9px 16px rgba(255,255,255, 0.5);
             --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                            inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --header-height: 90px;
         }
 
         * {
@@ -226,56 +243,20 @@ $faculty_result = mysqli_query($conn, $faculty_query);
         body {
             background: var(--bg-color);
             min-height: 100vh;
-            display: flex;
-        }
-
-        .sidebar {
-            width: 280px;
-            background: var(--bg-color);
-            padding: 2rem;
-            box-shadow: var(--shadow);
-            border-radius: 0 20px 20px 0;
-            z-index: 1000;
-        }
-
-        .sidebar h2 {
-            color: var(--primary-color);
-            margin-bottom: 2rem;
-            font-size: 1.5rem;
-            text-align: center;
-        }
-
-        .nav-link {
-            display: flex;
-            align-items: center;
-            padding: 1rem;
-            color: var(--text-color);
-            text-decoration: none;
-            margin-bottom: 0.5rem;
-            border-radius: 10px;
-            transition: all 0.3s ease;
-        }
-
-        .nav-link:hover {
-            background: var(--bg-color);
-            box-shadow: var(--shadow);
-            transform: translateY(-2px);
-        }
-
-        .nav-link.active {
-            background: var(--bg-color);
-            box-shadow: var(--inner-shadow);
-        }
-
-        .nav-link i {
-            margin-right: 1rem;
-            color: var(--primary-color);
+            padding-top: var(--header-height);
         }
 
         .main-content {
             flex: 1;
             padding: 2rem;
             background: var(--bg-color);
+            margin-left: 280px; /* Add margin for fixed sidebar */
+        }
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0; /* Remove margin on mobile */
+            }
         }
 
         .dashboard-header {
@@ -507,27 +488,6 @@ $faculty_result = mysqli_query($conn, $faculty_query);
             color: #721c24;
         }
 
-        @media (max-width: 768px) {
-            .sidebar {
-                position: fixed;
-                left: -280px;
-                height: 100vh;
-                transition: all 0.3s ease;
-            }
-
-            .sidebar.active {
-                left: 0;
-            }
-
-            .main-content {
-                margin-left: 0;
-            }
-
-            .faculty-grid {
-                grid-template-columns: 1fr;
-            }
-        }
-
         .filter-section {
             background: var(--bg-color);
             padding: 1.5rem;
@@ -602,38 +562,8 @@ $faculty_result = mysqli_query($conn, $faculty_query);
     </style>
 </head>
 <body>
-    <div class="sidebar">
-        <h2>Admin Panel</h2>
-        <nav>
-            <a href="dashboard.php" class="nav-link">
-                <i class="fas fa-home"></i> Dashboard
-            </a>
-            <a href="manage_departments.php" class="nav-link">
-                <i class="fas fa-building"></i> Departments
-            </a>
-            <a href="manage_faculty.php" class="nav-link">
-                <i class="fas fa-chalkboard-teacher"></i> Faculty
-            </a>
-            <a href="manage_students.php" class="nav-link">
-                <i class="fas fa-user-graduate"></i> Students
-            </a>
-            <a href="manage_subjects.php" class="nav-link">
-                <i class="fas fa-book"></i> Subjects
-            </a>
-            <a href="manage_feedback.php" class="nav-link">
-                <i class="fas fa-comments"></i> Feedback
-            </a>
-            <a href="reports.php" class="nav-link">
-                <i class="fas fa-chart-bar"></i> Reports
-            </a>
-            <a href="settings.php" class="nav-link">
-                <i class="fas fa-cog"></i> Settings
-            </a>
-            <a href="../logout.php" class="nav-link">
-                <i class="fas fa-sign-out-alt"></i> Logout
-            </a>
-        </nav>
-    </div>
+    <?php include_once 'includes/header.php'; ?>
+    <?php include_once 'includes/sidebar.php'; ?>
 
     <div class="main-content">
         <div class="dashboard-header">
