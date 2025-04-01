@@ -40,10 +40,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         foreach ($sections as $section) {
             if (isset($_POST[$section])) {
                 $all_ratings[$section] = $_POST[$section];
-                foreach ($_POST[$section] as $rating) {
+                foreach ($_POST[$section] as $statement_id => $rating) {
                     if (!is_numeric($rating) || $rating < 1 || $rating > 5) {
                         $valid_ratings = false;
-                        error_log("Invalid rating found in section $section: $rating");
+                        error_log("Invalid rating found in section $section for statement ID $statement_id: $rating");
                         break 2;
                     }
                 }
@@ -90,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             exit();
         }
 
-        // Insert feedback record (note: faculty_id is now removed from feedback)
+        // Insert feedback record
         $insert_query = "INSERT INTO feedback (
             assignment_id, 
             student_id,
@@ -128,7 +128,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         $feedback_id = mysqli_insert_id($conn);
 
-        // Insert ratings with correct statement IDs
+        // Insert ratings with dynamic statement IDs
         $rating_query = "INSERT INTO feedback_ratings (
             feedback_id, 
             statement_id, 
@@ -137,18 +137,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         
         $rating_stmt = mysqli_prepare($conn, $rating_query);
 
-        // Define statement ID ranges for each section
-        $section_ranges = [
-            'course_effectiveness' => ['start' => 1, 'end' => 12],
-            'teaching_effectiveness' => ['start' => 13, 'end' => 19],
-            'resources_admin' => ['start' => 20, 'end' => 23],
-            'assessment_learning' => ['start' => 24, 'end' => 27],
-            'course_outcomes' => ['start' => 28, 'end' => 33]
-        ];
-
+        // Insert ratings for each section with actual statement IDs
         foreach ($all_ratings as $section => $ratings) {
-            $statement_id = $section_ranges[$section]['start'];
-            foreach ($ratings as $rating) {
+            foreach ($ratings as $statement_id => $rating) {
                 if (!$rating_stmt) {
                     throw new Exception("Failed to prepare rating statement");
                 }
@@ -162,7 +153,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 if (!mysqli_stmt_execute($rating_stmt)) {
                     throw new Exception("Failed to insert rating: " . mysqli_stmt_error($rating_stmt));
                 }
-                $statement_id++;
             }
         }
 
@@ -236,7 +226,7 @@ $current_year = $student['current_year_of_study'];
 
 // Fetch subject and faculty details with proper error handling
 $assignment_id = isset($_GET['assignment_id']) ? intval($_GET['assignment_id']) : 0;
-$subject_query = "SELECT sa.*, s.name AS subject_name,
+$subject_query = "SELECT sa.*, s.name AS subject_name, s.code AS subject_code,
                  ay.year_range as academic_year,
                  sa.semester,
                  CASE 
@@ -895,73 +885,6 @@ if (!$subject) {
 
     <!-- Updated form validation script -->
     <script>
-        function validateForm() {
-            const sections = [
-                'course_effectiveness',
-                'teaching_effectiveness',
-                'resources_admin',
-                'assessment_learning',
-                'course_outcomes'
-            ];
-            
-            for (const section of sections) {
-                const ratings = document.querySelectorAll(`input[name^="${section}"]:checked`);
-                const questions = document.querySelectorAll(`input[name^="${section}"]`);
-                const totalQuestions = questions.length / 5; // 5 radio buttons per question
-                
-                if (ratings.length < totalQuestions) {
-                    alert(`Please rate all questions in the ${section.replace('_', ' ')} section.`);
-                    return false;
-                }
-            }
-
-            const required = document.querySelectorAll('[required]');
-            let valid = true;
-            const errorMessages = document.querySelectorAll('.error-message');
-            
-            // Remove existing error messages
-            errorMessages.forEach(msg => msg.remove());
-
-            required.forEach(field => {
-                if (!field.value.trim()) {
-                    field.classList.add('error');
-                    const errorMsg = document.createElement('div');
-                    errorMsg.className = 'error-message';
-                    errorMsg.textContent = 'This field is required';
-                    field.parentNode.appendChild(errorMsg);
-                    valid = false;
-                } else {
-                    field.classList.remove('error');
-                }
-            });
-
-            // Validate email format
-            const email = document.getElementById('email');
-            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-            if (email && !emailRegex.test(email.value)) {
-                email.classList.add('error');
-                const errorMsg = document.createElement('div');
-                errorMsg.className = 'error-message';
-                errorMsg.textContent = 'Please enter a valid email address';
-                email.parentNode.appendChild(errorMsg);
-                valid = false;
-            }
-
-            // Validate phone number
-            const phone = document.getElementById('contact_number');
-            if (phone && !/^\d{10}$/.test(phone.value)) {
-                phone.classList.add('error');
-                const errorMsg = document.createElement('div');
-                errorMsg.className = 'error-message';
-                errorMsg.textContent = 'Please enter a valid 10-digit phone number';
-                phone.parentNode.appendChild(errorMsg);
-                valid = false;
-            }
-
-            return confirm("Are you sure you want to submit this feedback? This action cannot be undone.");
-        }
-    </script>    <!-- Add this JavaScript for better user experience -->
-    <script>
     document.addEventListener('DOMContentLoaded', function() {
         const form = document.getElementById('feedbackForm');
         
@@ -972,63 +895,53 @@ if (!$subject) {
             let isValid = true;
             const formData = new FormData(form);
             
-            // Define the expected number of questions and ID ranges for each section
-            const sectionQuestions = {
-                'course_effectiveness': {
-                    count: 12,    // 12 questions
-                    startId: 1,   // IDs 1-12
-                    endId: 12
-                },
-                'teaching_effectiveness': {
-                    count: 7,     // 7 questions  
-                    startId: 13,  // IDs 13-19
-                    endId: 19
-                },
-                'resources_admin': {
-                    count: 4,     // 4 questions
-                    startId: 20,  // IDs 20-23
-                    endId: 23
-                },
-                'assessment_learning': {
-                    count: 4,     // 4 questions
-                    startId: 24,  // IDs 24-27
-                    endId: 27
-                },
-                'course_outcomes': {
-                    count: 6,     // 6 questions
-                    startId: 28,  // IDs 28-33
-                    endId: 33
-                }
-            };
+            // Define the sections to validate
+            const sections = [
+                'course_effectiveness',
+                'teaching_effectiveness',
+                'resources_admin',
+                'assessment_learning',
+                'course_outcomes'
+            ];
 
             // Validate all sections
-            Object.keys(sectionQuestions).forEach(section => {
-                const questions = document.querySelectorAll(`input[name^="${section}["]`);
-                const expectedQuestions = sectionQuestions[section];
+            sections.forEach(section => {
+                const radioGroups = form.querySelectorAll(`input[name^="${section}["]`);
+                if (!radioGroups.length) {
+                    console.log(`No questions found for section ${section}`);
+                    return;
+                }
+                
+                // Get all unique group names for this section to count total questions
+                const questionGroups = new Set();
+                radioGroups.forEach(radio => {
+                    questionGroups.add(radio.name);
+                });
+                
+                // Get count of answered questions
                 const answeredQuestions = new Set();
-
-                questions.forEach(radio => {
+                radioGroups.forEach(radio => {
                     if (radio.checked) {
                         answeredQuestions.add(radio.name);
                     }
                 });
 
-                console.log(`${section}: ${answeredQuestions.size} answered out of ${expectedQuestions} questions`);
+                console.log(`${section}: ${answeredQuestions.size} answered out of ${questionGroups.size} questions`);
 
-                if (answeredQuestions.size < expectedQuestions) {
+                if (answeredQuestions.size < questionGroups.size) {
                     isValid = false;
                     console.error(`Incomplete section: ${section}`);
+                    
                     // Highlight unanswered questions
-                    const questionGroups = new Set();
-                    questions.forEach(radio => {
-                        questionGroups.add(radio.name);
-                    });
-
                     questionGroups.forEach(name => {
                         const isAnswered = document.querySelector(`input[name="${name}"]:checked`);
                         if (!isAnswered) {
-                            const row = document.querySelector(`input[name="${name}"]`).closest('tr');
-                            if (row) row.style.backgroundColor = '#fff3cd';
+                            // Get the row containing this question
+                            const radio = document.querySelector(`input[name="${name}"]`);
+                            if (radio) {
+                                const row = radio.closest('tr');
+                                if (row) row.style.backgroundColor = '#fff3cd';
+                            }
                         }
                     });
                 }
@@ -1162,7 +1075,7 @@ if (!$subject) {
                     <input type="text" 
                            id="subject" 
                            name="subject" 
-                           value="<?php echo htmlspecialchars(($subject['subject_name'] ?? '') . ' - ' . ($subject['code'] ?? '')); ?>" 
+                           value="<?php echo htmlspecialchars(($subject['subject_code'] ?? '') . ' - ' . ($subject['subject_name'] ?? '')); ?>" 
                            readonly>
                 </div>
                 <div class="form-group">
@@ -1215,34 +1128,25 @@ if (!$subject) {
                     </thead>
                     <tbody>
                         <?php
-                        $courseEffectiveness = [
-                            "Syllabus structure was clearly outlined at the beginning of the course.",
-                            "The course was delivered as outlined in the syllabus.",
-                            "The syllabus was explained at the beginning of the course.",
-                            "Well-organized presentations.",
-                            "Given good examples and illustrations.",
-                            "Encouraged questions and class participation.",
-                            "Learnt new techniques and methods from this course.",
-                            "Understood the relevance of the course for real-world application.",
-                            "Course assignments and lectures complemented each other for design development/Projects.",
-                            "Course will help in competitive examinations.",
-                            "Course objectives mapped with outcomes.",
-                            "Course outcomes help to attain Program Educational Objectives (PEOs)."
-                        ];
-
-                        function generateRatingOptions($index, $prefix, $name) {
+                        // Fetch statements from database instead of hardcoding
+                        $course_effectiveness_query = "SELECT id, statement FROM feedback_statements 
+                                                        WHERE section = 'COURSE_EFFECTIVENESS' AND is_active = TRUE 
+                                                        ORDER BY id";
+                        $course_effectiveness_result = mysqli_query($conn, $course_effectiveness_query);
+                        
+                        function generateRatingOptions($index, $prefix, $name, $statement_id) {
                             $html = '<td class="radio-group">';
                             $html .= '<div class="rating-options">';
                             
                             // Add a hidden dummy input to prevent validation error when no option is selected
-                            $html .= '<input type="hidden" name="' . $name . '[' . $index . ']" value="">';
+                            $html .= '<input type="hidden" name="' . $name . '[' . $statement_id . ']" value="">';
                             
                             for ($i = 1; $i <= 5; $i++) {
-                                $inputId = $prefix . '_' . ($index + 1) . '_' . $i;
+                                $inputId = $prefix . '_' . $statement_id . '_' . $i;
                                 $html .= '<div class="rating-option">';
                                 $html .= '<input type="radio" 
                                         id="' . $inputId . '" 
-                                        name="' . $name . '[' . $index . ']" 
+                                        name="' . $name . '[' . $statement_id . ']" 
                                         value="' . $i . '" 
                                         class="rating-input"
                                         tabindex="0">';
@@ -1253,12 +1157,14 @@ if (!$subject) {
                             return $html;
                         }
 
-                        foreach ($courseEffectiveness as $index => $question) {
+                        $index = 0;
+                        while ($statement = mysqli_fetch_assoc($course_effectiveness_result)) {
                             echo '<tr>';
                             echo '<td>' . ($index + 1) . '</td>';
-                            echo '<td>' . $question . '</td>';
-                            echo generateRatingOptions($index, 'ce', 'course_effectiveness');
+                            echo '<td>' . htmlspecialchars($statement['statement']) . '</td>';
+                            echo generateRatingOptions($index, 'ce', 'course_effectiveness', $statement['id']);
                             echo '</tr>';
+                            $index++;
                         }
                         ?>
                     </tbody>
@@ -1281,22 +1187,20 @@ if (!$subject) {
                     </thead>
                     <tbody>
                         <?php
-                        $teachingEffectiveness = [
-                            "Deliverance by course instructor stimulates interest.",
-                            "The instructor managed classroom time and place well.",
-                            "Instructor meets students' expectations.",
-                            "Instructor demonstrates thorough preparation for the course.",
-                            "Instructor encourages discussions and responds to questions.",
-                            "Instructor appeared enthusiastic and interested.",
-                            "Instructor was accessible outside the classroom."
-                        ];
+                        // Fetch statements from database
+                        $teaching_effectiveness_query = "SELECT id, statement FROM feedback_statements 
+                                                        WHERE section = 'TEACHING_EFFECTIVENESS' AND is_active = TRUE 
+                                                        ORDER BY id";
+                        $teaching_effectiveness_result = mysqli_query($conn, $teaching_effectiveness_query);
 
-                        foreach ($teachingEffectiveness as $index => $question) {
+                        $index = 0;
+                        while ($statement = mysqli_fetch_assoc($teaching_effectiveness_result)) {
                             echo '<tr>';
                             echo '<td>' . ($index + 1) . '</td>';
-                            echo '<td>' . $question . '</td>';
-                            echo generateRatingOptions($index, 'te', 'teaching_effectiveness');
+                            echo '<td>' . htmlspecialchars($statement['statement']) . '</td>';
+                            echo generateRatingOptions($index, 'te', 'teaching_effectiveness', $statement['id']);
                             echo '</tr>';
+                            $index++;
                         }
                         ?>
                     </tbody>
@@ -1319,19 +1223,20 @@ if (!$subject) {
                     </thead>
                     <tbody>
                         <?php
-                        $resourcesAdmin = [
-                            "Course supported by adequate library resources.",
-                            "Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).",
-                            "Instructor provided guidance on finding resources.",
-                            "Course material/Lecture notes were effective."
-                        ];
+                        // Fetch statements from database
+                        $resources_admin_query = "SELECT id, statement FROM feedback_statements 
+                                                WHERE section = 'RESOURCES_ADMIN' AND is_active = TRUE 
+                                                ORDER BY id";
+                        $resources_admin_result = mysqli_query($conn, $resources_admin_query);
 
-                        foreach ($resourcesAdmin as $index => $question) {
+                        $index = 0;
+                        while ($statement = mysqli_fetch_assoc($resources_admin_result)) {
                             echo '<tr>';
                             echo '<td>' . ($index + 1) . '</td>';
-                            echo '<td>' . $question . '</td>';
-                            echo generateRatingOptions($index, 'ra', 'resources_admin');
+                            echo '<td>' . htmlspecialchars($statement['statement']) . '</td>';
+                            echo generateRatingOptions($index, 'ra', 'resources_admin', $statement['id']);
                             echo '</tr>';
+                            $index++;
                         }
                         ?>
                     </tbody>
@@ -1354,19 +1259,20 @@ if (!$subject) {
                     </thead>
                     <tbody>
                         <?php
-                        $assessmentLearning = [
-                            "Exams measure the knowledge acquired in the course.",
-                            "Problems set help in understanding the course.",
-                            "Feedback on assignments was useful.",
-                            "Tutorial sessions help in understanding course concepts."
-                        ];
+                        // Fetch statements from database
+                        $assessment_learning_query = "SELECT id, statement FROM feedback_statements 
+                                                    WHERE section = 'ASSESSMENT_LEARNING' AND is_active = TRUE 
+                                                    ORDER BY id";
+                        $assessment_learning_result = mysqli_query($conn, $assessment_learning_query);
 
-                        foreach ($assessmentLearning as $index => $question) {
+                        $index = 0;
+                        while ($statement = mysqli_fetch_assoc($assessment_learning_result)) {
                             echo '<tr>';
                             echo '<td>' . ($index + 1) . '</td>';
-                            echo '<td>' . $question . '</td>';
-                            echo generateRatingOptions($index, 'al', 'assessment_learning');
+                            echo '<td>' . htmlspecialchars($statement['statement']) . '</td>';
+                            echo generateRatingOptions($index, 'al', 'assessment_learning', $statement['id']);
                             echo '</tr>';
+                            $index++;
                         }
                         ?>
                     </tbody>
@@ -1389,12 +1295,20 @@ if (!$subject) {
                     </thead>
                     <tbody>
                         <?php
-                        for ($i = 1; $i <= 6; $i++) {
+                        // Fetch statements from database
+                        $course_outcomes_query = "SELECT id, statement FROM feedback_statements 
+                                                WHERE section = 'COURSE_OUTCOMES' AND is_active = TRUE 
+                                                ORDER BY id";
+                        $course_outcomes_result = mysqli_query($conn, $course_outcomes_query);
+
+                        $index = 0;
+                        while ($statement = mysqli_fetch_assoc($course_outcomes_result)) {
                             echo '<tr>';
-                            echo '<td>' . $i . '</td>';
-                            echo '<td>COURSE OUTCOME ' . $i . '</td>';
-                            echo generateRatingOptions($i-1, 'co', 'course_outcomes');
+                            echo '<td>' . ($index + 1) . '</td>';
+                            echo '<td>' . htmlspecialchars($statement['statement']) . '</td>';
+                            echo generateRatingOptions($index, 'co', 'course_outcomes', $statement['id']);
                             echo '</tr>';
+                            $index++;
                         }
                         ?>
                     </tbody>

@@ -44,6 +44,77 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit();
     }
     
+    // Handle adding new batch
+    if (isset($_POST['add_batch'])) {
+        try {
+            $batch_name = mysqli_real_escape_string($conn, $_POST['batch_name']);
+            $admission_year = intval($_POST['admission_year']);
+            $graduation_year = intval($_POST['graduation_year']);
+            $current_year = intval($_POST['current_year_of_study']);
+            
+            if ($current_year < 1 || $current_year > 4) {
+                throw new Exception("Current year must be between 1 and 4");
+            }
+            
+            mysqli_begin_transaction($conn);
+            
+            // Check if batch name already exists
+            $check_query = "SELECT id FROM batch_years WHERE batch_name = ?";
+            $stmt = mysqli_prepare($conn, $check_query);
+            mysqli_stmt_bind_param($stmt, "s", $batch_name);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            
+            if (mysqli_num_rows($result) > 0) {
+                throw new Exception("Batch with this name already exists!");
+            }
+            
+            // Insert the new batch
+            $insert_query = "INSERT INTO batch_years (batch_name, admission_year, graduation_year, current_year_of_study, is_active) 
+                            VALUES (?, ?, ?, ?, TRUE)";
+            $stmt = mysqli_prepare($conn, $insert_query);
+            mysqli_stmt_bind_param($stmt, "siii", $batch_name, $admission_year, $graduation_year, $current_year);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Error adding batch: " . mysqli_error($conn));
+            }
+            
+            mysqli_commit($conn);
+            $_SESSION['success_msg'] = "New batch added successfully!";
+            
+        } catch (Exception $e) {
+            mysqli_rollback($conn);
+            $_SESSION['error_msg'] = $e->getMessage();
+        }
+        
+        header('Location: settings.php');
+        exit();
+    }
+    
+    // Handle batch status toggle
+    if (isset($_POST['toggle_batch'])) {
+        try {
+            $batch_id = intval($_POST['batch_id']);
+            $new_status = intval($_POST['is_active']);
+            
+            $update_query = "UPDATE batch_years SET is_active = ? WHERE id = ?";
+            $stmt = mysqli_prepare($conn, $update_query);
+            mysqli_stmt_bind_param($stmt, "ii", $new_status, $batch_id);
+            
+            if (!mysqli_stmt_execute($stmt)) {
+                throw new Exception("Error updating batch status: " . mysqli_error($conn));
+            }
+            
+            $_SESSION['success_msg'] = "Batch status updated successfully!";
+            
+        } catch (Exception $e) {
+            $_SESSION['error_msg'] = $e->getMessage();
+        }
+        
+        header('Location: settings.php');
+        exit();
+    }
+    
     if (isset($_POST['complete_academic_year'])) {
         // Start transaction
         mysqli_begin_transaction($conn);
@@ -166,6 +237,10 @@ $current_year = mysqli_fetch_assoc($current_year_result);
 // Get non-current academic years for transition selector
 $next_years_query = "SELECT * FROM academic_years WHERE is_current = FALSE ORDER BY start_date DESC";
 $next_years_result = mysqli_query($conn, $next_years_query);
+
+// Fetch batches
+$batches_query = "SELECT * FROM batch_years ORDER BY admission_year DESC, batch_name";
+$batches_result = mysqli_query($conn, $batches_query);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -495,6 +570,88 @@ $next_years_result = mysqli_query($conn, $next_years_query);
                     </div>
                     <button type="submit" name="complete_academic_year" class="btn btn-primary">
                         Complete Academic Year
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Batch Management -->
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-users"></i> Batch Management</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive mb-4">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>Batch Name</th>
+                                <th>Admission Year</th>
+                                <th>Graduation Year</th>
+                                <th>Current Year of Study</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php 
+                            mysqli_data_seek($batches_result, 0);
+                            while ($batch = mysqli_fetch_assoc($batches_result)): 
+                            ?>
+                                <tr>
+                                    <td><?php echo htmlspecialchars($batch['batch_name']); ?></td>
+                                    <td><?php echo $batch['admission_year']; ?></td>
+                                    <td><?php echo $batch['graduation_year']; ?></td>
+                                    <td><?php echo $batch['current_year_of_study']; ?></td>
+                                    <td>
+                                        <span class="badge bg-<?php echo $batch['is_active'] ? 'success' : 'danger'; ?>">
+                                            <?php echo $batch['is_active'] ? 'Active' : 'Inactive'; ?>
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <form method="POST" style="display: inline;">
+                                            <input type="hidden" name="batch_id" value="<?php echo $batch['id']; ?>">
+                                            <input type="hidden" name="is_active" value="<?php echo $batch['is_active'] ? 0 : 1; ?>">
+                                            <button type="submit" name="toggle_batch" class="btn btn-sm btn-<?php echo $batch['is_active'] ? 'warning' : 'success'; ?>">
+                                                <?php echo $batch['is_active'] ? 'Deactivate' : 'Activate'; ?>
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endwhile; ?>
+                        </tbody>
+                    </table>
+                </div>
+
+                <hr>
+
+                <h6 class="mb-3">Add New Batch</h6>
+                <form method="POST">
+                    <div class="mb-3">
+                        <label class="form-label">Batch Name (e.g., 2024-28)</label>
+                        <input type="text" name="batch_name" class="form-control" required pattern="\d{4}-\d{2}">
+                        <small class="text-muted">Format: YYYY-YY (admission year - graduation year last two digits)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Admission Year</label>
+                        <input type="number" name="admission_year" class="form-control" required min="2000" max="2100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Graduation Year</label>
+                        <input type="number" name="graduation_year" class="form-control" required min="2000" max="2100">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Current Year of Study</label>
+                        <select name="current_year_of_study" class="form-control" required>
+                            <option value="">Select Current Year</option>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                        </select>
+                    </div>
+                    <button type="submit" name="add_batch" class="btn btn-primary">
+                        Add Batch
                     </button>
                 </form>
             </div>

@@ -2446,12 +2446,9 @@ switch ($role) {
                                 <label>Section</label>
                                 <select name="section" class="input-field" required>
                                     <option value="">Select Section</option>
-                                    <option value="A">Section A</option>
-                                    <option value="B">Section B</option>
-                                    <option value="C">Section C</option>
-                                    <option value="D">Section D</option>
-                                    <option value="E">Section E</option>
-                                    <option value="F">Section F</option>
+                                    <?php for($i = 65; $i <= 79; $i++): ?>
+                                        <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
+                                    <?php endfor; ?>
                                 </select>
                             </div>
 

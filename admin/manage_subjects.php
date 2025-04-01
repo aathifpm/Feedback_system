@@ -119,7 +119,54 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     }
 
                     // Handle assignments if provided
-                    if (isset($_POST['assignments']) && is_array($_POST['assignments'])) {
+                    if (isset($_POST['years']) && isset($_POST['semesters']) && isset($_POST['sections']) && 
+                        isset($_POST['faculty_ids']) && isset($_POST['academic_year_ids'])) {
+                        
+                        // Make sure all arrays have the same length
+                        $count = count($_POST['years']);
+                        if ($count === count($_POST['semesters']) && $count === count($_POST['sections']) && 
+                            $count === count($_POST['faculty_ids']) && $count === count($_POST['academic_year_ids'])) {
+                            
+                            for ($i = 0; $i < $count; $i++) {
+                                // Skip if any required field is empty
+                                if (empty($_POST['years'][$i]) || empty($_POST['semesters'][$i]) || 
+                                    empty($_POST['sections'][$i]) || empty($_POST['faculty_ids'][$i]) || 
+                                    empty($_POST['academic_year_ids'][$i])) {
+                                    continue;
+                                }
+                                
+                                $year = intval($_POST['years'][$i]);
+                                $semester = intval($_POST['semesters'][$i]);
+                                $section = mysqli_real_escape_string($conn, $_POST['sections'][$i]);
+                                $faculty_id = intval($_POST['faculty_ids'][$i]);
+                                $academic_year_id = intval($_POST['academic_year_ids'][$i]);
+                                
+                                $assignment_query = "INSERT INTO subject_assignments 
+                                                   (subject_id, faculty_id, academic_year_id, year, semester, section, is_active)
+                                                   VALUES (?, ?, ?, ?, ?, ?, 1)
+                                                   ON DUPLICATE KEY UPDATE
+                                                   faculty_id = VALUES(faculty_id)";
+                                
+                                $stmt = mysqli_prepare($conn, $assignment_query);
+                                mysqli_stmt_bind_param($stmt, "iiiiss", 
+                                    $id,
+                                    $faculty_id,
+                                    $academic_year_id,
+                                    $year,
+                                    $semester,
+                                    $section
+                                );
+                                
+                                if (!mysqli_stmt_execute($stmt)) {
+                                    throw new Exception("Error adding new subject assignment!");
+                                }
+                            }
+                        } else {
+                            throw new Exception("Invalid assignment data provided!");
+                        }
+                    }
+                    // Original code to handle the assignments array format
+                    else if (isset($_POST['assignments']) && is_array($_POST['assignments'])) {
                         foreach ($_POST['assignments'] as $assignment) {
                             $faculty_id = intval($assignment['faculty_id']);
                             $academic_year_id = intval($assignment['academic_year_id']);
@@ -881,6 +928,10 @@ function getSubjectAssignments($conn, $subject_id) {
         .assignments {
             margin-bottom: 1rem;
         }
+
+        .hidden {
+            display: none !important;
+        }
     </style>
 </head>
 <body>
@@ -951,7 +1002,7 @@ function getSubjectAssignments($conn, $subject_id) {
                 <div class="filter-group">
                     <select id="sectionFilter" class="form-control">
                         <option value="">All Sections</option>
-                        <?php for($i = 65; $i <= 70; $i++): // A to F ?>
+                        <?php for($i = 65; $i <= 79; $i++): ?>
                             <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                         <?php endfor; ?>
                     </select>
@@ -981,13 +1032,27 @@ function getSubjectAssignments($conn, $subject_id) {
 
         <!-- Subject Grid -->
         <div class="subject-grid">
-            <?php while ($subject = mysqli_fetch_assoc($subjects_result)): ?>
+            <?php while ($subject = mysqli_fetch_assoc($subjects_result)): 
+                // Get sections data for this subject
+                $sections_query = "SELECT DISTINCT section FROM subject_assignments 
+                                   WHERE subject_id = ? AND is_active = 1";
+                $stmt = mysqli_prepare($conn, $sections_query);
+                mysqli_stmt_bind_param($stmt, "i", $subject['id']);
+                mysqli_stmt_execute($stmt);
+                $sections_result = mysqli_stmt_get_result($stmt);
+                
+                $sections = [];
+                while ($section_row = mysqli_fetch_assoc($sections_result)) {
+                    $sections[] = $section_row['section'];
+                }
+                $sections_string = implode(',', $sections);
+            ?>
                 <div class="subject-card" 
                      data-department="<?php echo $subject['department_id']; ?>"
                      data-faculty="<?php echo $subject['faculty_id'] ?? ''; ?>"
                      data-year="<?php echo $subject['min_year'] ?? ''; ?>"
                      data-semester="<?php echo $subject['min_semester'] ?? ''; ?>"
-                     data-section="<?php echo $subject['min_section'] ?? ''; ?>"
+                     data-section="<?php echo $sections_string; ?>"
                      data-status="<?php echo $subject['is_active'] ? '1' : '0'; ?>">
                     <div class="subject-header">
                         <div class="subject-info">
@@ -1151,7 +1216,7 @@ function getSubjectAssignments($conn, $subject_id) {
                         <label for="section">Section</label>
                         <select id="section" name="section" class="form-control" required>
                             <option value="">Select Section</option>
-                            <?php for($i = 65; $i <= 70; $i++): ?>
+                            <?php for($i = 65; $i <= 79; $i++): ?>
                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                             <?php endfor; ?>
                         </select>
@@ -1161,7 +1226,7 @@ function getSubjectAssignments($conn, $subject_id) {
                 <div class="form-row">
                     <div class="form-group">
                         <label for="credits">Credits</label>
-                        <input type="number" id="credits" name="credits" class="form-control" min="1" max="5" required>
+                        <input type="number" id="credits" name="credits" class="form-control" min="1" max="" required>
                     </div>
                 </div>
 
@@ -1197,6 +1262,28 @@ function getSubjectAssignments($conn, $subject_id) {
                     <input type="text" id="edit_name" name="name" class="form-control" required>
                 </div>
 
+                <!-- Add department dropdown and credits input -->
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit_department">Department</label>
+                        <select name="department_id" class="form-control" required>
+                            <option value="">Select Department</option>
+                            <?php 
+                            mysqli_data_seek($departments, 0);
+                            while ($dept = mysqli_fetch_assoc($departments)): 
+                            ?>
+                                <option value="<?php echo $dept['id']; ?>">
+                                    <?php echo htmlspecialchars($dept['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit_credits">Credits</label>
+                        <input type="number" name="credits" class="form-control" min="1" max="5" required>
+                    </div>
+                </div>
+
                 <!-- Current Assignments Section -->
                 <div class="current-assignments">
                     <h3>Current Assignments</h3>
@@ -1229,26 +1316,42 @@ function getSubjectAssignments($conn, $subject_id) {
                                     </div>
                                 </div>
                                 <div class="form-group">
-                                    <label>Section & Faculty</label>
+                                    <label>Section & Academic Year</label>
                                     <div class="input-group">
                                         <select name="sections[]" class="form-control" required>
                                             <option value="">Select Section</option>
-                                            <?php for($i = 65; $i <= 75; $i++): ?>
+                                            <?php for($i = 65; $i <= 79; $i++): ?>
                                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                                             <?php endfor; ?>
                                         </select>
-                                        <select name="faculty_ids[]" class="form-control" required>
-                                            <option value="">Select Faculty</option>
+                                        <select name="academic_year_ids[]" class="form-control" required>
+                                            <option value="">Select Academic Year</option>
                                             <?php 
-                                            mysqli_data_seek($faculty_members, 0);
-                                            while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                            mysqli_data_seek($academic_years, 0);
+                                            while ($year = mysqli_fetch_assoc($academic_years)): 
                                             ?>
-                                                <option value="<?php echo $faculty['id']; ?>">
-                                                    <?php echo htmlspecialchars($faculty['name']); ?>
+                                                <option value="<?php echo $year['id']; ?>">
+                                                    <?php echo htmlspecialchars($year['year_range']); ?>
                                                 </option>
                                             <?php endwhile; ?>
                                         </select>
                                     </div>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Faculty</label>
+                                    <select name="faculty_ids[]" class="form-control" required>
+                                        <option value="">Select Faculty</option>
+                                        <?php 
+                                        mysqli_data_seek($faculty_members, 0);
+                                        while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                        ?>
+                                            <option value="<?php echo $faculty['id']; ?>">
+                                                <?php echo htmlspecialchars($faculty['name']); ?>
+                                            </option>
+                                        <?php endwhile; ?>
+                                    </select>
                                 </div>
                             </div>
                         </div>
@@ -1331,9 +1434,9 @@ function getSubjectAssignments($conn, $subject_id) {
                         <label for="section">Section</label>
                         <select name="section" class="form-control" required>
                             <option value="">Select Section</option>
-                            <?php foreach(range('A', 'E') as $section): ?>
-                                <option value="<?php echo $section; ?>">Section <?php echo $section; ?></option>
-                            <?php endforeach; ?>
+                            <?php for($i = 65; $i <= 79; $i++): ?>
+                                <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
+                            <?php endfor; ?>
                         </select>
                     </div>
                 </div>
@@ -1354,21 +1457,50 @@ function getSubjectAssignments($conn, $subject_id) {
         }
 
         function showEditModal(subject) {
-            const modal = document.getElementById('editModal');
-            
-            // Set form values
             document.getElementById('edit_id').value = subject.id;
             document.getElementById('edit_code').value = subject.code;
             document.getElementById('edit_name').value = subject.name;
-            document.getElementById('edit_department_id').value = subject.department_id;
-            document.getElementById('edit_faculty_id').value = subject.faculty_id;
-            document.getElementById('edit_academic_year_id').value = subject.academic_year_id;
-            document.getElementById('edit_year').value = subject.year;
-            document.getElementById('edit_semester').value = subject.semester;
-            document.getElementById('edit_section').value = subject.section;
-            document.getElementById('edit_credits').value = subject.credits;
             
-            modal.style.display = 'flex';
+            // Find the department select element and set its value
+            const departmentSelect = document.querySelector('#editModal select[name="department_id"]');
+            if (departmentSelect) {
+                departmentSelect.value = subject.department_id;
+            }
+            
+            // Set credits
+            const creditsInput = document.querySelector('#editModal input[name="credits"]');
+            if (creditsInput) {
+                creditsInput.value = subject.credits;
+            }
+
+            // Fetch current assignments
+            fetch(`get_subject_assignments.php?subject_id=${subject.id}`)
+                .then(response => response.json())
+                .then(assignments => {
+                    const assignmentsList = document.getElementById('currentAssignmentsList');
+                    assignmentsList.innerHTML = assignments.map(assignment => `
+                        <div class="current-assignment-item">
+                            <div class="assignment-details">
+                                <span>Year ${assignment.year}</span>
+                                <span>Semester ${assignment.semester}</span>
+                                <span>Section ${assignment.section}</span>
+                                <span>${assignment.faculty_name}</span>
+                            </div>
+                            <div class="assignment-actions">
+                                <button type="button" class="btn-action" 
+                                        onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
+                                    <i class="fas fa-${assignment.is_active ? 'times' : 'check'}"></i>
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => {
+                    console.error('Error fetching assignments:', error);
+                    document.getElementById('currentAssignmentsList').innerHTML = '<p>Error loading assignments</p>';
+                });
+
+            showModal('editModal');
         }
 
         function hideModal(modalId) {
@@ -1445,11 +1577,35 @@ function getSubjectAssignments($conn, $subject_id) {
                     if (searchTerm && !name.includes(searchTerm) && !code.includes(searchTerm)) {
                         showCard = false;
                     }
+                    
                     if (selectedDept && department !== selectedDept) showCard = false;
                     if (selectedFaculty && faculty !== selectedFaculty) showCard = false;
                     if (selectedYear && year && year !== selectedYear) showCard = false;
                     if (selectedSemester && semester && semester !== selectedSemester) showCard = false;
-                    if (selectedSection && section && section !== selectedSection) showCard = false;
+                    
+                    // Improved section filtering - check if card has any assignments with the selected section
+                    if (selectedSection) {
+                        let hasSection = false;
+                        
+                        // Check data-section attribute
+                        if (section && section.includes(selectedSection)) {
+                            hasSection = true;
+                        } else {
+                            // Check visible assignments
+                            const assignments = card.querySelectorAll('.current-assignment-item');
+                            if (assignments.length > 0) {
+                                assignments.forEach(assignment => {
+                                    const sectionText = assignment.textContent;
+                                    if (sectionText.includes('Section ' + selectedSection)) {
+                                        hasSection = true;
+                                    }
+                                });
+                            }
+                        }
+                        
+                        if (!hasSection) showCard = false;
+                    }
+                    
                     if (selectedStatus && status !== selectedStatus) showCard = false;
 
                     card.classList.toggle('hidden', !showCard);
@@ -1475,6 +1631,9 @@ function getSubjectAssignments($conn, $subject_id) {
             document.querySelectorAll('.subject-card').forEach(card => {
                 card.classList.remove('hidden');
             });
+            
+            // Log to console to confirm reset was called
+            console.log('Filters have been reset');
         }
 
         function validateForm(form) {
@@ -1608,23 +1767,33 @@ function getSubjectAssignments($conn, $subject_id) {
             document.getElementById('edit_id').value = subject.id;
             document.getElementById('edit_code').value = subject.code;
             document.getElementById('edit_name').value = subject.name;
-            document.getElementById('edit_department_id').value = subject.department_id;
-            document.getElementById('edit_credits').value = subject.credits;
+            
+            // Find the department select element and set its value
+            const departmentSelect = document.querySelector('#editModal select[name="department_id"]');
+            if (departmentSelect) {
+                departmentSelect.value = subject.department_id;
+            }
+            
+            // Set credits
+            const creditsInput = document.querySelector('#editModal input[name="credits"]');
+            if (creditsInput) {
+                creditsInput.value = subject.credits;
+            }
 
             // Fetch current assignments
-            fetch(`get_subject_assignments.php?code=${subject.code}`)
+            fetch(`get_subject_assignments.php?subject_id=${subject.id}`)
                 .then(response => response.json())
                 .then(assignments => {
                     const assignmentsList = document.getElementById('currentAssignmentsList');
                     assignmentsList.innerHTML = assignments.map(assignment => `
-                        <div class="assignment-item">
-                            <div class="assignment-info">
+                        <div class="current-assignment-item">
+                            <div class="assignment-details">
                                 <span>Year ${assignment.year}</span>
                                 <span>Semester ${assignment.semester}</span>
                                 <span>Section ${assignment.section}</span>
                                 <span>${assignment.faculty_name}</span>
                             </div>
-                            <div class="assignment-status">
+                            <div class="assignment-actions">
                                 <button type="button" class="btn-action" 
                                         onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
                                     <i class="fas fa-${assignment.is_active ? 'times' : 'check'}"></i>
@@ -1633,14 +1802,22 @@ function getSubjectAssignments($conn, $subject_id) {
                         </div>
                     `).join('');
                 })
-                .catch(error => console.error('Error:', error));
+                .catch(error => {
+                    console.error('Error fetching assignments:', error);
+                    document.getElementById('currentAssignmentsList').innerHTML = '<p>Error loading assignments</p>';
+                });
 
             showModal('editModal');
         }
 
         // Add New Assignment Row
         function addNewAssignment() {
-            const container = document.getElementById('newAssignments');
+            const container = document.querySelector('#editModal .assignments');
+            if (!container) {
+                console.error('Assignments container not found');
+                return;
+            }
+            
             const assignmentRow = document.createElement('div');
             assignmentRow.className = 'assignment-row';
             assignmentRow.innerHTML = `
@@ -1649,34 +1826,52 @@ function getSubjectAssignments($conn, $subject_id) {
                 </button>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Year</label>
-                        <select name="assignments[][year]" class="form-control" required>
+                        <label>Year & Semester</label>
+                        <div class="input-group">
+                            <select name="years[]" class="form-control" required>
                             <option value="">Select Year</option>
                             ${[1,2,3,4].map(year => `<option value="${year}">Year ${year}</option>`).join('')}
                         </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Semester</label>
-                        <select name="assignments[][semester]" class="form-control" required>
+                            <select name="semesters[]" class="form-control" required>
                             <option value="">Select Semester</option>
                             ${[1,2,3,4,5,6,7,8].map(sem => `<option value="${sem}">Semester ${sem}</option>`).join('')}
                         </select>
                     </div>
                 </div>
-                <div class="form-row">
                     <div class="form-group">
-                        <label>Section</label>
-                        <select name="assignments[][section]" class="form-control" required>
+                        <label>Section & Academic Year</label>
+                        <div class="input-group">
+                            <select name="sections[]" class="form-control" required>
                             <option value="">Select Section</option>
-                            ${['A','B','C','D','E'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
+                            ${['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
+                            </select>
+                            <select name="academic_year_ids[]" class="form-control" required>
+                                <option value="">Select Academic Year</option>
+                                <?php 
+                                mysqli_data_seek($academic_years, 0);
+                                while ($year = mysqli_fetch_assoc($academic_years)): 
+                                ?>
+                                    <option value="<?php echo $year['id']; ?>">
+                                        <?php echo htmlspecialchars($year['year_range']); ?>
+                                    </option>
+                                <?php endwhile; ?>
                         </select>
                     </div>
+                    </div>
+                </div>
+                <div class="form-row">
                     <div class="form-group">
                         <label>Faculty</label>
-                        <select name="assignments[][faculty_id]" class="form-control" required>
+                        <select name="faculty_ids[]" class="form-control" required>
                             <option value="">Select Faculty</option>
-                            ${Array.from(document.querySelector('[name="faculty_id"]').options)
-                                .map(opt => `<option value="${opt.value}">${opt.text}</option>`).join('')}
+                            <?php 
+                            mysqli_data_seek($faculty_members, 0);
+                            while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                            ?>
+                                <option value="<?php echo $faculty['id']; ?>">
+                                    <?php echo htmlspecialchars($faculty['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
                         </select>
                     </div>
                 </div>

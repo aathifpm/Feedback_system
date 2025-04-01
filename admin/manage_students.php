@@ -831,7 +831,7 @@ $students_result = mysqli_query($conn, $students_query);
                 <div class="filter-group">
                     <select id="sectionFilter" class="form-control">
                         <option value="">All Sections</option>
-                        <?php for($i = 65; $i <= 70; $i++): // A to F ?>
+                        <?php for($i = 65; $i <= 79; $i++): // A to F ?>
                             <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                         <?php endfor; ?>
                     </select>
@@ -992,7 +992,7 @@ $students_result = mysqli_query($conn, $students_query);
                     <label for="section">Section</label>
                     <select id="section" name="section" class="form-control" required>
                         <option value="">Select Section</option>
-                        <?php for($i = 65; $i <= 70; $i++): ?>
+                        <?php for($i = 65; $i <= 79; $i++): ?>
                             <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                         <?php endfor; ?>
                     </select>
@@ -1081,7 +1081,7 @@ $students_result = mysqli_query($conn, $students_query);
                     <label for="edit_section">Section</label>
                     <select id="edit_section" name="section" class="form-control" required>
                         <option value="">Select Section</option>
-                        <?php for($i = 65; $i <= 70; $i++): ?>
+                        <?php for($i = 65; $i <= 79; $i++): ?>
                             <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                         <?php endfor; ?>
                     </select>

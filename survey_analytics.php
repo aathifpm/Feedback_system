@@ -307,6 +307,7 @@ $employment_stats = processEmploymentData($surveys);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Exit Survey Analytics</title>
+    <link rel="icon" href="college_logo.png" type="image/png">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -624,7 +625,11 @@ $employment_stats = processEmploymentData($surveys);
                         <?php if ($filters['department_id']): ?>
                             <a href="generate_survey_report.php?department_id=<?php echo $filters['department_id']; ?>&batch_id=<?php echo $filters['batch_id'] ?? ''; ?>" 
                                class="btn btn-secondary" target="_blank">
-                                <i class="fas fa-file-pdf"></i> Generate Detailed Report
+                                <i class="fas fa-file-pdf"></i> Generate PDF Report
+                            </a>
+                            <a href="generate_survey_excel.php?department_id=<?php echo $filters['department_id']; ?>&batch_id=<?php echo $filters['batch_id'] ?? ''; ?>" 
+                               class="btn btn-secondary" style="background-color: #27ae60;">
+                                <i class="fas fa-file-excel"></i> Generate Excel Report
                             </a>
                         <?php else: ?>
                             <div class="alert alert-warning">

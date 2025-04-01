@@ -689,7 +689,7 @@ $batches = mysqli_fetch_all($batches_result, MYSQLI_ASSOC);
                     <label for="section" class="required">Section</label>
                     <select id="section" name="section" class="input-field">
                         <option value="">Select Section</option>
-                        <?php for ($i = 65; $i <= 70; $i++): ?>
+                        <?php for ($i = 65; $i <= 79; $i++): ?>
                             <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                         <?php endfor; ?>
                     </select>
