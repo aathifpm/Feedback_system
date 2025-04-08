@@ -259,19 +259,21 @@ $student_query = "SELECT
     COUNT(DISTINCT f.id) as submitted_feedback,
     ROUND(AVG(f.cumulative_avg), 2) as avg_rating
 FROM students st
-JOIN subject_assignments sa ON sa.year = ? AND sa.section = st.section
+JOIN batch_years by2 ON st.batch_id = by2.id
+JOIN subject_assignments sa ON sa.year = ? AND sa.section = ? AND sa.academic_year_id = ?
 " . ($semester > 0 ? "AND sa.semester = ?" : "") . "
 LEFT JOIN feedback f ON f.assignment_id = sa.id AND f.student_id = st.id
 WHERE st.section = ?
 AND st.department_id = ?
+AND by2.current_year_of_study = ?
 GROUP BY st.id
 ORDER BY st.roll_number";
 
 $student_stmt = mysqli_prepare($conn, $student_query);
 if ($semester > 0) {
-    mysqli_stmt_bind_param($student_stmt, "issi", $year, $semester, $section, $department_id);
+    mysqli_stmt_bind_param($student_stmt, "isiisii", $year, $section, $academic_year, $semester, $section, $department_id, $year);
 } else {
-    mysqli_stmt_bind_param($student_stmt, "isi", $year, $section, $department_id);
+    mysqli_stmt_bind_param($student_stmt, "isiiisi", $year, $section, $academic_year, $section, $department_id, $year);
 }
 mysqli_stmt_execute($student_stmt);
 $student_result = mysqli_stmt_get_result($student_stmt);

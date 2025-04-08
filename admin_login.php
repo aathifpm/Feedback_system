@@ -365,7 +365,7 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE[session_name()])) {
             </button>
 
             <div class="links">
-                <a href="forgot_password.php">
+                <a href="forget_password.php">
                     <i class="fas fa-key"></i> Reset Password
                 </a>
                 <span class="divider">|</span>
@@ -418,5 +418,8 @@ if (!isset($_SESSION['user_id']) && isset($_COOKIE[session_name()])) {
             this.className = passwordVisible ? 'fas fa-eye' : 'fas fa-lock';
         });
     </script>
+
+    <?php include 'footer.php'; ?>
+
 </body>
 </html>

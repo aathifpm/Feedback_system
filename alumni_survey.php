@@ -62,6 +62,10 @@ if (isset($_SESSION['success_message'])) {
                      -9px -9px 16px rgba(255,255,255, 0.5);
             --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                            inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --mobile-shadow: 5px 5px 10px rgb(163,177,198,0.6), 
+                     -5px -5px 10px rgba(255,255,255, 0.5);
+            --mobile-inner-shadow: inset 3px 3px 5px 0 rgba(0, 0, 0, 0.1),
+                           inset -3px -3px 5px 0 rgba(255, 255, 255, 0.8);
         }
 
         * {
@@ -69,6 +73,7 @@ if (isset($_SESSION['success_message'])) {
             padding: 0;
             box-sizing: border-box;
             font-family: 'Poppins', sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
 
         body {
@@ -79,6 +84,7 @@ if (isset($_SESSION['success_message'])) {
             display: flex;
             flex-direction: column;
             align-items: center;
+            overflow-x: hidden;
         }
 
         .container {
@@ -186,6 +192,8 @@ if (isset($_SESSION['success_message'])) {
             color: var(--text-color);
             font-size: 1rem;
             transition: all 0.3s ease;
+            -webkit-appearance: none;
+            appearance: none;
         }
 
         .form-control:focus {
@@ -212,6 +220,7 @@ if (isset($_SESSION['success_message'])) {
             display: flex;
             align-items: center;
             gap: 0.8rem;
+            min-height: 3.5rem;
         }
 
         .radio-option:hover, .checkbox-option:hover {
@@ -222,6 +231,8 @@ if (isset($_SESSION['success_message'])) {
         .radio-option input[type="radio"],
         .checkbox-option input[type="checkbox"] {
             margin-right: 0.5rem;
+            width: 1.2rem;
+            height: 1.2rem;
         }
 
         .rating-table {
@@ -280,6 +291,8 @@ if (isset($_SESSION['success_message'])) {
             margin: 3rem auto;
             position: relative;
             overflow: hidden;
+            -webkit-appearance: none;
+            appearance: none;
         }
 
         .btn-submit::before {
@@ -350,23 +363,144 @@ if (isset($_SESSION['success_message'])) {
 
         /* Responsive adjustments */
         @media (max-width: 768px) {
+            .container {
+                width: 95%;
+                padding: 1rem;
+                margin: 1rem auto;
+            }
+
+            .survey-header {
+                padding: 1.5rem;
+                margin-bottom: 1.5rem;
+            }
+
+            .survey-header h1 {
+                font-size: 1.6rem;
+            }
+
+            .survey-header h2, .survey-header h3 {
+                font-size: 1.3rem;
+            }
+
+            .survey-form {
+                padding: 1.5rem;
+            }
+
             .form-section {
                 padding: 1.5rem;
+                margin-bottom: 2rem;
+            }
+
+            .form-section h3 {
+                font-size: 1.4rem;
+                margin-bottom: 1.5rem;
             }
 
             .radio-group, .checkbox-group {
                 grid-template-columns: 1fr;
+               
             }
+
+
 
             .rating-table {
                 display: block;
                 overflow-x: auto;
                 white-space: nowrap;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .rating-table th, 
+            .rating-table td {
+                padding: 0.8rem;
             }
 
             .btn-submit {
                 width: 100%;
                 padding: 1rem 2rem;
+                font-size: 1.1rem;
+                margin: 2rem auto;
+            }
+
+            .form-control {
+                padding: 0.8rem 1.2rem;
+                font-size: 1rem;
+            }
+
+            .form-group {
+                margin-bottom: 1.5rem;
+            }
+
+            .form-group label {
+                font-size: 0.95rem;
+                margin-bottom: 0.6rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                width: 100%;
+                padding: 0.8rem;
+                margin: 0.8rem auto;
+            }
+
+            .survey-header {
+                padding: 1.2rem;
+                margin-bottom: 1.2rem;
+                border-radius: 15px;
+            }
+
+            .survey-form {
+                padding: 1.2rem;
+                border-radius: 15px;
+            }
+
+            .form-section {
+                padding: 1.2rem;
+                margin-bottom: 1.5rem;
+                border-radius: 15px;
+            }
+
+            .form-section h3 {
+                font-size: 1.3rem;
+                margin-bottom: 1.2rem;
+            }
+
+            .radio-option, .checkbox-option {
+                padding: 0.7rem;
+                min-height: 2.8rem;
+            }
+
+            .rating-table th, 
+            .rating-table td {
+                padding: 0.7rem;
+            }
+
+            .btn-submit {
+                padding: 0.9rem 1.8rem;
+                font-size: 1rem;
+                margin: 1.5rem auto;
+            }
+
+            .form-control {
+                padding: 0.7rem 1rem;
+                font-size: 0.95rem;
+                border-radius: 12px;
+            }
+
+            .form-group {
+                margin-bottom: 1.2rem;
+            }
+
+            .form-group label {
+                font-size: 0.9rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .scale-info {
+                font-size: 0.85rem;
+                padding: 0.8rem;
+                margin-bottom: 1.2rem;
             }
         }
 
@@ -441,49 +575,18 @@ if (isset($_SESSION['success_message'])) {
             font-size: 0.9rem;
         }
 
-        @media (max-width: 768px) {
-            .container {
-                width: 95%;
-                padding: 1rem;
-            }
-
-            .form-section {
-                padding: 1.5rem;
-            }
-
-            .radio-group {
-                flex-wrap: wrap;
-            }
-
-            .rating-radio-group label {
-                width: 35px;
-                height: 35px;
-                font-size: 0.9rem;
-            }
-
-            .rating-table th, 
-            .rating-table td {
-                padding: 0.8rem;
-            }
-
-            .btn-submit {
-                width: 100%;
-                padding: 1rem 2rem;
-            }
-        }
-
         /* Update the rating-radio-group styles for horizontal alignment */
         .rating-radio-group {
             display: flex;
             justify-content: center;
             align-items: center;
-            gap: 0.8rem;
-            padding: 0.8rem;
+            gap: 0.1rem;
+            padding: 0.5rem 1rem;
             background: var(--bg-color);
             border-radius: 15px;
             box-shadow: var(--inner-shadow);
             width: 100%;
-            max-width: 320px;
+            max-width: 400px;
             margin: 0 auto;
         }
 
@@ -491,7 +594,7 @@ if (isset($_SESSION['success_message'])) {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            gap: 0.8rem;
+            gap: 0.1rem;
             width: 100%;
         }
 
@@ -512,8 +615,8 @@ if (isset($_SESSION['success_message'])) {
         }
 
         .rating-label {
-            width: 45px;
-            height: 45px;
+            width: 40px;
+            height: 40px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -548,34 +651,544 @@ if (isset($_SESSION['success_message'])) {
         /* Responsive adjustments for rating buttons */
         @media (max-width: 768px) {
             .rating-radio-group {
-                padding: 0.6rem;
-                gap: 0.6rem;
+                padding: 0.4rem 0.8rem;
+                gap: 0.1rem;
+                max-width: 300px;
             }
 
             .rating-options {
-                gap: 0.6rem;
+                gap: 0.1rem;
             }
 
             .rating-label {
-                width: 40px;
-                height: 40px;
+                width: 35px;
+                height: 35px;
                 font-size: 0.9rem;
             }
         }
 
         @media (max-width: 480px) {
             .rating-radio-group {
-                padding: 0.4rem;
-                gap: 0.4rem;
+                padding: 0.3rem 0.6rem;
+                gap: 0.1rem;
+                max-width: 260px;
             }
 
             .rating-options {
-                gap: 0.4rem;
+                gap: 0.1rem;
             }
 
             .rating-label {
+                width: 30px;
+                height: 30px;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Mobile navigation */
+        .mobile-nav {
+            display: none;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: var(--card-bg);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+            padding: 0.8rem;
+        }
+
+        .mobile-nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .mobile-nav-btn {
+            background: var(--bg-color);
+            border: none;
+            border-radius: 50%;
+            width: 3rem;
+            height: 3rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: var(--primary-color);
+            font-size: 1.2rem;
+            box-shadow: var(--inner-shadow);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .mobile-nav-btn:active {
+            box-shadow: var(--mobile-inner-shadow);
+            transform: scale(0.95);
+        }
+
+        .mobile-nav-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-nav {
+                display: block;
+            }
+            
+            body {
+                padding-bottom: 5rem;
+            }
+        }
+
+        /* Mobile-friendly select dropdowns */
+        select.form-control {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%233498db' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1rem;
+            padding-right: 2.5rem;
+        }
+
+        /* Mobile-friendly date input */
+        input[type="date"].form-control {
+            position: relative;
+        }
+
+        input[type="date"].form-control::-webkit-calendar-picker-indicator {
+            position: absolute;
+            right: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 1.2rem;
+            height: 1.2rem;
+            opacity: 0.7;
+        }
+
+        /* Mobile-friendly textarea */
+        textarea.form-control {
+            resize: vertical;
+            min-height: 5rem;
+        }
+
+        /* Mobile-friendly checkbox and radio */
+        input[type="checkbox"], input[type="radio"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 1.2rem;
+            height: 1.2rem;
+            border: 2px solid var(--primary-color);
+            border-radius: 3px;
+            margin-right: 0.5rem;
+            position: relative;
+            cursor: pointer;
+        }
+
+        input[type="radio"] {
+            border-radius: 50%;
+        }
+
+        input[type="checkbox"]:checked {
+            background-color: var(--primary-color);
+        }
+
+        input[type="checkbox"]:checked::after {
+            content: '✓';
+            color: white;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 0.8rem;
+        }
+
+        input[type="radio"]:checked {
+            background-color: var(--primary-color);
+        }
+
+        input[type="radio"]:checked::after {
+            content: '';
+            width: 0.5rem;
+            height: 0.5rem;
+            background-color: white;
+            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+
+        /* Mobile rating cards */
+        .mobile-rating-cards {
+            display: none;
+            flex-direction: column;
+            gap: 1.5rem;
+            margin: 1.5rem 0;
+        }
+
+        .rating-card {
+            background: var(--bg-color);
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            transition: transform 0.3s ease;
+        }
+
+        .rating-card:active {
+            transform: scale(0.98);
+        }
+
+        .rating-card-header {
+            padding: 1rem;
+            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .rating-card-number {
+            background: rgba(255, 255, 255, 0.2);
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 600;
+        }
+
+        .rating-card-title {
+            font-size: 1rem;
+            font-weight: 500;
+            margin: 0;
+            flex: 1;
+        }
+
+        .rating-card-body {
+            padding: 1.2rem;
+        }
+
+        .rating-card .rating-radio-group {
+            max-width: 100%;
+        }
+
+        .rating-card .rating-options {
+            justify-content: center;
+            flex-wrap: nowrap;
+        }
+
+        @media (max-width: 480px) {
+            .rating-card-body {
+                padding: 0.8rem 0.5rem;
+            }
+
+            .rating-card .rating-radio-group {
+                padding: 0.3rem;
+            }
+
+            .rating-card .rating-options {
+                gap: 0.1rem;
+            }
+
+            .rating-card .rating-label {
+                width: 28px;
+                height: 28px;
+                font-size: 0.85rem;
+            }
+        }
+
+        @media (max-width: 360px) {
+            .rating-card .rating-label {
+                width: 25px;
+                height: 25px;
+                font-size: 0.8rem;
+            }
+        }
+
+        /* Desktop/Mobile visibility classes */
+        .desktop-only {
+            display: block;
+        }
+
+        .mobile-only {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .desktop-only {
+                display: none;
+            }
+
+            .mobile-only {
+                display: block;
+            }
+
+            .mobile-rating-cards {
+                display: flex;
+            }
+        }
+
+        /* Improved mobile form controls */
+        @media (max-width: 768px) {
+            .form-control {
+                font-size: 16px; /* Prevents iOS zoom on focus */
+            }
+
+            select.form-control {
+                background-position: right 0.8rem center;
+            }
+
+            .form-group {
+                margin-bottom: 1.5rem;
+            }
+
+            .form-group label {
+                font-size: 0.95rem;
+                margin-bottom: 0.6rem;
+            }
+
+            .radio-group, .checkbox-group {
+                gap: 0.8rem;
+            }
+
+            .radio-option, .checkbox-option {
+                padding: 0.8rem;
+                min-height: 3rem;
+            }
+
+            .rating-card-header {
+                padding: 0.8rem;
+            }
+
+            .rating-card-body {
+                padding: 1rem;
+            }
+
+            .rating-card-title {
+                font-size: 0.95rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .form-control {
+                padding: 0.7rem 1rem;
+                font-size: 0.95rem;
+                border-radius: 12px;
+            }
+
+            .form-group {
+                margin-bottom: 1.2rem;
+            }
+
+            .form-group label {
+                font-size: 0.9rem;
+                margin-bottom: 0.5rem;
+            }
+
+            .radio-option, .checkbox-option {
+                padding: 0.7rem;
+                min-height: 2.8rem;
+            }
+
+            .rating-card-header {
+                padding: 0.7rem;
+            }
+
+            .rating-card-body {
+                padding: 0.8rem;
+            }
+
+            .rating-card-title {
+                font-size: 0.9rem;
+            }
+
+            .rating-card-number {
+                width: 1.8rem;
+                height: 1.8rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Improved touch targets for mobile */
+        @media (max-width: 768px) {
+            .rating-label {
                 width: 35px;
                 height: 35px;
+                font-size: 1rem;
+            }
+
+            .rating-radio-group {
+                padding: 0.5rem 0.8rem;
+                gap: 0.1rem;
+                max-width: 100%;
+            }
+
+            .rating-options {
+                gap: 0.1rem;
+            }
+
+            .btn-submit {
+                padding: 1rem 2rem;
+                font-size: 1.1rem;
+                margin: 2rem auto;
+                min-height: 3.5rem;
+            }
+
+            .mobile-nav-btn {
+                width: 3.5rem;
+                height: 3.5rem;
+                font-size: 1.3rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .rating-label {
+                width: 30px;
+                height: 30px;
+                font-size: 0.9rem;
+            }
+
+            .rating-radio-group {
+                padding: 0.3rem 0.6rem;
+                gap: 0.1rem;
+            }
+
+            .rating-options {
+                gap: 0.1rem;
+            }
+
+            .btn-submit {
+                padding: 0.9rem 1.8rem;
+                font-size: 1rem;
+                margin: 1.5rem auto;
+                min-height: 3.2rem;
+            }
+
+            .mobile-nav-btn {
+                width: 3.2rem;
+                height: 3.2rem;
+                font-size: 1.2rem;
+            }
+        }
+
+        /* Improved mobile form validation */
+        .form-control.error {
+            border: 2px solid var(--danger-color);
+            animation: shake 0.5s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            10%, 30%, 50%, 70%, 90% { transform: translateX(-5px); }
+            20%, 40%, 60%, 80% { transform: translateX(5px); }
+        }
+
+        .error-message {
+            color: var(--danger-color);
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            display: none;
+            padding: 0.5rem;
+            background-color: rgba(231, 76, 60, 0.1);
+            border-radius: 5px;
+        }
+
+        /* Improved mobile form section transitions */
+        .form-section {
+            transition: all 0.3s ease;
+        }
+
+        .form-section.active {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .form-section:not(.active) {
+            transform: translateY(20px);
+            opacity: 0.8;
+        }
+
+        /* Improved mobile form progress indicator */
+        .form-progress {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .form-progress::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            border-radius: 2px;
+            z-index: 1;
+        }
+
+        .form-progress::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 4px;
+            background: linear-gradient(to right, var(--primary-color), var(--secondary-color));
+            border-radius: 2px;
+            z-index: 2;
+            transition: width 0.3s ease;
+        }
+
+        .progress-step {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-weight: 600;
+            color: var(--text-color);
+            position: relative;
+            z-index: 3;
+            transition: all 0.3s ease;
+        }
+
+        .progress-step.active {
+            background: var(--primary-color);
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .progress-step.completed {
+            background: var(--secondary-color);
+            color: white;
+        }
+
+        @media (max-width: 768px) {
+            .form-progress {
+                margin-bottom: 1.5rem;
+            }
+
+            .progress-step {
+                width: 1.8rem;
+                height: 1.8rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .form-progress {
+                margin-bottom: 1.2rem;
+            }
+
+            .progress-step {
+                width: 1.6rem;
+                height: 1.6rem;
                 font-size: 0.8rem;
             }
         }
@@ -851,10 +1464,11 @@ if (isset($_SESSION['success_message'])) {
             <!-- Part II: PO Assessment -->
             <div class="form-section">
                 <h3><i class="fas fa-chart-line"></i> PART II: Attainment of PO's</h3>
-                <p class="scale-info">Please rate your satisfaction with the academic preparation you received in AI&DS Engineering.<br>
+                <p class="scale-info">Please rate your satisfaction with the academic preparation you received.<br>
                 1= Poor 2 = Fair 3 = Good 4 = Very Good 5 = Excellent</p>
 
-                <table class="rating-table">
+                <!-- Desktop Rating Table -->
+                <table class="rating-table desktop-only">
                     <thead>
                         <tr>
                             <th width="5%">S.NO</th>
@@ -881,7 +1495,7 @@ if (isset($_SESSION['success_message'])) {
                                                     <label for="po_<?php echo $po['po_number']; ?>_<?php echo $i; ?>" 
                                                            class="rating-label"><?php echo $i; ?></label>
                                                 </div>
-                                <?php endfor; ?>
+                                            <?php endfor; ?>
                                         </div>
                                     </div>
                                 </td>
@@ -890,13 +1504,34 @@ if (isset($_SESSION['success_message'])) {
                     </tbody>
                 </table>
 
-                <!-- Add rating legend before each rating section -->
-                <div class="rating-legend">
-                    <div class="rating-legend-item">1 = Poor</div>
-                    <div class="rating-legend-item">2 = Fair</div>
-                    <div class="rating-legend-item">3 = Good</div>
-                    <div class="rating-legend-item">4 = Very Good</div>
-                    <div class="rating-legend-item">5 = Excellent</div>
+                <!-- Mobile Rating Cards -->
+                <div class="mobile-rating-cards mobile-only">
+                    <?php foreach ($po_statements as $po): ?>
+                        <div class="rating-card">
+                            <div class="rating-card-header">
+                                <span class="rating-card-number"><?php echo $po['po_number']; ?></span>
+                                <h4 class="rating-card-title"><?php echo htmlspecialchars($po['statement']); ?></h4>
+                            </div>
+                            <div class="rating-card-body">
+                                <div class="rating-radio-group">
+                                    <div class="rating-options">
+                                        <?php for ($i = 5; $i >= 1; $i--): ?>
+                                            <div class="rating-option">
+                                                <input type="radio" 
+                                                       id="po_mobile_<?php echo $po['po_number']; ?>_<?php echo $i; ?>" 
+                                                       name="po_<?php echo $po['po_number']; ?>" 
+                                                       value="<?php echo $i; ?>" 
+                                                       class="rating-input"
+                                                       required>
+                                                <label for="po_mobile_<?php echo $po['po_number']; ?>_<?php echo $i; ?>" 
+                                                       class="rating-label"><?php echo $i; ?></label>
+                                            </div>
+                                        <?php endfor; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
 
@@ -906,7 +1541,8 @@ if (isset($_SESSION['success_message'])) {
                 <p class="scale-info">How well did your College experience prepare you for:<br>
                 1= Poor 2 = Fair 3 = Good 4 = Very Good 5 = Excellent</p>
 
-                <table class="rating-table">
+                <!-- Desktop Rating Table -->
+                <table class="rating-table desktop-only">
                     <thead>
                         <tr>
                             <th width="5%">S.NO</th>
@@ -933,7 +1569,7 @@ if (isset($_SESSION['success_message'])) {
                                                     <label for="peo_<?php echo $peo['peo_number']; ?>_<?php echo $i; ?>" 
                                                            class="rating-label"><?php echo $i; ?></label>
                                                 </div>
-                                <?php endfor; ?>
+                                            <?php endfor; ?>
                                         </div>
                                     </div>
                                 </td>
@@ -942,13 +1578,34 @@ if (isset($_SESSION['success_message'])) {
                     </tbody>
                 </table>
 
-                <!-- Add rating legend before each rating section -->
-                <div class="rating-legend">
-                    <div class="rating-legend-item">1 = Poor</div>
-                    <div class="rating-legend-item">2 = Fair</div>
-                    <div class="rating-legend-item">3 = Good</div>
-                    <div class="rating-legend-item">4 = Very Good</div>
-                    <div class="rating-legend-item">5 = Excellent</div>
+                <!-- Mobile Rating Cards -->
+                <div class="mobile-rating-cards mobile-only">
+                    <?php foreach ($peo_statements as $peo): ?>
+                        <div class="rating-card">
+                            <div class="rating-card-header">
+                                <span class="rating-card-number"><?php echo $peo['peo_number']; ?></span>
+                                <h4 class="rating-card-title"><?php echo htmlspecialchars($peo['statement']); ?></h4>
+                            </div>
+                            <div class="rating-card-body">
+                                <div class="rating-radio-group">
+                                    <div class="rating-options">
+                                        <?php for ($i = 5; $i >= 1; $i--): ?>
+                                            <div class="rating-option">
+                                                <input type="radio" 
+                                                       id="peo_mobile_<?php echo $peo['peo_number']; ?>_<?php echo $i; ?>" 
+                                                       name="peo_<?php echo $peo['peo_number']; ?>" 
+                                                       value="<?php echo $i; ?>" 
+                                                       class="rating-input"
+                                                       required>
+                                                <label for="peo_mobile_<?php echo $peo['peo_number']; ?>_<?php echo $i; ?>" 
+                                                       class="rating-label"><?php echo $i; ?></label>
+                                            </div>
+                                        <?php endfor; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
 
@@ -958,7 +1615,8 @@ if (isset($_SESSION['success_message'])) {
                 <p class="scale-info">How well did your programme have impact on:<br>
                 1= Poor 2 = Fair 3 = Good 4 = Very Good 5 = Excellent</p>
 
-                <table class="rating-table">
+                <!-- Desktop Rating Table -->
+                <table class="rating-table desktop-only">
                     <thead>
                         <tr>
                             <th width="5%">S.NO</th>
@@ -985,7 +1643,7 @@ if (isset($_SESSION['success_message'])) {
                                                     <label for="pso_<?php echo $pso['pso_number']; ?>_<?php echo $i; ?>" 
                                                            class="rating-label"><?php echo $i; ?></label>
                                                 </div>
-                                <?php endfor; ?>
+                                            <?php endfor; ?>
                                         </div>
                                     </div>
                                 </td>
@@ -994,13 +1652,34 @@ if (isset($_SESSION['success_message'])) {
                     </tbody>
                 </table>
 
-                <!-- Add rating legend before each rating section -->
-                <div class="rating-legend">
-                    <div class="rating-legend-item">1 = Poor</div>
-                    <div class="rating-legend-item">2 = Fair</div>
-                    <div class="rating-legend-item">3 = Good</div>
-                    <div class="rating-legend-item">4 = Very Good</div>
-                    <div class="rating-legend-item">5 = Excellent</div>
+                <!-- Mobile Rating Cards -->
+                <div class="mobile-rating-cards mobile-only">
+                    <?php foreach ($pso_statements as $pso): ?>
+                        <div class="rating-card">
+                            <div class="rating-card-header">
+                                <span class="rating-card-number"><?php echo $pso['pso_number']; ?></span>
+                                <h4 class="rating-card-title"><?php echo htmlspecialchars($pso['statement']); ?></h4>
+                            </div>
+                            <div class="rating-card-body">
+                                <div class="rating-radio-group">
+                                    <div class="rating-options">
+                                        <?php for ($i = 5; $i >= 1; $i--): ?>
+                                            <div class="rating-option">
+                                                <input type="radio" 
+                                                       id="pso_mobile_<?php echo $pso['pso_number']; ?>_<?php echo $i; ?>" 
+                                                       name="pso_<?php echo $pso['pso_number']; ?>" 
+                                                       value="<?php echo $i; ?>" 
+                                                       class="rating-input"
+                                                       required>
+                                                <label for="pso_mobile_<?php echo $pso['pso_number']; ?>_<?php echo $i; ?>" 
+                                                       class="rating-label"><?php echo $i; ?></label>
+                                            </div>
+                                        <?php endfor; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
                 </div>
             </div>
 
@@ -1010,7 +1689,8 @@ if (isset($_SESSION['success_message'])) {
                 <p class="scale-info">With regard to each of the following, how satisfied are you with the undergraduate education you received at PEC<br>
                 1= Poor 2 = Fair 3 = Good 4 = Very Good 5 = Excellent</p>
 
-                <table class="rating-table">
+                <!-- Desktop Rating Table -->
+                <table class="rating-table desktop-only">
                     <thead>
                         <tr>
                             <th width="5%">S.NO</th>
@@ -1037,7 +1717,7 @@ if (isset($_SESSION['success_message'])) {
                                                     <label for="general_<?php echo $question['question_number']; ?>_<?php echo $i; ?>" 
                                                            class="rating-label"><?php echo $i; ?></label>
                                                 </div>
-                                <?php endfor; ?>
+                                            <?php endfor; ?>
                                         </div>
                                     </div>
                                 </td>
@@ -1045,6 +1725,36 @@ if (isset($_SESSION['success_message'])) {
                         <?php endforeach; ?>
                     </tbody>
                 </table>
+
+                <!-- Mobile Rating Cards -->
+                <div class="mobile-rating-cards mobile-only">
+                    <?php foreach ($general_statements as $question): ?>
+                        <div class="rating-card">
+                            <div class="rating-card-header">
+                                <span class="rating-card-number"><?php echo $question['question_number']; ?></span>
+                                <h4 class="rating-card-title"><?php echo htmlspecialchars($question['statement']); ?></h4>
+                            </div>
+                            <div class="rating-card-body">
+                                <div class="rating-radio-group">
+                                    <div class="rating-options">
+                                        <?php for ($i = 5; $i >= 1; $i--): ?>
+                                            <div class="rating-option">
+                                                <input type="radio" 
+                                                       id="general_mobile_<?php echo $question['question_number']; ?>_<?php echo $i; ?>" 
+                                                       name="general_<?php echo $question['question_number']; ?>" 
+                                                       value="<?php echo $i; ?>" 
+                                                       class="rating-input"
+                                                       required>
+                                                <label for="general_mobile_<?php echo $question['question_number']; ?>_<?php echo $i; ?>" 
+                                                       class="rating-label"><?php echo $i; ?></label>
+                                            </div>
+                                        <?php endfor; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
 
                 <!-- Additional General Questions -->
                 <div class="form-group">
@@ -1077,6 +1787,21 @@ if (isset($_SESSION['success_message'])) {
                 <i class="fas fa-paper-plane"></i> Submit Survey
             </button>
         </form>
+    </div>
+
+    <!-- Mobile Navigation -->
+    <div class="mobile-nav">
+        <div class="mobile-nav-buttons">
+            <button class="mobile-nav-btn" id="prevSection">
+                <i class="fas fa-arrow-up"></i>
+            </button>
+            <button class="mobile-nav-btn" id="nextSection">
+                <i class="fas fa-arrow-down"></i>
+            </button>
+            <button class="mobile-nav-btn" id="scrollTop">
+                <i class="fas fa-chevron-up"></i>
+            </button>
+        </div>
     </div>
 
     <script>
@@ -1179,9 +1904,9 @@ if (isset($_SESSION['success_message'])) {
                         examCheckboxes.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
                             checkbox.checked = false;
                         });
-                }
+                    }
+                });
             });
-        });
 
             // Check initial state
             const selectedExam = document.querySelector('input[name="competitive_exam"]:checked');
@@ -1189,6 +1914,314 @@ if (isset($_SESSION['success_message'])) {
                 examCheckboxes.style.display = selectedExam.value === 'yes' ? 'grid' : 'none';
             }
         });
+
+        // Mobile navigation functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const formSections = document.querySelectorAll('.form-section');
+            const prevBtn = document.getElementById('prevSection');
+            const nextBtn = document.getElementById('nextSection');
+            const scrollTopBtn = document.getElementById('scrollTop');
+            let currentSectionIndex = 0;
+
+            // Function to scroll to a specific section
+            function scrollToSection(index) {
+                if (index >= 0 && index < formSections.length) {
+                    formSections[index].scrollIntoView({ behavior: 'smooth' });
+                    currentSectionIndex = index;
+                    updateNavButtons();
+                }
+            }
+
+            // Function to update navigation buttons state
+            function updateNavButtons() {
+                prevBtn.disabled = currentSectionIndex === 0;
+                nextBtn.disabled = currentSectionIndex === formSections.length - 1;
+                
+                // Update button styles
+                prevBtn.style.opacity = currentSectionIndex === 0 ? '0.5' : '1';
+                nextBtn.style.opacity = currentSectionIndex === formSections.length - 1 ? '0.5' : '1';
+            }
+
+            // Add event listeners to navigation buttons
+            prevBtn.addEventListener('click', function() {
+                scrollToSection(currentSectionIndex - 1);
+            });
+
+            nextBtn.addEventListener('click', function() {
+                scrollToSection(currentSectionIndex + 1);
+            });
+
+            scrollTopBtn.addEventListener('click', function() {
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+
+            // Initialize navigation buttons
+            updateNavButtons();
+
+            // Add scroll event listener to update current section
+            window.addEventListener('scroll', function() {
+                const scrollPosition = window.scrollY + window.innerHeight / 2;
+                
+                formSections.forEach((section, index) => {
+                    const sectionTop = section.offsetTop;
+                    const sectionBottom = sectionTop + section.offsetHeight;
+                    
+                    if (scrollPosition >= sectionTop && scrollPosition <= sectionBottom) {
+                        currentSectionIndex = index;
+                        updateNavButtons();
+                    }
+                });
+            });
+
+            // Add touch swipe support for mobile
+            let touchStartY = 0;
+            let touchEndY = 0;
+
+            document.addEventListener('touchstart', function(e) {
+                touchStartY = e.touches[0].clientY;
+            }, false);
+
+            document.addEventListener('touchend', function(e) {
+                touchEndY = e.changedTouches[0].clientY;
+                handleSwipe();
+            }, false);
+
+            function handleSwipe() {
+                const swipeDistance = touchStartY - touchEndY;
+                const minSwipeDistance = 50;
+
+                if (Math.abs(swipeDistance) > minSwipeDistance) {
+                    if (swipeDistance > 0) {
+                        // Swipe up - go to next section
+                        scrollToSection(currentSectionIndex + 1);
+                    } else {
+                        // Swipe down - go to previous section
+                        scrollToSection(currentSectionIndex - 1);
+                    }
+                }
+            }
+        });
+
+        // Form validation for mobile
+        document.addEventListener('DOMContentLoaded', function() {
+            const form = document.getElementById('alumniSurveyForm');
+            const requiredFields = form.querySelectorAll('[required]');
+            
+            // Add validation on blur
+            requiredFields.forEach(field => {
+                field.addEventListener('blur', function() {
+                    validateField(this);
+                });
+            });
+            
+            // Validate field function
+            function validateField(field) {
+                if (field.value.trim() === '') {
+                    field.classList.add('error');
+                    
+                    // Create error message if it doesn't exist
+                    let errorMsg = field.nextElementSibling;
+                    if (!errorMsg || !errorMsg.classList.contains('error-message')) {
+                        errorMsg = document.createElement('div');
+                        errorMsg.classList.add('error-message');
+                        errorMsg.textContent = 'This field is required';
+                        field.parentNode.insertBefore(errorMsg, field.nextSibling);
+                    }
+                    
+                    errorMsg.style.display = 'block';
+                } else {
+                    field.classList.remove('error');
+                    
+                    // Hide error message if it exists
+                    const errorMsg = field.nextElementSibling;
+                    if (errorMsg && errorMsg.classList.contains('error-message')) {
+                        errorMsg.style.display = 'none';
+                    }
+                }
+            }
+            
+            // Validate form on submit
+            form.addEventListener('submit', function(e) {
+                let isValid = true;
+                
+                requiredFields.forEach(field => {
+                    validateField(field);
+                    if (field.classList.contains('error')) {
+                        isValid = false;
+                    }
+                });
+                
+                if (!isValid) {
+                    e.preventDefault();
+                    
+                    // Scroll to first error
+                    const firstError = form.querySelector('.error');
+                    if (firstError) {
+                        firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }
+            });
+        });
+
+        // Optimize performance for mobile
+        document.addEventListener('DOMContentLoaded', function() {
+            // Lazy load images and iframes
+            const lazyElements = document.querySelectorAll('img[data-src], iframe[data-src]');
+            
+            if ('IntersectionObserver' in window) {
+                const lazyObserver = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const lazyElement = entry.target;
+                            lazyElement.src = lazyElement.dataset.src;
+                            lazyElement.removeAttribute('data-src');
+                            lazyObserver.unobserve(lazyElement);
+                        }
+                    });
+                });
+                
+                lazyElements.forEach(lazyElement => {
+                    lazyObserver.observe(lazyElement);
+                });
+            } else {
+                // Fallback for browsers that don't support IntersectionObserver
+                lazyElements.forEach(lazyElement => {
+                    lazyElement.src = lazyElement.dataset.src;
+                    lazyElement.removeAttribute('data-src');
+                });
+            }
+            
+            // Debounce scroll events for better performance
+            function debounce(func, wait) {
+                let timeout;
+                return function() {
+                    const context = this;
+                    const args = arguments;
+                    clearTimeout(timeout);
+                    timeout = setTimeout(() => {
+                        func.apply(context, args);
+                    }, wait);
+                };
+            }
+            
+            // Apply debounce to scroll event
+            const debouncedScroll = debounce(() => {
+                // Your scroll handling code here
+            }, 100);
+            
+            window.addEventListener('scroll', debouncedScroll);
+
+            // Synchronize desktop and mobile rating inputs
+            syncRatingInputs();
+        });
+
+        // Function to synchronize desktop and mobile rating inputs
+        function syncRatingInputs() {
+            // Sync PO ratings
+            document.querySelectorAll('[id^="po_mobile_"]').forEach(mobileInput => {
+                mobileInput.addEventListener('change', function() {
+                    const poNumber = this.id.split('_')[2];
+                    const rating = this.value;
+                    const desktopInput = document.getElementById(`po_${poNumber}_${rating}`);
+                    if (desktopInput) {
+                        desktopInput.checked = true;
+                    }
+                });
+            });
+
+            document.querySelectorAll('[id^="po_"][id$="1"], [id^="po_"][id$="2"], [id^="po_"][id$="3"], [id^="po_"][id$="4"], [id^="po_"][id$="5"]').forEach(desktopInput => {
+                if (!desktopInput.id.includes('mobile')) {
+                    desktopInput.addEventListener('change', function() {
+                        const idParts = this.id.split('_');
+                        const poNumber = idParts[1];
+                        const rating = idParts[2];
+                        const mobileInput = document.getElementById(`po_mobile_${poNumber}_${rating}`);
+                        if (mobileInput) {
+                            mobileInput.checked = true;
+                        }
+                    });
+                }
+            });
+
+            // Sync PEO ratings
+            document.querySelectorAll('[id^="peo_mobile_"]').forEach(mobileInput => {
+                mobileInput.addEventListener('change', function() {
+                    const peoNumber = this.id.split('_')[2];
+                    const rating = this.value;
+                    const desktopInput = document.getElementById(`peo_${peoNumber}_${rating}`);
+                    if (desktopInput) {
+                        desktopInput.checked = true;
+                    }
+                });
+            });
+
+            document.querySelectorAll('[id^="peo_"][id$="1"], [id^="peo_"][id$="2"], [id^="peo_"][id$="3"], [id^="peo_"][id$="4"], [id^="peo_"][id$="5"]').forEach(desktopInput => {
+                if (!desktopInput.id.includes('mobile')) {
+                    desktopInput.addEventListener('change', function() {
+                        const idParts = this.id.split('_');
+                        const peoNumber = idParts[1];
+                        const rating = idParts[2];
+                        const mobileInput = document.getElementById(`peo_mobile_${peoNumber}_${rating}`);
+                        if (mobileInput) {
+                            mobileInput.checked = true;
+                        }
+                    });
+                }
+            });
+
+            // Sync PSO ratings
+            document.querySelectorAll('[id^="pso_mobile_"]').forEach(mobileInput => {
+                mobileInput.addEventListener('change', function() {
+                    const psoNumber = this.id.split('_')[2];
+                    const rating = this.value;
+                    const desktopInput = document.getElementById(`pso_${psoNumber}_${rating}`);
+                    if (desktopInput) {
+                        desktopInput.checked = true;
+                    }
+                });
+            });
+
+            document.querySelectorAll('[id^="pso_"][id$="1"], [id^="pso_"][id$="2"], [id^="pso_"][id$="3"], [id^="pso_"][id$="4"], [id^="pso_"][id$="5"]').forEach(desktopInput => {
+                if (!desktopInput.id.includes('mobile')) {
+                    desktopInput.addEventListener('change', function() {
+                        const idParts = this.id.split('_');
+                        const psoNumber = idParts[1];
+                        const rating = idParts[2];
+                        const mobileInput = document.getElementById(`pso_mobile_${psoNumber}_${rating}`);
+                        if (mobileInput) {
+                            mobileInput.checked = true;
+                        }
+                    });
+                }
+            });
+
+            // Sync General ratings
+            document.querySelectorAll('[id^="general_mobile_"]').forEach(mobileInput => {
+                mobileInput.addEventListener('change', function() {
+                    const questionNumber = this.id.split('_')[2];
+                    const rating = this.value;
+                    const desktopInput = document.getElementById(`general_${questionNumber}_${rating}`);
+                    if (desktopInput) {
+                        desktopInput.checked = true;
+                    }
+                });
+            });
+
+            document.querySelectorAll('[id^="general_"][id$="1"], [id^="general_"][id$="2"], [id^="general_"][id$="3"], [id^="general_"][id$="4"], [id^="general_"][id$="5"]').forEach(desktopInput => {
+                if (!desktopInput.id.includes('mobile')) {
+                    desktopInput.addEventListener('change', function() {
+                        const idParts = this.id.split('_');
+                        const questionNumber = idParts[1];
+                        const rating = idParts[2];
+                        const mobileInput = document.getElementById(`general_mobile_${questionNumber}_${rating}`);
+                        if (mobileInput) {
+                            mobileInput.checked = true;
+                        }
+                    });
+                }
+            });
+        }
     </script>
+    <?php include 'footer.php'; ?>
 </body>
 </html> 

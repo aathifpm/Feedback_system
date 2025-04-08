@@ -304,7 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </button>
 
             <div class="links">
-                <a href="forgot_password.php">
+                <a href="forget_password.php">
                     <i class="fas fa-key"></i> Forgot Password?
                 </a>
                 <span class="divider">|</span>

@@ -580,48 +580,49 @@ INSERT INTO alumni_general_assessment (alumni_id, question_number, statement, ra
 
 -- Indexes for better query performance
 
-
 -- Insert feedback statements for all sections
 INSERT INTO feedback_statements (statement, section, is_active) VALUES
 -- Course Effectiveness statements
-('Does the course stimulate self-interest?', 'COURSE_EFFECTIVENESS', TRUE),
-('The course was delivered as outlined in the syllabus.', 'COURSE_EFFECTIVENESS', TRUE),
-('The syllabus was explained at the beginning of the course.', 'COURSE_EFFECTIVENESS', TRUE),
-('Well-organized presentations.', 'COURSE_EFFECTIVENESS', TRUE),
-('Given good examples and illustrations.', 'COURSE_EFFECTIVENESS', TRUE),
-('Encouraged questions and class participation.', 'COURSE_EFFECTIVENESS', TRUE),
-('Learnt new techniques and methods from this course.', 'COURSE_EFFECTIVENESS', TRUE),
-('Understood the relevance of the course for real-world application.', 'COURSE_EFFECTIVENESS', TRUE),
-('Course assignments and lectures complemented each other for design development/Projects.', 'COURSE_EFFECTIVENESS', TRUE),
-('Course will help in competitive examinations.', 'COURSE_EFFECTIVENESS', TRUE),
-('Course objectives mapped with outcomes.', 'COURSE_EFFECTIVENESS', TRUE),
-('Course outcomes help to attain Program Educational Objectives (PEOs).', 'COURSE_EFFECTIVENESS', TRUE),
+('Syllabus structure was clearly outlined at the beginning of the course.', 'COURSE_EFFECTIVENESS', TRUE),
+('Planned course structure was aligned with the syllabus.', 'COURSE_EFFECTIVENESS', TRUE),
+('Presentations were well-structured.', 'COURSE_EFFECTIVENESS', TRUE),
+('Concepts were illustrated using relevant examples and illustrations.', 'COURSE_EFFECTIVENESS', TRUE),
+('Core concepts and essential ideas related to the course were explained effectively.', 'COURSE_EFFECTIVENESS', TRUE),
+('Active participation and inquiry were encouraged by the instructor.', 'COURSE_EFFECTIVENESS', TRUE),
+('New methods and techniques were demonstrated throughout the course.', 'COURSE_EFFECTIVENESS', TRUE),
+('Knowledge from assignments and lectures was applied to the design and development of projects.', 'COURSE_EFFECTIVENESS', TRUE),
+('Relevance of the course content to solving real-world problems was recognized.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course helps to prepare for competitive exams.', 'COURSE_EFFECTIVENESS', TRUE),
+('The Objectives of the course align well with its intended outcomes.', 'COURSE_EFFECTIVENESS', TRUE),
+('Course outcomes contribute to achieving the Program Outcomes (PO) and Program Specific Outcomes (PSO).', 'COURSE_EFFECTIVENESS', TRUE),
+('Interest in the subject was developed through the course content and activities.', 'COURSE_EFFECTIVENESS', TRUE),
 
 -- Teaching Effectiveness statements
-('Deliverance by course instructor stimulates interest.', 'TEACHING_EFFECTIVENESS', TRUE),
-('The instructor managed classroom time and place well.', 'TEACHING_EFFECTIVENESS', TRUE),
-('Instructor meets students'' expectations.', 'TEACHING_EFFECTIVENESS', TRUE),
-('Instructor demonstrates thorough preparation for the course.', 'TEACHING_EFFECTIVENESS', TRUE),
-('Instructor encourages discussions and responds to questions.', 'TEACHING_EFFECTIVENESS', TRUE),
-('Instructor appeared enthusiastic and interested.', 'TEACHING_EFFECTIVENESS', TRUE),
-('Instructor was accessible outside the classroom.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Interest was stimulated by the course instructor''s deliverance.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Class time and pace were managed well by the course instructor.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Expectations of students were satisfied by the course instructor.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Effective Preparation for the course was demonstrated by the course instructor.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Discussions were encouraged, and questions were responded to by the course instructor.', 'TEACHING_EFFECTIVENESS', TRUE),
+('In-depth knowledge of the course, along with enthusiasm and interest, was demonstrated by the course instructor.', 'TEACHING_EFFECTIVENESS', TRUE),
+('Accessibility outside the classroom was ensured by the course instructor.', 'TEACHING_EFFECTIVENESS', TRUE),
 
 -- Resources and Administration statements
-('Course supported by adequate library resources.', 'RESOURCES_ADMIN', TRUE),
-('Usefulness of teaching methods (Chalk & Talk, PPT, OHP, etc.).', 'RESOURCES_ADMIN', TRUE),
-('Instructor provided guidance on finding resources.', 'RESOURCES_ADMIN', TRUE),
-('Course material/Lecture notes were effective.', 'RESOURCES_ADMIN', TRUE),
+('Adequate library resources were provided to support the course.', 'RESOURCES_ADMIN', TRUE),
+('Guidance on where to find resources was given by the course instructor.', 'RESOURCES_ADMIN', TRUE),
+('Course materials and lecture notes were found to be effective.', 'RESOURCES_ADMIN', TRUE),
+('Usefulness of Smart Classroom, Google Classroom, Interactive Simulations, and Multimedia Presentations.', 'RESOURCES_ADMIN', TRUE),
+('Availability of online and offline learning materials was ensured.', 'RESOURCES_ADMIN', TRUE),
 
 -- Assessment and Learning statements
-('Exams measure the knowledge acquired in the course.', 'ASSESSMENT_LEARNING', TRUE),
-('Problems set help in understanding the course.', 'ASSESSMENT_LEARNING', TRUE),
-('Feedback on assignments was useful.', 'ASSESSMENT_LEARNING', TRUE),
-('Tutorial sessions help in understanding course concepts.', 'ASSESSMENT_LEARNING', TRUE),
+('Communication of rubrics and grading criteria before assessments was ensured.', 'ASSESSMENT_LEARNING', TRUE),
+('Bloom''s Taxonomy levels were incorporated in the assessments.', 'ASSESSMENT_LEARNING', TRUE),
+('Knowledge acquired in the course was effectively measured through exams (unit test, mid-term, end semester).', 'ASSESSMENT_LEARNING', TRUE),
+('Real-world applications or case-based questions were included in assessments.', 'ASSESSMENT_LEARNING', TRUE),
 
 -- Course Outcomes statements
-('COURSE OUTCOME 1', 'COURSE_OUTCOMES', TRUE),
-('COURSE OUTCOME 2', 'COURSE_OUTCOMES', TRUE),
-('COURSE OUTCOME 3', 'COURSE_OUTCOMES', TRUE),
-('COURSE OUTCOME 4', 'COURSE_OUTCOMES', TRUE),
-('COURSE OUTCOME 5', 'COURSE_OUTCOMES', TRUE),
-('COURSE OUTCOME 6', 'COURSE_OUTCOMES', TRUE);
+('To what extent has this course improved your ability to apply engineering concepts to real-world problems?', 'COURSE_OUTCOMES', TRUE),
+('How well did this course enhance your problem-solving and critical-thinking skills?', 'COURSE_OUTCOMES', TRUE),
+('Did this course strengthen your ability to use modern engineering tools and technologies?', 'COURSE_OUTCOMES', TRUE),
+('How effectively did this course develop your analytical and data interpretation skills?', 'COURSE_OUTCOMES', TRUE),
+('To what extent has this course prepared you for teamwork and professional collaboration?', 'COURSE_OUTCOMES', TRUE),
+('How well did this course help in understanding the ethical and social responsibilities of an engineer?', 'COURSE_OUTCOMES', TRUE);
