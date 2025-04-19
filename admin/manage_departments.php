@@ -2,12 +2,16 @@
 session_start();
 require_once '../db_connection.php';
 require_once '../functions.php';
+require_once 'includes/admin_functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../index.php');
+    header('Location: ../admin_login.php');
     exit();
 }
+
+// Restrict this page to super admins only
+require_super_admin();
 
 $success_msg = $error_msg = '';
 

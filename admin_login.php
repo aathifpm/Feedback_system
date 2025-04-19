@@ -21,8 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             throw new Exception("Please enter both email and password.");
         }
 
-        // Check admin credentials
-        $query = "SELECT id, username, email, password, is_active, last_login 
+        // Check admin credentials - updated to fetch department_id
+        $query = "SELECT id, username, email, password, is_active, last_login, department_id 
                   FROM admin_users 
                   WHERE email = ? AND is_active = TRUE";
                  
@@ -47,6 +47,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_SESSION['email'] = $admin['email'];
             $_SESSION['username'] = $admin['username'];
             $_SESSION['last_activity'] = time();
+            
+            // Store department_id in session (NULL for super admin, department ID for department admin)
+            $_SESSION['department_id'] = $admin['department_id'];
+            
+            // Set admin type based on department_id
+            $_SESSION['admin_type'] = ($admin['department_id'] === NULL) ? 'super_admin' : 'department_admin';
 
             // Log the successful login
             $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
@@ -55,7 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 'email' => $admin['email'],
                 'timestamp' => date('Y-m-d H:i:s'),
                 'status' => 'success',
-                'login_type' => 'admin_portal'
+                'login_type' => 'admin_portal',
+                'admin_type' => $_SESSION['admin_type']
             ]);
             $log_stmt = mysqli_prepare($conn, $log_query);
             mysqli_stmt_bind_param($log_stmt, "isss", 

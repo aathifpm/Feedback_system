@@ -401,8 +401,11 @@ $is_logged_in = isset($_SESSION['user_id']);
                     <span class="user-name"><?php echo htmlspecialchars($user_name); ?></span>
                 </div>
                 <div class="dropdown-menu">
-                    <a href="includes/profile.php" class="dropdown-item">
+                    <a href="profile.php" class="dropdown-item">
                         <i class="fas fa-user-circle"></i> Profile
+                    </a>
+                    <a href="change_password.php" class="dropdown-item">
+                        <i class="fas fa-key"></i> Change Password
                     </a>
                     <a href="../logout.php" class="dropdown-item">
                         <i class="fas fa-sign-out-alt"></i> Logout

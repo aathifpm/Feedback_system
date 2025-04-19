@@ -8,6 +8,23 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: ../admin_login.php');
     exit();
 }
+
+// Get department name for department admins
+$department_name = '';
+if (isset($_SESSION['department_id']) && $_SESSION['department_id'] !== NULL) {
+    require_once '../db_connection.php';
+    $dept_query = "SELECT name FROM departments WHERE id = ?";
+    $stmt = mysqli_prepare($conn, $dept_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    if ($row = mysqli_fetch_assoc($result)) {
+        $department_name = $row['name'];
+    }
+}
+
+// Define if user is super admin
+$is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
 ?>
 <style>
     .sidebar {
@@ -26,9 +43,29 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
     .sidebar h2 {
         color: var(--primary-color);
-        margin-bottom: 2rem;
+        margin-bottom: 0.5rem;
         font-size: 1.5rem;
         text-align: center;
+    }
+    
+    .sidebar .admin-type {
+        text-align: center;
+        margin-bottom: 1.5rem;
+        font-size: 0.9rem;
+        color: #666;
+        padding: 0.3rem 0.8rem;
+        background: rgba(231, 76, 60, 0.1);
+        border-radius: 20px;
+        display: inline-block;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    
+    .sidebar .admin-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        margin-bottom: 1.5rem;
     }
 
     .nav-link {
@@ -112,32 +149,54 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 </button>
 
 <div class="sidebar" id="sidebar">
-    <h2>Admin Panel</h2>
+    <div class="admin-container">
+        <h2>Admin Panel</h2>
+        <div class="admin-type">
+            <?php if ($is_super_admin): ?>
+                <i class="fas fa-user-shield"></i> Super Admin
+            <?php else: ?>
+                <i class="fas fa-user-cog"></i> <?php echo htmlspecialchars($department_name); ?> Admin
+            <?php endif; ?>
+        </div>
+    </div>
     <nav>
         <a href="dashboard.php" class="nav-link">
             <i class="fas fa-home"></i> Dashboard
         </a>
+        
+        <?php if ($is_super_admin): ?>
+        <!-- Super Admin Options -->
         <a href="manage_departments.php" class="nav-link">
             <i class="fas fa-building"></i> Departments
         </a>
+        <?php endif; ?>
+
+        
         <a href="manage_faculty.php" class="nav-link">
             <i class="fas fa-chalkboard-teacher"></i> Faculty
         </a>
+        
         <a href="manage_students.php" class="nav-link">
             <i class="fas fa-user-graduate"></i> Students
         </a>
+        
         <a href="manage_subjects.php" class="nav-link">
             <i class="fas fa-book"></i> Subjects
         </a>
+        
         <a href="manage_feedback.php" class="nav-link">
             <i class="fas fa-comments"></i> Feedback
         </a>
+        
         <a href="reports.php" class="nav-link">
             <i class="fas fa-chart-bar"></i> Reports
         </a>
+        <?php if ($is_super_admin): ?>
         <a href="settings.php" class="nav-link">
             <i class="fas fa-cog"></i> Settings
         </a>
+        <?php endif; ?>
+        
         <a href="../logout.php" class="nav-link">
             <i class="fas fa-sign-out-alt"></i> Logout
         </a>
