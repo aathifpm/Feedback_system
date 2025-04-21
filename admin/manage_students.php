@@ -2,20 +2,217 @@
 session_start();
 require_once '../db_connection.php';
 require_once '../functions.php';
+require_once 'includes/admin_functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../index.php');
+    header('Location: ../admin_login.php');
     exit();
 }
 
 $success_msg = $error_msg = '';
+
+// Get filter parameters from URL
+$search_filter = "";
+$search_params = [];
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search_term = mysqli_real_escape_string($conn, $_GET['search']);
+    $search_filter = " AND (s.name LIKE ? OR s.roll_number LIKE ? OR s.register_number LIKE ?)";
+    $search_params[] = "%$search_term%";
+    $search_params[] = "%$search_term%";
+    $search_params[] = "%$search_term%";
+}
+
+$batch_filter = "";
+if (isset($_GET['batch']) && !empty($_GET['batch'])) {
+    $batch_id = intval($_GET['batch']);
+    $batch_filter = " AND s.batch_id = ?";
+    $batch_params = [$batch_id];
+} else {
+    $batch_params = [];
+}
+
+$section_filter = "";
+if (isset($_GET['section']) && !empty($_GET['section'])) {
+    $section = mysqli_real_escape_string($conn, $_GET['section']);
+    $section_filter = " AND s.section = ?";
+    $section_params = [$section];
+} else {
+    $section_params = [];
+}
+
+$status_filter = "";
+if (isset($_GET['status']) && $_GET['status'] !== '') {
+    $status = ($_GET['status'] == '1') ? 1 : 0;
+    $status_filter = " AND s.is_active = ?";
+    $status_params = [$status];
+} else {
+    $status_params = [];
+}
+
+// Department filter based on admin type
+$department_filter = "";
+$department_params = [];
+
+// If department admin, restrict data to their department
+if (isset($_SESSION['department_id']) && $_SESSION['department_id'] !== NULL) {
+    $department_filter = " AND s.department_id = ?";
+    $department_params[] = $_SESSION['department_id'];
+}
+
+// Override department filter if dept is specified in URL
+if (isset($_GET['dept']) && $_GET['dept'] !== 'all' && !empty($_GET['dept'])) {
+    $dept_id = intval($_GET['dept']);
+    // Only apply if the admin has access to this department
+    if (is_super_admin() || $_SESSION['department_id'] == $dept_id) {
+        $department_filter = " AND s.department_id = ?";
+        $department_params = [$dept_id];
+    }
+}
+
+// Fetch departments for dropdown - department admins only see their department
+if (is_super_admin()) {
+    $dept_query = "SELECT id, name FROM departments ORDER BY name";
+    $departments = mysqli_query($conn, $dept_query);
+} else {
+    $dept_query = "SELECT id, name FROM departments WHERE id = ? ORDER BY name";
+    $stmt = mysqli_prepare($conn, $dept_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $departments = mysqli_stmt_get_result($stmt);
+}
+
+// Fetch batches for dropdown
+$batch_query = "SELECT id, batch_name FROM batch_years WHERE is_active = TRUE ORDER BY admission_year DESC";
+$batches = mysqli_query($conn, $batch_query);
+
+// Fetch students with department filtering - with pagination
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$items_per_page = 20;
+$offset = ($page - 1) * $items_per_page;
+
+// Combine all filters and params
+$all_filters = $department_filter . $search_filter . $batch_filter . $section_filter . $status_filter;
+$all_params = array_merge($department_params, $search_params, $batch_params, $section_params, $status_params);
+
+// Add index recommendations for better performance:
+// - Add index on students(name) for sorting
+// - Add index on feedback(student_id) for faster aggregation
+// - Ensure indexes exist on all JOIN columns and filter columns
+// - Add composite indexes for common filter combinations
+
+// Cache key for count query results - based on filters
+$count_cache_key = md5($all_filters . serialize($all_params));
+$count_cache_file = '../cache/student_count_' . $count_cache_key . '.cache';
+$count_cache_time = 3600; // 1 hour cache time
+
+// Try to get the count from cache
+$total_students = false;
+if (file_exists($count_cache_file) && (time() - filemtime($count_cache_file)) < $count_cache_time) {
+    $total_students = (int)file_get_contents($count_cache_file);
+}
+
+// If not in cache, run the count query
+if ($total_students === false) {
+    // Count total students for pagination
+    $count_query = "SELECT COUNT(*) as total 
+                    FROM students s 
+                    JOIN departments d ON s.department_id = d.id
+                    WHERE 1=1" . $all_filters;
+
+    if (!empty($all_params)) {
+        $stmt = mysqli_prepare($conn, $count_query);
+        $param_types = str_repeat('s', count($all_params));
+        mysqli_stmt_bind_param($stmt, $param_types, ...$all_params);
+        mysqli_stmt_execute($stmt);
+        $count_result = mysqli_stmt_get_result($stmt);
+    } else {
+        $count_result = mysqli_query($conn, $count_query);
+    }
+
+    $total_students = mysqli_fetch_assoc($count_result)['total'];
+    
+    // Save to cache
+    if (!is_dir('../cache')) {
+        mkdir('../cache', 0755, true);
+    }
+    file_put_contents($count_cache_file, $total_students);
+}
+
+$total_pages = ceil($total_students / $items_per_page);
+
+// Modified query with LIMIT and OFFSET for pagination - Optimized for performance
+$students_query = "SELECT s.id, s.roll_number, s.register_number, s.name, s.email, s.department_id, 
+                        s.batch_id, s.section, s.phone, s.address, s.is_active, s.last_login, 
+                        s.password_changed_at, s.created_at, d.name as department_name, 
+                        b.batch_name, CONCAT(b.admission_year, '-', b.graduation_year) as batch_years,
+                        b.current_year_of_study
+                    FROM students s 
+                    JOIN departments d ON s.department_id = d.id
+                    JOIN batch_years b ON s.batch_id = b.id
+                    WHERE 1=1" . $all_filters . "
+                    ORDER BY s.name
+                    LIMIT ? OFFSET ?";
+
+if (!empty($all_params)) {
+    $stmt = mysqli_prepare($conn, $students_query);
+    $param_types = str_repeat('s', count($all_params)) . "ii";
+    $bind_params = array_merge($all_params, [$items_per_page, $offset]);
+    mysqli_stmt_bind_param($stmt, $param_types, ...$bind_params);
+    mysqli_stmt_execute($stmt);
+    $students_result = mysqli_stmt_get_result($stmt);
+} else {
+    $stmt = mysqli_prepare($conn, $students_query);
+    mysqli_stmt_bind_param($stmt, "ii", $items_per_page, $offset);
+    mysqli_stmt_execute($stmt);
+    $students_result = mysqli_stmt_get_result($stmt);
+}
+
+// Fetch all student data into an array
+$student_data = [];
+$student_ids = [];
+while ($student = mysqli_fetch_assoc($students_result)) {
+    $student['feedback_count'] = 0;
+    $student['avg_rating'] = 'N/A';
+    $student_data[$student['id']] = $student;
+    $student_ids[] = $student['id'];
+}
+
+// Only fetch feedback stats if we have students to display
+if (!empty($student_ids)) {
+    // Prepare the IN clause for student IDs
+    $id_list = implode(',', array_map('intval', $student_ids));
+    
+    // Fetch feedback stats in a separate optimized query
+    $feedback_query = "SELECT fb.student_id, 
+                           COUNT(DISTINCT fb.id) as feedback_count,
+                           ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
+                       FROM feedback fb
+                       WHERE fb.student_id IN ($id_list)
+                       GROUP BY fb.student_id";
+                       
+    $feedback_result = mysqli_query($conn, $feedback_query);
+    
+    // Associate feedback data with students
+    while ($feedback = mysqli_fetch_assoc($feedback_result)) {
+        if (isset($student_data[$feedback['student_id']])) {
+            $student_data[$feedback['student_id']]['feedback_count'] = $feedback['feedback_count'];
+            $student_data[$feedback['student_id']]['avg_rating'] = $feedback['avg_rating'];
+        }
+    }
+}
 
 // Handle student operations
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
             case 'add':
+                // Check department access before adding
+                $department_id = intval($_POST['department_id']);
+                if (!admin_has_department_access($department_id)) {
+                    $error_msg = "You don't have permission to add students to this department.";
+                    break;
+                }
                 try {
                     $roll_number = mysqli_real_escape_string($conn, $_POST['roll_number']);
                     $register_number = mysqli_real_escape_string($conn, $_POST['register_number']);
@@ -28,7 +225,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $address = mysqli_real_escape_string($conn, $_POST['address']);
                     
                     // Default password (e.g., register number)
-                    $default_password = password_hash($register_number, PASSWORD_DEFAULT);
+                    $default_password = password_hash("Student@123", PASSWORD_DEFAULT);
                     
                     // Check for existing roll number, register number or email
                     $check_query = "SELECT id FROM students WHERE roll_number = ? OR register_number = ? OR email = ?";
@@ -82,6 +279,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 break;
 
             case 'edit':
+                // Check department access before editing
+                $department_id = intval($_POST['department_id']);
+                if (!admin_has_department_access($department_id)) {
+                    $error_msg = "You don't have permission to edit students in this department.";
+                    break;
+                }
+                // Verify the student belongs to admin's department (for department admins)
+                if (!is_super_admin()) {
+                    $student_id = intval($_POST['id']);
+                    $check_dept_query = "SELECT department_id FROM students WHERE id = ?";
+                    $stmt = mysqli_prepare($conn, $check_dept_query);
+                    mysqli_stmt_bind_param($stmt, "i", $student_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    $student_data = mysqli_fetch_assoc($result);
+                    
+                    if (!$student_data || $student_data['department_id'] != $_SESSION['department_id']) {
+                        $error_msg = "You don't have permission to edit this student.";
+                        break;
+                    }
+                }
                 try {
                     $id = intval($_POST['id']);
                     $roll_number = mysqli_real_escape_string($conn, $_POST['roll_number']);
@@ -195,30 +413,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 }
-
-// Fetch departments for dropdown
-$dept_query = "SELECT id, name FROM departments ORDER BY name";
-$departments = mysqli_query($conn, $dept_query);
-
-// Fetch batches for dropdown
-$batch_query = "SELECT id, batch_name FROM batch_years WHERE is_active = TRUE ORDER BY admission_year DESC";
-$batches = mysqli_query($conn, $batch_query);
-
-// Fetch students with related information
-$students_query = "SELECT 
-    s.*,
-    d.name as department_name,
-    b.batch_name,
-    COUNT(DISTINCT f.id) as feedback_count,
-    ROUND(AVG(f.cumulative_avg), 2) as avg_rating
-FROM students s
-LEFT JOIN departments d ON s.department_id = d.id
-LEFT JOIN batch_years b ON s.batch_id = b.id
-LEFT JOIN feedback f ON s.id = f.student_id
-GROUP BY s.id
-ORDER BY s.name";
-
-$students_result = mysqli_query($conn, $students_query);
 ?>
 
 <!DOCTYPE html>
@@ -592,6 +786,57 @@ $students_result = mysqli_query($conn, $students_query);
             display: none !important;
         }
 
+        /* Pagination Styles */
+        .pagination-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 2rem 0;
+            gap: 0.5rem;
+        }
+        
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .page-link {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            color: var(--text-color);
+            text-decoration: none;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+        
+        .page-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 12px rgb(163,177,198,0.7),
+                       -6px -6px 12px rgba(255,255,255, 0.6);
+        }
+        
+        .page-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .page-info {
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .pagination {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
+
         /* Grid layout for student cards */
         .student-grid {
             display: grid;
@@ -861,8 +1106,9 @@ $students_result = mysqli_query($conn, $students_query);
 
         <!-- Student Grid -->
         <div class="student-grid">
-            <?php while ($student = mysqli_fetch_assoc($students_result)): ?>
+            <?php foreach ($student_data as $student): ?>
                 <div class="student-card" 
+                     data-student-id="<?php echo $student['id']; ?>"
                      data-department="<?php echo $student['department_id']; ?>"
                      data-batch="<?php echo $student['batch_id']; ?>"
                      data-section="<?php echo $student['section']; ?>"
@@ -900,11 +1146,11 @@ $students_result = mysqli_query($conn, $students_query);
 
                     <div class="student-stats">
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $student['feedback_count']; ?></div>
+                            <div class="stat-value feedback-count">0</div>
                             <div class="stat-label">Feedbacks</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $student['avg_rating'] ?? 'N/A'; ?></div>
+                            <div class="stat-value avg-rating">N/A</div>
                             <div class="stat-label">Avg Rating</div>
                         </div>
                     </div>
@@ -921,7 +1167,79 @@ $students_result = mysqli_query($conn, $students_query);
                         </button>
                     </div>
                 </div>
-            <?php endwhile; ?>
+            <?php endforeach; ?>
+        </div>
+        
+        <!-- Pagination Controls -->
+        <div class="pagination-container">
+            <?php if ($total_pages > 1): ?>
+                <div class="pagination">
+                    <?php 
+                    // Preserve all filter parameters in pagination links
+                    $params = $_GET;
+                    
+                    // First and previous page links
+                    if ($page > 1): 
+                        $params['page'] = 1;
+                        $first_link = '?' . http_build_query($params);
+                        
+                        $params['page'] = $page - 1;
+                        $prev_link = '?' . http_build_query($params);
+                    ?>
+                        <a href="<?php echo $first_link; ?>" class="page-link first">
+                            <i class="fas fa-angle-double-left"></i>
+                        </a>
+                        <a href="<?php echo $prev_link; ?>" class="page-link prev">
+                            <i class="fas fa-angle-left"></i>
+                        </a>
+                    <?php endif; ?>
+                    
+                    <?php
+                    // Display limited page links with current page in the middle when possible
+                    $start_page = max(1, min($page - 2, $total_pages - 4));
+                    $end_page = min($total_pages, max($page + 2, 5));
+                    
+                    // Ensure we always show at least 5 pages when available
+                    if ($end_page - $start_page + 1 < 5 && $total_pages >= 5) {
+                        if ($start_page == 1) {
+                            $end_page = min(5, $total_pages);
+                        }
+                        if ($end_page == $total_pages) {
+                            $start_page = max(1, $total_pages - 4);
+                        }
+                    }
+                    
+                    for ($i = $start_page; $i <= $end_page; $i++): 
+                        $params['page'] = $i;
+                        $page_link = '?' . http_build_query($params);
+                    ?>
+                        <a href="<?php echo $page_link; ?>" class="page-link <?php echo ($i == $page) ? 'active' : ''; ?>">
+                            <?php echo $i; ?>
+                        </a>
+                    <?php endfor; ?>
+                    
+                    <?php 
+                    // Next and last page links
+                    if ($page < $total_pages): 
+                        $params['page'] = $page + 1;
+                        $next_link = '?' . http_build_query($params);
+                        
+                        $params['page'] = $total_pages;
+                        $last_link = '?' . http_build_query($params);
+                    ?>
+                        <a href="<?php echo $next_link; ?>" class="page-link next">
+                            <i class="fas fa-angle-right"></i>
+                        </a>
+                        <a href="<?php echo $last_link; ?>" class="page-link last">
+                            <i class="fas fa-angle-double-right"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+                <div class="page-info">
+                    Showing page <?php echo $page; ?> of <?php echo $total_pages; ?> 
+                    (<?php echo $total_students; ?> total students)
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -1163,7 +1481,34 @@ $students_result = mysqli_query($conn, $students_query);
             const statusFilter = document.getElementById('statusFilter');
             const departmentButtons = document.querySelectorAll('.filter-btn');
 
-            // Filter function
+            // Get URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentPage = urlParams.get('page') || 1;
+
+            // Set filters from URL params if they exist
+            if (urlParams.has('search')) {
+                searchInput.value = urlParams.get('search');
+            }
+            if (urlParams.has('batch')) {
+                batchFilter.value = urlParams.get('batch');
+            }
+            if (urlParams.has('section')) {
+                sectionFilter.value = urlParams.get('section');
+            }
+            if (urlParams.has('status')) {
+                statusFilter.value = urlParams.get('status');
+            }
+            if (urlParams.has('dept')) {
+                const deptId = urlParams.get('dept');
+                departmentButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.dept === deptId) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+
+            // Apply local filtering (for current page)
             function filterStudents() {
                 const searchTerm = searchInput.value.toLowerCase();
                 const selectedDept = document.querySelector('.filter-btn.active').dataset.dept;
@@ -1210,36 +1555,131 @@ $students_result = mysqli_query($conn, $students_query);
                 });
             }
 
-            // Event listeners
-            searchInput.addEventListener('input', filterStudents);
-            batchFilter.addEventListener('change', filterStudents);
-            sectionFilter.addEventListener('change', filterStudents);
-            statusFilter.addEventListener('change', filterStudents);
+            // Function to apply filters and redirect
+            function applyFilters() {
+                const searchTerm = searchInput.value.trim();
+                const selectedDept = document.querySelector('.filter-btn.active').dataset.dept;
+                const selectedBatch = batchFilter.value;
+                const selectedSection = sectionFilter.value;
+                const selectedStatus = statusFilter.value;
+                
+                const params = new URLSearchParams();
+                params.set('page', 1); // Reset to page 1 when filtering
+                
+                if (searchTerm) params.set('search', searchTerm);
+                if (selectedDept !== 'all') params.set('dept', selectedDept);
+                if (selectedBatch) params.set('batch', selectedBatch);
+                if (selectedSection) params.set('section', selectedSection);
+                if (selectedStatus) params.set('status', selectedStatus);
+                
+                window.location.href = '?' + params.toString();
+            }
+            
+            // Apply server-side filtering with delay
+            const filterDelay = 500; // ms
+            let filterTimeout;
+            
+            function delayedFilterApply() {
+                clearTimeout(filterTimeout);
+                filterTimeout = setTimeout(applyFilters, filterDelay);
+            }
+
+            // Modified event listeners to apply server-side filtering
+            searchInput.addEventListener('input', function() {
+                filterStudents(); // Immediate local filtering
+                delayedFilterApply(); // Delayed server-side filtering
+            });
+            
+            batchFilter.addEventListener('change', applyFilters);
+            sectionFilter.addEventListener('change', applyFilters);
+            statusFilter.addEventListener('change', applyFilters);
 
             departmentButtons.forEach(button => {
                 button.addEventListener('click', () => {
                     departmentButtons.forEach(btn => btn.classList.remove('active'));
                     button.classList.add('active');
-                    filterStudents();
+                    applyFilters();
                 });
             });
+            
+            // Initial filtering
+            filterStudents();
+
+            // Load feedback statistics via AJAX
+            loadFeedbackStats();
         });
 
         function resetFilters() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('batchFilter').value = '';
-            document.getElementById('sectionFilter').value = '';
-            document.getElementById('statusFilter').value = '';
-            
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if(btn.dataset.dept === 'all') {
-                    btn.classList.add('active');
-                }
-            });
+            window.location.href = '?page=1';
+        }
 
-            document.querySelectorAll('.student-card').forEach(card => {
-                card.classList.remove('hidden');
+        // JavaScript for AJAX loading of feedback statistics
+        function loadFeedbackStats(retryCount = 0) {
+            const studentCards = document.querySelectorAll('.student-card');
+            const studentIds = Array.from(studentCards).map(card => card.dataset.studentId);
+            
+            if (studentIds.length === 0) return;
+            
+            // Only show loading indicators on first attempt
+            if (retryCount === 0) {
+                studentCards.forEach(card => {
+                    card.querySelector('.feedback-count').innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                    card.querySelector('.avg-rating').innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                });
+            }
+            
+            // Set a timeout for the AJAX request
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('Request timed out')), 10000); // 10 second timeout
+            });
+            
+            // Make AJAX request
+            const fetchPromise = fetch('ajax/get_student_feedback_stats.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ student_ids: studentIds })
+            });
+            
+            // Race between fetch and timeout
+            Promise.race([fetchPromise, timeoutPromise])
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`HTTP error: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Update the DOM with the feedback data
+                    studentCards.forEach(card => {
+                        const studentId = card.dataset.studentId;
+                        if (data[studentId]) {
+                            card.querySelector('.feedback-count').textContent = data[studentId].feedback_count;
+                            card.querySelector('.avg-rating').textContent = data[studentId].avg_rating;
+                        } else {
+                            // Set default values for any students not in the response
+                            card.querySelector('.feedback-count').textContent = '0';
+                            card.querySelector('.avg-rating').textContent = 'N/A';
+                        }
+                    });
+                })
+                .catch(error => {
+                    console.error(`Error loading feedback stats (attempt ${retryCount + 1}):`, error);
+                    
+                    // Try again up to 3 times with increasing delay
+                    if (retryCount < 2) {
+                        const retryDelay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s
+                        console.log(`Retrying in ${retryDelay/1000} seconds...`);
+                        setTimeout(() => loadFeedbackStats(retryCount + 1), retryDelay);
+                    } else {
+                        // After 3 attempts, reset to default values
+                        console.log('Maximum retry attempts reached. Using default values.');
+                        studentCards.forEach(card => {
+                            card.querySelector('.feedback-count').textContent = '0';
+                            card.querySelector('.avg-rating').textContent = 'N/A';
+                        });
+                    }
             });
         }
     </script>
