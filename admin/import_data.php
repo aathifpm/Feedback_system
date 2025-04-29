@@ -5,7 +5,7 @@ require_once '../functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../index.php');
+    header('Location: ../admin_login.php');
     exit();
 }
 
@@ -129,6 +129,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // Optional fields with defaults
                 $register_number = isset($column_map['register_number']) ? trim($row[$column_map['register_number']]) : '';
                 $email = isset($column_map['email']) ? trim($row[$column_map['email']]) : '';
+                
+                // Handle empty email by creating a placeholder unique email
+                if (empty($email)) {
+                    $email = strtolower(str_replace(' ', '.', $roll_number)) . '@panimalar.edu';
+                }
+                
                 $section = isset($column_map['section']) ? trim($row[$column_map['section']]) : 'A';
                 $phone = isset($column_map['phone']) ? trim($row[$column_map['phone']]) : '';
                 $address = isset($column_map['address']) ? trim($row[$column_map['address']]) : '';
@@ -196,6 +202,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
                 // Optional fields with defaults
                 $email = isset($column_map['email']) ? trim($row[$column_map['email']]) : '';
+                
+                // Handle empty email by creating a placeholder unique email
+                if (empty($email)) {
+                    $email = strtolower(str_replace(' ', '.', $faculty_id)) . '@panimalar.edu';
+                }
+                
                 $designation = isset($column_map['designation']) ? trim($row[$column_map['designation']]) : '';
                 $experience = isset($column_map['experience']) ? intval(trim($row[$column_map['experience']])) : 0;
                 $qualification = isset($column_map['qualification']) ? trim($row[$column_map['qualification']]) : '';
@@ -583,13 +595,13 @@ mysqli_data_seek($departments, 0);
                 <p>Required columns (headers must match exactly):</p>
                 <ol>
                     <li><strong>roll_number</strong> - Unique identifier for each student</li>
+                    <li><strong>register_number</strong> - University register number</li>
                     <li><strong>name</strong> - Full name of the student</li>
                     <li><strong>department_id</strong> - Department ID number (see available IDs below)</li>
                     <li><strong>batch_name</strong> - Batch name (e.g., 2023-27)</li>
                 </ol>
                 <p>Optional columns:</p>
                 <ol>
-                    <li><strong>register_number</strong> - University register number</li>
                     <li><strong>email</strong> - Student's email address</li>
                     <li><strong>section</strong> - Class section (defaults to 'A')</li>
                     <li><strong>phone</strong> - Contact number</li>
@@ -621,10 +633,10 @@ mysqli_data_seek($departments, 0);
                     <li><strong>faculty_id</strong> - Unique identifier for each faculty</li>
                     <li><strong>name</strong> - Full name of the faculty</li>
                     <li><strong>department_id</strong> - Department ID number (see available IDs below)</li>
+                    <li><strong>email</strong> - Faculty's email address</li>
                 </ol>
                 <p>Optional columns:</p>
                 <ol>
-                    <li><strong>email</strong> - Faculty's email address</li>
                     <li><strong>designation</strong> - Current position/role</li>
                     <li><strong>experience</strong> - Years of experience</li>
                     <li><strong>qualification</strong> - Academic qualifications</li>

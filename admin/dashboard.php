@@ -9,6 +9,19 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     exit();
 }
 
+// Department filter based on admin type
+$department_filter = "";
+$department_join = "";
+$department_params = [];
+$param_types = "";
+
+// If department admin, restrict data to their department
+if (isset($_SESSION['department_id']) && $_SESSION['department_id'] !== NULL) {
+    $department_filter = "WHERE d.id = ?";
+    $department_params[] = $_SESSION['department_id'];
+    $param_types = "i";
+}
+
 // Get current academic year
 $academic_year_query = "SELECT * FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $academic_year_result = mysqli_query($conn, $academic_year_query);
@@ -46,7 +59,7 @@ $stats = [
     ]
 ];
 
-// Get student statistics - Modified query to use batch_years table
+// Get student statistics - Modified query to use batch_years table and apply department filter
 $student_query = "SELECT 
     COUNT(s.id) as total,
     SUM(CASE WHEN s.is_active = TRUE THEN 1 ELSE 0 END) as active,
@@ -55,9 +68,19 @@ $student_query = "SELECT
     SUM(CASE WHEN batch.current_year_of_study = 3 THEN 1 ELSE 0 END) as year3,
     SUM(CASE WHEN batch.current_year_of_study = 4 THEN 1 ELSE 0 END) as year4
 FROM students s
-LEFT JOIN batch_years batch ON s.batch_id = batch.id";
+LEFT JOIN batch_years batch ON s.batch_id = batch.id
+LEFT JOIN departments d ON s.department_id = d.id
+$department_filter";
 
-$result = mysqli_query($conn, $student_query);
+if (!empty($department_params)) {
+    $stmt = mysqli_prepare($conn, $student_query);
+    mysqli_stmt_bind_param($stmt, $param_types, ...$department_params);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+} else {
+    $result = mysqli_query($conn, $student_query);
+}
+
 if (!$result) {
     die("Error in query: " . mysqli_error($conn));
 }
@@ -74,17 +97,27 @@ $stats['students'] = [
     ]
 ];
 
-// Get faculty statistics
+// Get faculty statistics with department filter
 $faculty_query = "SELECT 
     COUNT(*) as total,
-    SUM(CASE WHEN is_active = TRUE THEN 1 ELSE 0 END) as active,
-    COUNT(CASE WHEN designation = 'Professor' THEN 1 END) as professors,
-    COUNT(CASE WHEN designation = 'Associate Professor' THEN 1 END) as associate_professors,
-    COUNT(CASE WHEN designation = 'Assistant Professor' THEN 1 END) as assistant_professors,
-    AVG(experience) as avg_experience
-FROM faculty";
+    SUM(CASE WHEN f.is_active = TRUE THEN 1 ELSE 0 END) as active,
+    COUNT(CASE WHEN f.designation = 'Professor' THEN 1 END) as professors,
+    COUNT(CASE WHEN f.designation = 'Associate Professor' THEN 1 END) as associate_professors,
+    COUNT(CASE WHEN f.designation = 'Assistant Professor' THEN 1 END) as assistant_professors,
+    AVG(f.experience) as avg_experience
+FROM faculty f
+JOIN departments d ON f.department_id = d.id
+$department_filter";
 
-$faculty_result = mysqli_query($conn, $faculty_query);
+if (!empty($department_params)) {
+    $stmt = mysqli_prepare($conn, $faculty_query);
+    mysqli_stmt_bind_param($stmt, $param_types, ...$department_params);
+    mysqli_stmt_execute($stmt);
+    $faculty_result = mysqli_stmt_get_result($stmt);
+} else {
+    $faculty_result = mysqli_query($conn, $faculty_query);
+}
+
 if (!$faculty_result) {
     die("Error in faculty query: " . mysqli_error($conn));
 }
@@ -108,9 +141,18 @@ $dept_faculty_query = "SELECT
     SUM(CASE WHEN f.is_active = TRUE THEN 1 ELSE 0 END) as active
 FROM faculty f
 JOIN departments d ON f.department_id = d.id
+$department_filter
 GROUP BY d.id, d.name";
 
-$dept_faculty_result = mysqli_query($conn, $dept_faculty_query);
+if (!empty($department_params)) {
+    $stmt = mysqli_prepare($conn, $dept_faculty_query);
+    mysqli_stmt_bind_param($stmt, $param_types, ...$department_params);
+    mysqli_stmt_execute($stmt);
+    $dept_faculty_result = mysqli_stmt_get_result($stmt);
+} else {
+    $dept_faculty_result = mysqli_query($conn, $dept_faculty_query);
+}
+
 if ($dept_faculty_result) {
     while ($row = mysqli_fetch_assoc($dept_faculty_result)) {
         $stats['faculty']['by_department'][$row['department_name']] = [
@@ -126,23 +168,34 @@ $feedback_query = "SELECT
     COUNT(DISTINCT sa.id) as total_subjects,
     COUNT(DISTINCT CASE WHEN f.id IS NOT NULL THEN sa.id END) as completed_subjects
 FROM subject_assignments sa
+JOIN subjects s ON sa.subject_id = s.id
+JOIN departments d ON s.department_id = d.id
 LEFT JOIN feedback f ON f.assignment_id = sa.id
-WHERE sa.academic_year_id = ?";
+WHERE sa.academic_year_id = ?
+" . (!empty($department_filter) ? "AND d.id = ?" : "");
+
+$feedback_params = [$current_academic_year['id']];
+$feedback_param_types = "i";
+
+if (!empty($department_params)) {
+    $feedback_params[] = $_SESSION['department_id'];
+    $feedback_param_types .= "i";
+}
 
 $stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, "i", $current_academic_year['id']);
+mysqli_stmt_bind_param($stmt, $feedback_param_types, ...$feedback_params);
 mysqli_stmt_execute($stmt);
 $feedback_stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
 $stats['feedback'] = [
-    'total' => $feedback_stats['total_feedback'],
-    'pending' => $feedback_stats['total_subjects'] - $feedback_stats['completed_subjects'],
-    'completed' => $feedback_stats['completed_subjects'],
-    'completion_rate' => $feedback_stats['total_subjects'] > 0 ? 
-        round(($feedback_stats['completed_subjects'] / $feedback_stats['total_subjects']) * 100, 2) : 0
+    'total' => $feedback_stats['total_feedback'] ?? 0,
+    'pending' => ($feedback_stats['total_subjects'] ?? 0) - ($feedback_stats['completed_subjects'] ?? 0),
+    'completed' => $feedback_stats['completed_subjects'] ?? 0,
+    'completion_rate' => ($feedback_stats['total_subjects'] ?? 0) > 0 ? 
+        round((($feedback_stats['completed_subjects'] ?? 0) / ($feedback_stats['total_subjects'] ?? 0)) * 100, 2) : 0
 ];
 
-// Get recent activities with enhanced details
+// Get recent activities with enhanced details and department filter
 $activities_query = "SELECT 
     ul.*,
     CASE 
@@ -154,10 +207,28 @@ $activities_query = "SELECT
 FROM user_logs ul
 LEFT JOIN students s ON ul.user_id = s.id AND ul.role = 'student'
 LEFT JOIN faculty f ON ul.user_id = f.id AND ul.role = 'faculty'
-LEFT JOIN hods h ON ul.user_id = h.id AND ul.role = 'hod'
-ORDER BY ul.created_at DESC
-LIMIT 10";
-$activities_result = mysqli_query($conn, $activities_query);
+LEFT JOIN hods h ON ul.user_id = h.id AND ul.role = 'hod'";
+
+// Add department filter to activities if department admin
+if (!empty($department_params)) {
+    $activities_query .= " 
+    LEFT JOIN departments d ON 
+        (ul.role = 'student' AND s.department_id = d.id) OR 
+        (ul.role = 'faculty' AND f.department_id = d.id) OR 
+        (ul.role = 'hod' AND h.department_id = d.id)
+    WHERE (d.id = ? OR ul.role = 'admin')";
+    
+    $activities_query .= " ORDER BY ul.created_at DESC LIMIT 10";
+    
+    $stmt = mysqli_prepare($conn, $activities_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $activities_result = mysqli_stmt_get_result($stmt);
+} else {
+    $activities_query .= " ORDER BY ul.created_at DESC LIMIT 10";
+    $activities_result = mysqli_query($conn, $activities_query);
+}
+
 $recent_activities = mysqli_fetch_all($activities_result, MYSQLI_ASSOC);
 
 // Get pending tasks
@@ -171,6 +242,7 @@ $pending_tasks = [
 ?>
 <?php
 include_once "includes/header.php";
+include_once "includes/sidebar.php";
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -624,8 +696,6 @@ include_once "includes/header.php";
 </head>
 
 <body>
-    <?php include_once "includes/sidebar.php"; ?>
-
     <div class="main-content">
         <div class="dashboard-header">
             <div>
