@@ -1192,6 +1192,16 @@ if (isset($_SESSION['success_message'])) {
                 font-size: 0.8rem;
             }
         }
+
+        @media (max-width: 768px) {
+            .desktop-only {
+                display: none !important; /* Added !important to override any other display settings */
+            }
+            
+            .mobile-only {
+                display: block;
+            }
+        }
     </style>
 </head>
 <body>
