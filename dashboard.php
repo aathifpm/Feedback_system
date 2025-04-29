@@ -155,6 +155,8 @@ switch ($role) {
             sa.id as assignment_id,
             s.name, s.code,
             f.name as faculty_name,
+            sa.semester,
+            sa.year as year_of_study,
             CASE WHEN fb.id IS NOT NULL THEN 'Submitted' ELSE 'Pending' END as feedback_status,
             fb.submitted_at
         FROM subject_assignments sa
@@ -166,12 +168,10 @@ switch ($role) {
         JOIN batch_years by2 ON st.batch_id = by2.id
         WHERE sa.academic_year_id = ?
         AND sa.year = by2.current_year_of_study
-        AND sa.semester = CASE 
-            WHEN MONTH(CURDATE()) <= 5 THEN by2.current_year_of_study * 2
-            ELSE by2.current_year_of_study * 2 - 1
-        END
         AND sa.section = st.section
-        AND sa.is_active = TRUE");
+        AND sa.is_active = TRUE
+        AND s.department_id = st.department_id
+        ORDER BY sa.semester ASC");
         
         mysqli_stmt_bind_param($stmt, "iii", 
             $user_id,
@@ -1713,6 +1713,96 @@ switch ($role) {
             text-align: right;
             margin-top: 2rem;
         }
+
+        .semester-section {
+            margin-bottom: 2rem;
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+        }
+
+        .semester-title {
+            font-size: 1.3rem;
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .subject-card {
+            margin-bottom: 1rem;
+            background: var(--card-bg);
+            padding: 1.5rem;
+            border-radius: 10px;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .subject-card:last-child {
+            margin-bottom: 0;
+        }
+
+        .feedback-history-header {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .feedback-history-header .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .dropdown-icon {
+            margin-left: auto;
+            transition: transform 0.3s ease;
+        }
+
+        .dropdown-icon.active {
+            transform: rotate(180deg);
+        }
+
+        .feedback-history-content {
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .feedback-card {
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .subjects-header {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .subjects-header .section-title {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .subjects-content {
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .semester-section {
+            animation: slideDown 0.3s ease;
+        }
+
+        /* Reuse existing slideDown animation */
     </style>
 </head>
 <body>
@@ -1743,6 +1833,38 @@ switch ($role) {
             </div>
         </div>
 
+        <!-- Add this right after the dashboard-header div -->
+        <?php if (isset($_SESSION['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?php 
+                    echo $_SESSION['error'];
+                    unset($_SESSION['error']);
+                ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+
+        <?php if (isset($_GET['error'])): ?>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <?php 
+                    switch($_GET['error']) {
+                        case 'no_exam_scheduled':
+                            echo "No exam has been scheduled yet for this subject.";
+                            break;
+                        case 'feedback_exists':
+                            echo "You have already submitted feedback for this exam.";
+                            break;
+                        case 'invalid_assignment':
+                            echo "Invalid subject assignment.";
+                            break;
+                        default:
+                            echo "An error occurred. Please try again.";
+                    }
+                ?>
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        <?php endif; ?>
+
         <?php if ($role == 'student'): ?>
             <!-- Student Dashboard Content -->
             <div class="stats-container">
@@ -1764,141 +1886,286 @@ switch ($role) {
             </div>
 
             <div class="content-section">
-                <h2 class="section-title">Current Semester Subjects</h2>
-                <?php if (!empty($data['subjects'])): ?>
-                    <?php foreach ($data['subjects'] as $subject): ?>
-                        <div class="subject-card">
-                            <div class="subject-info">
-                                <h3><?php echo htmlspecialchars($subject['name']); ?> (<?php echo htmlspecialchars($subject['code']); ?>)</h3>
-                                <p>Faculty: <?php echo htmlspecialchars($subject['faculty_name']); ?></p>
+                <div class="subjects-header" onclick="toggleSubjects()">
+                    <h2 class="section-title">
+                        <i class="fas fa-book"></i> 
+                        Academic Year Subjects
+                        <i class="fas fa-chevron-down dropdown-icon"></i>
+                    </h2>
+                </div>
+                <div id="subjectsContent" class="subjects-content" style="display: none;">
+                    <?php if (!empty($data['subjects'])): ?>
+                        <?php 
+                        // Group subjects by semester
+                        $subjects_by_semester = [];
+                        foreach ($data['subjects'] as $subject) {
+                            $semester = $subject['semester'];
+                            if (!isset($subjects_by_semester[$semester])) {
+                                $subjects_by_semester[$semester] = [];
+                            }
+                            $subjects_by_semester[$semester][] = $subject;
+                        }
+                        ksort($subjects_by_semester); // Sort by semester
+                        
+                        foreach ($subjects_by_semester as $semester => $semester_subjects):
+                        ?>
+                            <div class="semester-section">
+                                <h3 class="semester-title">Semester <?php echo htmlspecialchars($semester); ?></h3>
+                                <?php foreach ($semester_subjects as $subject): ?>
+                                    <div class="subject-card">
+                                        <div class="subject-info">
+                                            <h3><?php echo htmlspecialchars($subject['name']); ?> (<?php echo htmlspecialchars($subject['code']); ?>)</h3>
+                                            <p>Faculty: <?php echo htmlspecialchars($subject['faculty_name']); ?></p>
+                                        </div>
+                                        <div class="subject-actions">
+                                            <span class="status-badge <?php echo $subject['feedback_status'] === 'Submitted' ? 'status-completed' : 'status-pending'; ?>">
+                                                <?php echo htmlspecialchars($subject['feedback_status']); ?>
+                                            </span>
+                                            
+                                            <?php if ($subject['feedback_status'] === 'Pending'): ?>
+                                                <a href="give_feedback.php?assignment_id=<?php echo urlencode($subject['assignment_id']); ?>" class="btn btn-primary">
+                                                    <i class="fas fa-comment"></i> Give Feedback
+                                                </a>
+                                            <?php endif; 
+
+                                            // Check if there's an exam scheduled for today or past for this subject
+                                            $exam_check_query = "SELECT et.* 
+                                                               FROM subject_assignments sa1 
+                                                               JOIN subjects s ON s.id = sa1.subject_id
+                                                               LEFT JOIN exam_timetable et ON et.subject_id = s.id 
+                                                                    AND et.semester = sa1.semester 
+                                                                    AND et.academic_year_id = sa1.academic_year_id
+                                                                    AND et.exam_date <= CURDATE()
+                                                                    AND et.is_active = TRUE
+                                                               WHERE sa1.id = ?
+                                                               ORDER BY et.exam_date DESC
+                                                               LIMIT 1";
+                                            $exam_check_stmt = mysqli_prepare($conn, $exam_check_query);
+                                            mysqli_stmt_bind_param($exam_check_stmt, "i", $subject['assignment_id']);
+                                            mysqli_stmt_execute($exam_check_stmt);
+                                            $exam_result = mysqli_stmt_get_result($exam_check_stmt);
+                                            $exam_available = mysqli_fetch_assoc($exam_result);
+
+                                            // Only show exam feedback option if exam exists and is today or past
+                                            if ($exam_available && !is_null($exam_available['id'])) {
+                                                // Check if exam feedback already submitted
+                                                $feedback_check_query = "SELECT id FROM examination_feedback 
+                                                                       WHERE student_id = ? 
+                                                                       AND subject_assignment_id = ?";
+                                                $feedback_check_stmt = mysqli_prepare($conn, $feedback_check_query);
+                                                mysqli_stmt_bind_param($feedback_check_stmt, "ii", $user_id, $subject['assignment_id']);
+                                                mysqli_stmt_execute($feedback_check_stmt);
+                                                $feedback_exists = mysqli_fetch_assoc(mysqli_stmt_get_result($feedback_check_stmt));
+                                                
+                                                if (!$feedback_exists) { ?>
+                                                    <a href="give_exam_feedback.php?assignment_id=<?php echo urlencode($subject['assignment_id']); ?>" class="btn btn-secondary">
+                                                        <i class="fas fa-file-alt"></i> Exam Feedback
+                                                    </a>
+                                                <?php } else { ?>
+                                                    <span class="badge bg-success">
+                                                        <i class="fas fa-check"></i> Exam Feedback Submitted
+                                                    </span>
+                                                <?php }
+                                            } ?>
+                                        </div>
+                                    </div>
+                                <?php endforeach; ?>
                             </div>
-                            <div class="subject-actions">
-                                <span class="status-badge <?php echo $subject['feedback_status'] === 'Submitted' ? 'status-completed' : 'status-pending'; ?>">
-                                    <?php echo htmlspecialchars($subject['feedback_status']); ?>
-                                </span>
-                                <?php if ($subject['feedback_status'] === 'Pending'): ?>
-                                    <a href="give_feedback.php?assignment_id=<?php echo urlencode($subject['assignment_id']); ?>" class="btn btn-primary">
-                                        <i class="fas fa-comment"></i> Give Feedback
-                                    </a>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <p>No subjects found for the current semester.</p>
-                <?php endif; ?>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <p>No subjects found for the current academic year.</p>
+                    <?php endif; ?>
+                </div>
             </div>
+
+            <style>
+                .subjects-header {
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .subjects-header .section-title {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+
+                .subjects-content {
+                    overflow: hidden;
+                    transition: all 0.3s ease;
+                }
+
+                .semester-section {
+                    animation: slideDown 0.3s ease;
+                }
+
+                /* Reuse existing slideDown animation */
+            </style>
+
+            <script>
+                // Add this function for subjects toggle
+                function toggleSubjects() {
+                    const content = document.getElementById('subjectsContent');
+                    const icon = document.querySelector('.subjects-header .dropdown-icon');
+                    
+                    if (content.style.display === 'none') {
+                        content.style.display = 'block';
+                        icon.classList.add('active');
+                    } else {
+                        content.style.display = 'none';
+                        icon.classList.remove('active');
+                    }
+                }
+            </script>
 
             <?php if ($data['show_exit_survey']): ?>
                 <div class="content-section">
                     <h2 class="section-title">Exit Survey</h2>
-                    <?php
-                    // Check if exit survey is already submitted
-                    $exit_survey_query = "SELECT id, date FROM exit_surveys 
-                                        WHERE student_id = ? AND academic_year_id = ?";
-                    $exit_survey_stmt = mysqli_prepare($conn, $exit_survey_query);
-                    mysqli_stmt_bind_param($exit_survey_stmt, "ii", 
-                        $user_id, 
-                        $current_academic_year['id']
-                    );
-                    mysqli_stmt_execute($exit_survey_stmt);
-                    $exit_survey_result = mysqli_stmt_get_result($exit_survey_stmt);
-                    $exit_survey = mysqli_fetch_assoc($exit_survey_result);
-                    
-                    if ($exit_survey): ?>
-                        <div class="subject-card">
-                            <div class="subject-info">
-                                <h3>Exit Survey Status</h3>
-                                <p>Submitted on: <?php echo date('F j, Y', strtotime($exit_survey['date'])); ?></p>
-                            </div>
-                            <div class="subject-actions">
-                                <span class="status-badge status-completed">
-                                    <i class="fas fa-check-circle"></i> Submitted
-                                </span>
-                            </div>
+                    <p>As you're in your final semester, please complete the exit survey.</p>
+                    <div class="subject-card">
+                        <div class="subject-info">
+                            <h3>Exit Survey Status</h3>
+                            <p>Your feedback is valuable for improving our programs.</p>
                         </div>
-                    <?php else: ?>
-                        <p>As you're in your final semester, please complete the exit survey.</p>
-                        <div class="subject-card">
-                            <div class="subject-info">
-                                <h3>Exit Survey Status</h3>
-                                <p>Your feedback is valuable for improving our programs.</p>
-                            </div>
-                            <div class="subject-actions">
-                                <span class="status-badge status-pending">
-                                    <i class="fas fa-clock"></i> Pending
-                                </span>
-                                <a href="exit_survey.php" class="btn btn-primary">
-                                    <i class="fas fa-poll"></i> Complete Exit Survey
-                                </a>
-                            </div>
+                        <div class="subject-actions">
+                            <span class="status-badge status-pending">
+                                <i class="fas fa-clock"></i> Pending
+                            </span>
+                            <a href="exit_survey.php" class="btn btn-primary">
+                                <i class="fas fa-poll"></i> Complete Exit Survey
+                            </a>
                         </div>
-                    <?php endif; ?>
-                </div>
-            <?php endif; ?>
-
-            <div class="content-section">
-                <h2 class="section-title">Feedback History</h2>
-                <?php
-                // Fetch feedback history
-                $feedback_history_query = "SELECT 
-                    f.id,
-                    s.name as subject_name,
-                    s.code as subject_code,
-                    fac.name as faculty_name,
-                    f.submitted_at,
-                    f.cumulative_avg
-                FROM feedback f
-                JOIN subject_assignments sa ON f.assignment_id = sa.id
-                JOIN subjects s ON sa.subject_id = s.id
-                JOIN faculty fac ON sa.faculty_id = fac.id
-                WHERE f.student_id = ?
-                ORDER BY f.submitted_at DESC";
-                
-                $history_stmt = mysqli_prepare($conn, $feedback_history_query);
-                mysqli_stmt_bind_param($history_stmt, "i", $user_id);
-                mysqli_stmt_execute($history_stmt);
-                $feedback_history = mysqli_fetch_all(mysqli_stmt_get_result($history_stmt), MYSQLI_ASSOC);
-                ?>
-
-                <?php if (!empty($feedback_history)): ?>
-                    <div class="feedback-history-container">
-                        <?php foreach ($feedback_history as $feedback): ?>
-                            <div class="feedback-card">
-                                <div class="feedback-info">
-                                    <h3><?php echo htmlspecialchars($feedback['subject_name']); ?> 
-                                        (<?php echo htmlspecialchars($feedback['subject_code']); ?>)</h3>
-                                    <p class="faculty-name">
-                                        <i class="fas fa-user-tie"></i> 
-                                        <?php echo htmlspecialchars($feedback['faculty_name']); ?>
-                                    </p>
-                                    <p class="submission-date">
-                                        <i class="fas fa-calendar-alt"></i> 
-                                        <?php echo date('F j, Y, g:i a', strtotime($feedback['submitted_at'])); ?>
-                                    </p>
-                                </div>
-                                <div class="feedback-rating">
-                                    <div class="rating-circle">
-                                        <span class="rating-number">
-                                            <?php echo number_format($feedback['cumulative_avg'], 2); ?>
-                                        </span>
-                                        <span class="rating-label">Average Rating</span>
-                                    </div>
-                                    <a href="view_my_feedback.php?feedback_id=<?php echo $feedback['id']; ?>" 
-                                       class="btn btn-view">
-                                        <i class="fas fa-eye"></i> View Details
-                                    </a>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    </div>
-                <?php else: ?>
-                    <div class="no-feedback">
-                        <i class="fas fa-clipboard-list"></i>
-                        <p>No feedback submitted yet.</p>
                     </div>
                 <?php endif; ?>
             </div>
+
+            <div class="content-section">
+                <div class="subjects-header" onclick="toggleFeedbackHistory()">
+                    <h2 class="section-title">
+                        <i class="fas fa-history"></i> 
+                        Feedback History
+                        <i class="fas fa-chevron-down dropdown-icon"></i>
+                    </h2>
+                </div>
+                <div id="feedbackHistoryContent" class="feedback-history-content" style="display: none;">
+                    <?php
+                    // Fetch feedback history
+                    $feedback_history_query = "SELECT 
+                        f.id,
+                        s.name as subject_name,
+                        s.code as subject_code,
+                        fac.name as faculty_name,
+                        f.submitted_at,
+                        f.cumulative_avg
+                    FROM feedback f
+                    JOIN subject_assignments sa ON f.assignment_id = sa.id
+                    JOIN subjects s ON sa.subject_id = s.id
+                    JOIN faculty fac ON sa.faculty_id = fac.id
+                    WHERE f.student_id = ?
+                    ORDER BY f.submitted_at DESC";
+                    
+                    $history_stmt = mysqli_prepare($conn, $feedback_history_query);
+                    mysqli_stmt_bind_param($history_stmt, "i", $user_id);
+                    mysqli_stmt_execute($history_stmt);
+                    $feedback_history = mysqli_fetch_all(mysqli_stmt_get_result($history_stmt), MYSQLI_ASSOC);
+                    ?>
+
+                    <?php if (!empty($feedback_history)): ?>
+                        <div class="feedback-history-container">
+                            <?php foreach ($feedback_history as $feedback): ?>
+                                <div class="feedback-card">
+                                    <div class="feedback-info">
+                                        <h3><?php echo htmlspecialchars($feedback['subject_name']); ?> 
+                                            (<?php echo htmlspecialchars($feedback['subject_code']); ?>)</h3>
+                                        <p class="faculty-name">
+                                            <i class="fas fa-user-tie"></i> 
+                                            <?php echo htmlspecialchars($feedback['faculty_name']); ?>
+                                        </p>
+                                        <p class="submission-date">
+                                            <i class="fas fa-calendar-alt"></i> 
+                                            <?php echo date('F j, Y, g:i a', strtotime($feedback['submitted_at'])); ?>
+                                        </p>
+                                    </div>
+                                    <div class="feedback-rating">
+                                        <div class="rating-circle">
+                                            <span class="rating-number">
+                                                <?php echo number_format($feedback['cumulative_avg'], 2); ?>
+                                            </span>
+                                            <span class="rating-label">Average Rating</span>
+                                        </div>
+                                        <a href="view_my_feedback.php?feedback_id=<?php echo $feedback['id']; ?>" 
+                                           class="btn btn-view">
+                                            <i class="fas fa-eye"></i> View Details
+                                        </a>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <div class="no-feedback">
+                            <i class="fas fa-clipboard-list"></i>
+                            <p>No feedback submitted yet.</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <style>
+                .feedback-history-header {
+                    cursor: pointer;
+                    user-select: none;
+                }
+
+                .feedback-history-header .section-title {
+                    display: flex;
+                    align-items: center;
+                    gap: 10px;
+                }
+                
+                .dropdown-icon {
+                    margin-left: auto;
+                    transition: transform 0.3s ease;
+                }
+
+                .dropdown-icon.active {
+                    transform: rotate(180deg);
+                }
+
+                .feedback-history-content {
+                    overflow: hidden;
+                    transition: all 0.3s ease;
+                }
+
+                .feedback-card {
+                    animation: slideDown 0.3s ease;
+                }
+
+                @keyframes slideDown {
+                    from {
+                        opacity: 0;
+                        transform: translateY(-10px);
+                    }
+                    to {
+                        opacity: 1;
+                        transform: translateY(0);
+                    }
+                }
+            </style>
+
+            <script>
+                function toggleFeedbackHistory() {
+                    const content = document.getElementById('feedbackHistoryContent');
+                    const icon = document.querySelector('.dropdown-icon');
+                    
+                    if (content.style.display === 'none') {
+                        content.style.display = 'block';
+                        icon.classList.add('active');
+                    } else {
+                        content.style.display = 'none';
+                        icon.classList.remove('active');
+                    }
+                }
+            </script>
 
         <?php elseif ($role == 'faculty'): ?>
             <!-- Faculty Dashboard Content -->
@@ -1922,6 +2189,12 @@ switch ($role) {
                     <i class="fas fa-graduation-cap icon"></i>
                     <a href="alumni_survey_analytics.php" class="btn btn-primary" style="text-decoration: none;">
                         <i class="fas fa-chart-line"></i> Alumni Analytics
+                    </a>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-file-alt icon"></i>
+                    <a href="faculty_examination_feedback.php" class="btn btn-primary" style="text-decoration: none;">
+                        <i class="fas fa-clipboard-check"></i> Examination Feedback
                     </a>
                 </div>
             </div>
@@ -2398,126 +2671,128 @@ switch ($role) {
                     <?php endif; ?>
                 </div>
             </div>
-                <?php endif; ?>
+        <?php endif; ?>
+    </div>
+
+    <!-- Section Report Generation Modal -->
+    <div class="modal" id="sectionReportModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Generate Section-wise Report</h3>
+                <span class="close" onclick="closeSectionReportModal()">&times;</span>
             </div>
-
-            <!-- Section Report Generation Modal -->
-            <div class="modal" id="sectionReportModal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>Generate Section-wise Report</h3>
-                        <span class="close" onclick="closeSectionReportModal()">&times;</span>
+            <div class="modal-body">
+                <form id="sectionReportForm">
+                    <div class="form-group">
+                        <label>Academic Year</label>
+                        <select name="academic_year" class="input-field" required>
+                            <?php
+                            $academic_years_query = "SELECT * FROM academic_years ORDER BY year_range DESC";
+                            $academic_years_result = mysqli_query($conn, $academic_years_query);
+                            while ($year = mysqli_fetch_assoc($academic_years_result)) {
+                                $selected = $year['is_current'] ? 'selected' : '';
+                                echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
+                            }
+                            ?>
+                        </select>
                     </div>
-                    <div class="modal-body">
-                        <form id="sectionReportForm">
-                            <div class="form-group">
-                                <label>Academic Year</label>
-                                <select name="academic_year" class="input-field" required>
-                                    <?php
-                                    $academic_years_query = "SELECT * FROM academic_years ORDER BY year_range DESC";
-                                    $academic_years_result = mysqli_query($conn, $academic_years_query);
-                                    while ($year = mysqli_fetch_assoc($academic_years_result)) {
-                                        $selected = $year['is_current'] ? 'selected' : '';
-                                        echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
-                                    }
-                                    ?>
-                                </select>
-                            </div>
 
-                            <div class="form-group">
-                                <label>Year of Study</label>
-                                <select name="year" class="input-field" required>
-                                    <option value="">Select Year</option>
-                                    <option value="1">1st Year</option>
-                                    <option value="2">2nd Year</option>
-                                    <option value="3">3rd Year</option>
-                                    <option value="4">4th Year</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Semester</label>
-                                <select name="semester" class="input-field" required>
-                                    <option value="">Select Semester</option>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Section</label>
-                                <select name="section" class="input-field" required>
-                                    <option value="">Select Section</option>
-                                    <?php for($i = 65; $i <= 79; $i++): ?>
-                                        <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
-                                    <?php endfor; ?>
-                                </select>
-                            </div>
-
-                            <div class="form-group">
-                                <label>Report Format</label>
-                                <select name="format" class="input-field" required>
-                                    <option value="pdf">PDF Document</option>
-                                    <option value="excel">Excel Spreadsheet</option>
-                                </select>
-                            </div>
-
-                            <div class="form-actions">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-file-export"></i> Generate Report
-                                </button>
-                            </div>
-                        </form>
+                    <div class="form-group">
+                        <label>Year of Study</label>
+                        <select name="year" class="input-field" required>
+                            <option value="">Select Year</option>
+                            <option value="1">1st Year</option>
+                            <option value="2">2nd Year</option>
+                            <option value="3">3rd Year</option>
+                            <option value="4">4th Year</option>
+                        </select>
                     </div>
-                </div>
+
+                    <div class="form-group">
+                        <label>Semester</label>
+                        <select name="semester" class="input-field" required>
+                            <option value="">Select Semester</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Section</label>
+                        <select name="section" class="input-field" required>
+                            <option value="">Select Section</option>
+                            <?php for($i = 65; $i <= 79; $i++): ?>
+                                <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
+                            <?php endfor; ?>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Report Format</label>
+                        <select name="format" class="input-field" required>
+                            <option value="pdf">PDF Document</option>
+                            <option value="excel">Excel Spreadsheet</option>
+                        </select>
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-file-export"></i> Generate Report
+                        </button>
+                    </div>
+                </form>
             </div>
+        </div>
+    </div>
 
-            <!-- Add this script before the closing body tag -->
-            <script>
-            // Update semester options based on selected year
-            document.querySelector('select[name="year"]').addEventListener('change', function() {
-                const year = parseInt(this.value);
-                const semesterSelect = document.querySelector('select[name="semester"]');
-                semesterSelect.innerHTML = '<option value="">Select Semester</option>';
-                
-                if (year) {
-                    const sem1 = (year * 2) - 1;
-                    const sem2 = year * 2;
-                    semesterSelect.innerHTML += `
-                        <option value="${sem1}">Semester ${sem1}</option>
-                        <option value="${sem2}">Semester ${sem2}</option>
-                    `;
-                }
-            });
+    <!-- Add this script before the closing body tag -->
+    <script>
+    // Update semester options based on selected year
+    document.querySelector('select[name="year"]').addEventListener('change', function() {
+        const year = parseInt(this.value);
+        const semesterSelect = document.querySelector('select[name="semester"]');
+        semesterSelect.innerHTML = '<option value="">Select Semester</option>';
+        
+        if (year) {
+            const sem1 = (year * 2) - 1;
+            const sem2 = year * 2;
+            semesterSelect.innerHTML += `
+                <option value="${sem1}">Semester ${sem1}</option>
+                <option value="${sem2}">Semester ${sem2}</option>
+            `;
+        }
+    });
 
-            // Modal functions
-            function openSectionReportModal() {
-                document.getElementById('sectionReportModal').style.display = 'block';
-            }
+    // Modal functions
+    function openSectionReportModal() {
+        document.getElementById('sectionReportModal').style.display = 'block';
+    }
 
-            function closeSectionReportModal() {
-                document.getElementById('sectionReportModal').style.display = 'none';
-            }
+    function closeSectionReportModal() {
+        document.getElementById('sectionReportModal').style.display = 'none';
+    }
 
-            // Handle form submission
-            document.getElementById('sectionReportForm').addEventListener('submit', function(e) {
-                e.preventDefault();
-                const formData = new FormData(this);
-                const queryString = new URLSearchParams(formData).toString();
-                const format = formData.get('format');
-                
-                // Redirect to appropriate report generation script
-                if (format === 'pdf') {
-                    window.location.href = `generate_section_report.php?${queryString}`;
-                } else {
-                    window.location.href = `generate_section_excel.php?${queryString}`;
-                }
-            });
+    // Handle form submission
+    document.getElementById('sectionReportForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const queryString = new URLSearchParams(formData).toString();
+        const format = formData.get('format');
+        
+        // Redirect to appropriate report generation script
+        if (format === 'pdf') {
+            window.location.href = `generate_section_report.php?${queryString}`;
+        } else {
+            window.location.href = `generate_section_excel.php?${queryString}`;
+        }
+    });
 
-            // Close modal when clicking outside
-            window.onclick = function(event) {
-                if (event.target.className === 'modal') {
-                    event.target.style.display = 'none';
-                }
-            }
-            </script>
+    // Close modal when clicking outside
+    window.onclick = function(event) {
+        if (event.target.className === 'modal') {
+            event.target.style.display = 'none';
+        }
+    }
+    </script>
+
+    <?php include 'footer.php'; ?>
 </body>
 </html>
