@@ -2,11 +2,118 @@
 session_start();
 require_once '../db_connection.php';
 require_once '../functions.php';
+require_once 'includes/admin_functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     header('Location: ../index.php');
     exit();
+}
+
+// Department filter based on admin type
+$department_filter = "";
+$department_params = [];
+$param_types = "";
+
+// If department admin, restrict data to their department
+if (!is_super_admin()) {
+    $department_filter = " AND d.id = ?";
+    $department_params[] = $_SESSION['department_id'];
+    $param_types = "i";
+}
+
+// Fetch departments for dropdown - department admins only see their department
+if (is_super_admin()) {
+    $dept_query = "SELECT id, name FROM departments ORDER BY name";
+    $departments = mysqli_query($conn, $dept_query);
+} else {
+    $dept_query = "SELECT id, name FROM departments WHERE id = ? ORDER BY name";
+    $stmt = mysqli_prepare($conn, $dept_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $departments = mysqli_stmt_get_result($stmt);
+}
+
+// Get academic years for filters
+$years_query = "SELECT * FROM academic_years ORDER BY start_date DESC";
+$years_result = mysqli_query($conn, $years_query);
+
+// Prepare filters
+$selected_department = isset($_GET['department_id']) ? intval($_GET['department_id']) : 0;
+$selected_year = isset($_GET['academic_year_id']) ? intval($_GET['academic_year_id']) : 0;
+$selected_semester = isset($_GET['semester']) ? intval($_GET['semester']) : 0;
+
+// Department admin can only see their department
+if (!is_super_admin() && isset($_SESSION['department_id'])) {
+    $selected_department = $_SESSION['department_id'];
+}
+
+// Build the where clause based on filters
+$filter_where = [];
+$filter_params = [];
+$filter_types = "";
+
+if ($selected_department > 0) {
+    $filter_where[] = "d.id = ?";
+    $filter_params[] = $selected_department;
+    $filter_types .= "i";
+} else if (!is_super_admin() && isset($_SESSION['department_id'])) {
+    // Force department filter for department admins
+    $filter_where[] = "d.id = ?";
+    $filter_params[] = $_SESSION['department_id'];
+    $filter_types .= "i";
+}
+
+if ($selected_year > 0) {
+    $filter_where[] = "sa.academic_year_id = ?";
+    $filter_params[] = $selected_year;
+    $filter_types .= "i";
+}
+
+if ($selected_semester > 0) {
+    $filter_where[] = "sa.semester = ?";
+    $filter_params[] = $selected_semester;
+    $filter_types .= "i";
+}
+
+$where_clause = count($filter_where) > 0 ? " WHERE " . implode(" AND ", $filter_where) : "";
+
+// Get feedback data with applied filters
+$feedback_query = "SELECT 
+    sa.id as assignment_id,
+    s.code as subject_code,
+    s.name as subject_name,
+    f.name as faculty_name,
+    f.faculty_id,
+    d.name as department_name,
+    ay.year_range as academic_year,
+    sa.year as year_of_study,
+    sa.semester,
+    sa.section,
+    COUNT(fb.id) as feedback_count,
+    COALESCE(ROUND(AVG(fb.cumulative_avg), 2), 0) as average_rating,
+    COALESCE(ROUND(AVG(fb.course_effectiveness_avg), 2), 0) as ce_avg,
+    COALESCE(ROUND(AVG(fb.teaching_effectiveness_avg), 2), 0) as te_avg,
+    COALESCE(ROUND(AVG(fb.resources_admin_avg), 2), 0) as ra_avg,
+    COALESCE(ROUND(AVG(fb.assessment_learning_avg), 2), 0) as al_avg,
+    COALESCE(ROUND(AVG(fb.course_outcomes_avg), 2), 0) as co_avg
+FROM subject_assignments sa
+JOIN subjects s ON sa.subject_id = s.id
+JOIN faculty f ON sa.faculty_id = f.id
+JOIN departments d ON s.department_id = d.id
+JOIN academic_years ay ON sa.academic_year_id = ay.id
+LEFT JOIN feedback fb ON sa.id = fb.assignment_id
+$where_clause
+GROUP BY sa.id
+ORDER BY d.name, s.code, sa.year, sa.semester, sa.section";
+
+if (count($filter_params) > 0) {
+    $stmt = mysqli_prepare($conn, $feedback_query);
+    mysqli_stmt_bind_param($stmt, $filter_types, ...$filter_params);
+    mysqli_stmt_execute($stmt);
+    $feedback_result = mysqli_stmt_get_result($stmt);
+} else {
+    $feedback_result = mysqli_query($conn, $feedback_query);
 }
 
 // Get current academic year
@@ -17,14 +124,6 @@ $current_year = mysqli_fetch_assoc($current_year_result);
 // Fetch all academic years for filter
 $academic_years_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
 $academic_years = mysqli_query($conn, $academic_years_query);
-
-// Fetch departments for filter
-$departments_query = "SELECT id, name FROM departments ORDER BY name";
-$departments = mysqli_query($conn, $departments_query);
-
-// Get selected academic year (default to current)
-$selected_year = isset($_GET['academic_year']) ? intval($_GET['academic_year']) : $current_year['id'];
-$selected_dept = isset($_GET['department']) ? intval($_GET['department']) : null;
 
 // Overall System Statistics
 $overall_stats_query = "SELECT 
@@ -41,18 +140,22 @@ $overall_stats_query = "SELECT
 FROM feedback f
 JOIN subject_assignments sa ON f.assignment_id = sa.id
 JOIN subjects s ON sa.subject_id = s.id
+JOIN departments d ON s.department_id = d.id
 WHERE sa.academic_year_id = ?";
 
-if ($selected_dept) {
-    $overall_stats_query .= " AND s.department_id = ?";
-}
-
-$stmt = mysqli_prepare($conn, $overall_stats_query);
-if ($selected_dept) {
-    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $selected_dept);
+if (!is_super_admin()) {
+    $overall_stats_query .= " AND d.id = ?";
+    $stmt = mysqli_prepare($conn, $overall_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $_SESSION['department_id']);
+} else if ($selected_department > 0) {
+    $overall_stats_query .= " AND d.id = ?";
+    $stmt = mysqli_prepare($conn, $overall_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $selected_department);
 } else {
+    $stmt = mysqli_prepare($conn, $overall_stats_query);
     mysqli_stmt_bind_param($stmt, "i", $selected_year);
 }
+
 mysqli_stmt_execute($stmt);
 $overall_stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 
@@ -67,11 +170,21 @@ FROM departments d
 LEFT JOIN subjects s ON d.id = s.department_id
 LEFT JOIN subject_assignments sa ON s.id = sa.subject_id
 LEFT JOIN feedback f ON f.assignment_id = sa.id AND sa.academic_year_id = ?
-GROUP BY d.id
+WHERE 1=1";
+
+// Apply department filter for department admins
+if (!is_super_admin()) {
+    $dept_stats_query .= " AND d.id = ?";
+    $stmt = mysqli_prepare($conn, $dept_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $_SESSION['department_id']);
+} else {
+    $stmt = mysqli_prepare($conn, $dept_stats_query);
+    mysqli_stmt_bind_param($stmt, "i", $selected_year);
+}
+
+$dept_stats_query .= " GROUP BY d.id
 ORDER BY avg_rating DESC";
 
-$stmt = mysqli_prepare($conn, $dept_stats_query);
-mysqli_stmt_bind_param($stmt, "i", $selected_year);
 mysqli_stmt_execute($stmt);
 $dept_stats_result = mysqli_stmt_get_result($stmt);
 
@@ -87,19 +200,22 @@ JOIN subject_assignments sa ON f.id = sa.faculty_id
 JOIN feedback fb ON fb.assignment_id = sa.id
 WHERE sa.academic_year_id = ?";
 
-if ($selected_dept) {
+if (!is_super_admin()) {
     $faculty_stats_query .= " AND f.department_id = ?";
+    $stmt = mysqli_prepare($conn, $faculty_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $_SESSION['department_id']);
+} else if ($selected_department > 0) {
+    $faculty_stats_query .= " AND f.department_id = ?";
+    $stmt = mysqli_prepare($conn, $faculty_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $selected_department);
+} else {
+    $stmt = mysqli_prepare($conn, $faculty_stats_query);
+    mysqli_stmt_bind_param($stmt, "i", $selected_year);
 }
 
 $faculty_stats_query .= " GROUP BY f.id HAVING feedback_count >= 10
 ORDER BY avg_rating DESC LIMIT 10";
 
-$stmt = mysqli_prepare($conn, $faculty_stats_query);
-if ($selected_dept) {
-    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $selected_dept);
-} else {
-    mysqli_stmt_bind_param($stmt, "i", $selected_year);
-}
 mysqli_stmt_execute($stmt);
 $faculty_stats_result = mysqli_stmt_get_result($stmt);
 
@@ -118,19 +234,22 @@ JOIN departments d ON s.department_id = d.id
 JOIN feedback fb ON fb.assignment_id = sa.id
 WHERE sa.academic_year_id = ?";
 
-if ($selected_dept) {
+if (!is_super_admin()) {
     $subject_stats_query .= " AND s.department_id = ?";
+    $stmt = mysqli_prepare($conn, $subject_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $_SESSION['department_id']);
+} else if ($selected_department > 0) {
+    $subject_stats_query .= " AND s.department_id = ?";
+    $stmt = mysqli_prepare($conn, $subject_stats_query);
+    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $selected_department);
+} else {
+    $stmt = mysqli_prepare($conn, $subject_stats_query);
+    mysqli_stmt_bind_param($stmt, "i", $selected_year);
 }
 
 $subject_stats_query .= " GROUP BY s.id
 ORDER BY avg_rating DESC LIMIT 20";
 
-$stmt = mysqli_prepare($conn, $subject_stats_query);
-if ($selected_dept) {
-    mysqli_stmt_bind_param($stmt, "ii", $selected_year, $selected_dept);
-} else {
-    mysqli_stmt_bind_param($stmt, "i", $selected_year);
-}
 mysqli_stmt_execute($stmt);
 $subject_stats_result = mysqli_stmt_get_result($stmt);
 ?>
@@ -504,7 +623,7 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
             <div class="filter-row">
                 <div class="filter-group">
                         <label class="filter-label">Academic Year</label>
-                    <select name="academic_year" class="form-control" onchange="this.form.submit()">
+                    <select name="academic_year_id" class="form-control" onchange="this.form.submit()">
                         <?php
                         mysqli_data_seek($academic_years, 0);
                         while ($year = mysqli_fetch_assoc($academic_years)): ?>
@@ -516,20 +635,22 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
                     </select>
                 </div>
 
+                <?php if (is_super_admin()): ?>
                 <div class="filter-group">
                         <label class="filter-label">Department</label>
-                    <select name="department" class="form-control" onchange="this.form.submit()">
+                    <select name="department_id" class="form-control" onchange="this.form.submit()">
                         <option value="">All Departments</option>
                         <?php
                         mysqli_data_seek($departments, 0);
                         while ($dept = mysqli_fetch_assoc($departments)): ?>
                             <option value="<?php echo $dept['id']; ?>" 
-                                <?php echo $selected_dept == $dept['id'] ? 'selected' : ''; ?>>
+                                <?php echo $selected_department == $dept['id'] ? 'selected' : ''; ?>>
                                 <?php echo htmlspecialchars($dept['name']); ?>
                             </option>
                         <?php endwhile; ?>
                     </select>
                 </div>
+                <?php endif; ?>
 
                 <div class="export-buttons">
                     <button type="button" class="btn-export btn-pdf" onclick="exportToPDF()">
@@ -732,11 +853,6 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
                 },
                 dom: '<"top"lf>rt<"bottom"ip><"clear">'
             });
-
-            // Handle filter changes
-            $('select[name="academic_year"], select[name="department"]').change(function() {
-                $('#filterForm').submit();
-            });
         });
 
         function getRatingClass(rating) {
@@ -747,21 +863,21 @@ $subject_stats_result = mysqli_stmt_get_result($stmt);
         }
 
         function exportToPDF() {
-            var academic_year = $('select[name="academic_year"]').val();
-            var department = $('select[name="department"]').val();
-            var url = 'generate_pdf_report.php?academic_year=' + academic_year;
+            var academic_year = $('select[name="academic_year_id"]').val();
+            var department = $('select[name="department_id"]').val() || '';
+            var url = 'generate_pdf_report.php?academic_year_id=' + academic_year;
             if (department) {
-                url += '&department=' + department;
+                url += '&department_id=' + department;
             }
             window.location.href = url;
         }
 
         function exportToExcel() {
-            var academic_year = $('select[name="academic_year"]').val();
-            var department = $('select[name="department"]').val();
-            var url = 'generate_excel_report.php?academic_year=' + academic_year;
+            var academic_year = $('select[name="academic_year_id"]').val();
+            var department = $('select[name="department_id"]').val() || '';
+            var url = 'generate_excel_report.php?academic_year_id=' + academic_year;
             if (department) {
-                url += '&department=' + department;
+                url += '&department_id=' + department;
             }
             window.location.href = url;
         }

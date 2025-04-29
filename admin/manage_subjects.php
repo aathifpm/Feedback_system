@@ -2,12 +2,197 @@
 session_start();
 require_once '../db_connection.php';
 require_once '../functions.php';
+require_once 'includes/admin_functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../index.php');
+    header('Location: ../admin_login.php');
     exit();
 }
+
+// Department filter based on admin type
+$department_filter = "";
+$department_params = [];
+
+// If department admin, restrict data to their department
+if (isset($_SESSION['department_id']) && $_SESSION['department_id'] !== NULL) {
+    $department_filter = " AND s.department_id = ?";
+    $department_params[] = $_SESSION['department_id'];
+}
+
+// Fetch departments for dropdown - department admins only see their department
+if (is_super_admin()) {
+    $dept_query = "SELECT id, name FROM departments ORDER BY name";
+    $departments = mysqli_query($conn, $dept_query);
+} else {
+    $dept_query = "SELECT id, name FROM departments WHERE id = ? ORDER BY name";
+    $stmt = mysqli_prepare($conn, $dept_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $departments = mysqli_stmt_get_result($stmt);
+}
+
+// Fetch faculty for dropdown with department filtering
+$faculty_query = "SELECT f.id, f.name, f.faculty_id, f.designation, f.experience, f.qualification, d.name as department_name 
+                 FROM faculty f 
+                 JOIN departments d ON f.department_id = d.id 
+                 WHERE f.is_active = 1";
+                 
+if (!is_super_admin()) {
+    $faculty_query .= " AND f.department_id = ?";
+}
+
+$faculty_query .= " ORDER BY f.name";
+
+if (!is_super_admin()) {
+    $stmt = mysqli_prepare($conn, $faculty_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $faculty_result = mysqli_stmt_get_result($stmt);
+} else {
+    $faculty_result = mysqli_query($conn, $faculty_query);
+}
+
+// Add pagination parameters
+$items_per_page = 20;
+$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
+$offset = ($page - 1) * $items_per_page;
+
+// If AJAX request for pagination
+$is_ajax_request = isset($_GET['ajax']) && $_GET['ajax'] == 1;
+
+// Apply additional filters from AJAX request
+$additional_filters = "";
+$additional_params = [];
+
+// Filter by search term
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search_term = '%' . mysqli_real_escape_string($conn, $_GET['search']) . '%';
+    $additional_filters .= " AND (s.name LIKE ? OR s.code LIKE ?)";
+    $additional_params[] = $search_term;
+    $additional_params[] = $search_term;
+}
+
+// Filter by department
+if (isset($_GET['department_id']) && !empty($_GET['department_id'])) {
+    $dept_id = intval($_GET['department_id']);
+    // Don't add filter if already restricted by department admin
+    if (!isset($_SESSION['department_id']) || is_super_admin()) {
+        $additional_filters .= " AND s.department_id = ?";
+        $additional_params[] = $dept_id;
+    }
+}
+
+// Filter by faculty
+if (isset($_GET['faculty_id']) && !empty($_GET['faculty_id'])) {
+    $faculty_id = intval($_GET['faculty_id']);
+    $additional_filters .= " AND EXISTS (
+        SELECT 1 FROM subject_assignments sa 
+        WHERE sa.subject_id = s.id AND sa.faculty_id = ?
+    )";
+    $additional_params[] = $faculty_id;
+}
+
+// Filter by year
+if (isset($_GET['year']) && !empty($_GET['year'])) {
+    $year = intval($_GET['year']);
+    $additional_filters .= " AND EXISTS (
+        SELECT 1 FROM subject_assignments sa 
+        WHERE sa.subject_id = s.id AND sa.year = ?
+    )";
+    $additional_params[] = $year;
+}
+
+// Filter by semester
+if (isset($_GET['semester']) && !empty($_GET['semester'])) {
+    $semester = intval($_GET['semester']);
+    $additional_filters .= " AND EXISTS (
+        SELECT 1 FROM subject_assignments sa 
+        WHERE sa.subject_id = s.id AND sa.semester = ?
+    )";
+    $additional_params[] = $semester;
+}
+
+// Filter by section
+if (isset($_GET['section']) && !empty($_GET['section'])) {
+    $section = mysqli_real_escape_string($conn, $_GET['section']);
+    $additional_filters .= " AND EXISTS (
+        SELECT 1 FROM subject_assignments sa 
+        WHERE sa.subject_id = s.id AND sa.section = ?
+    )";
+    $additional_params[] = $section;
+}
+
+// Filter by status
+if (isset($_GET['status']) && $_GET['status'] !== '') {
+    $status = ($_GET['status'] == '1') ? 1 : 0;
+    $additional_filters .= " AND s.is_active = ?";
+    $additional_params[] = $status;
+}
+
+// Fetch subjects with department filtering
+$subjects_query = "SELECT 
+    s.id,
+    s.code,
+    s.name,
+    s.department_id,
+    s.credits,
+    s.is_active,
+    d.name as department_name,
+    COUNT(DISTINCT sa.id) as assignment_count,
+    COUNT(DISTINCT fb.id) as feedback_count,
+    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating,
+    GROUP_CONCAT(DISTINCT sa.year) as years,
+    GROUP_CONCAT(DISTINCT sa.semester) as semesters
+FROM subjects s
+LEFT JOIN departments d ON s.department_id = d.id
+LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
+LEFT JOIN feedback fb ON fb.assignment_id = sa.id
+WHERE 1=1" . $department_filter . $additional_filters . "
+GROUP BY s.id, s.code, s.name, s.department_id, s.credits, s.is_active, d.name
+ORDER BY s.code
+LIMIT ? OFFSET ?";
+
+// Combine all parameters for the query
+$all_params = array_merge($department_params, $additional_params, [$items_per_page, $offset]);
+$param_types = str_repeat("i", count($department_params)) . 
+               str_repeat("s", count($additional_params)) . 
+               "ii";
+
+if (!empty($all_params)) {
+    $stmt = mysqli_prepare($conn, $subjects_query);
+    mysqli_stmt_bind_param($stmt, $param_types, ...$all_params);
+    mysqli_stmt_execute($stmt);
+    $subjects_result = mysqli_stmt_get_result($stmt);
+} else {
+    $stmt = mysqli_prepare($conn, $subjects_query);
+    mysqli_stmt_bind_param($stmt, "ii", $items_per_page, $offset);
+    mysqli_stmt_execute($stmt);
+    $subjects_result = mysqli_stmt_get_result($stmt);
+}
+
+// Get total number of subjects for pagination with the same filters
+$count_query = "SELECT COUNT(DISTINCT s.id) as total 
+                FROM subjects s 
+                LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
+                WHERE 1=1" . $department_filter . $additional_filters;
+
+// Combine parameters without limit/offset
+$count_params = array_merge($department_params, $additional_params);
+$count_param_types = str_repeat("i", count($department_params)) . 
+                    str_repeat("s", count($additional_params));
+
+if (!empty($count_params)) {
+    $stmt = mysqli_prepare($conn, $count_query);
+    mysqli_stmt_bind_param($stmt, $count_param_types, ...$count_params);
+    mysqli_stmt_execute($stmt);
+    $count_result = mysqli_stmt_get_result($stmt);
+} else {
+    $count_result = mysqli_query($conn, $count_query);
+}
+$total_row = mysqli_fetch_assoc($count_result);
+$total_subjects = $total_row['total'];
+$total_pages = ceil($total_subjects / $items_per_page);
 
 $success_msg = $error_msg = '';
 
@@ -16,24 +201,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if (isset($_POST['action'])) {
         switch ($_POST['action']) {
             case 'add':
+                // Check department access before adding
+                $department_id = intval($_POST['department_id']);
+                if (!admin_has_department_access($department_id)) {
+                    $error_msg = "You don't have permission to add subjects to this department.";
+                    break;
+                }
                 try {
                     $code = mysqli_real_escape_string($conn, $_POST['code']);
                     $name = mysqli_real_escape_string($conn, $_POST['name']);
-                    $department_id = intval($_POST['department_id']);
                     $credits = intval($_POST['credits']);
                     
                     // Begin transaction
                     mysqli_begin_transaction($conn);
                     
-                    // Check for existing subject code
-                    $check_query = "SELECT id FROM subjects WHERE code = ?";
+                    // Check for existing subject code in the same department
+                    $check_query = "SELECT id FROM subjects WHERE code = ? AND department_id = ?";
                     $stmt = mysqli_prepare($conn, $check_query);
-                    mysqli_stmt_bind_param($stmt, "s", $code);
+                    mysqli_stmt_bind_param($stmt, "si", $code, $department_id);
                     mysqli_stmt_execute($stmt);
                     $result = mysqli_stmt_get_result($stmt);
                     
                     if (mysqli_num_rows($result) > 0) {
-                        throw new Exception("Subject code already exists!");
+                        throw new Exception("Subject code already exists in this department!");
                     }
 
                     // Insert the subject
@@ -90,10 +280,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
                 break;
             case 'edit':
+                // Check department access before editing
+                $department_id = intval($_POST['department_id']);
+                if (!admin_has_department_access($department_id)) {
+                    $error_msg = "You don't have permission to edit subjects in this department.";
+                    break;
+                }
+                
+                // Verify the subject belongs to admin's department (for department admins)
+                if (!is_super_admin()) {
+                    $subject_id = intval($_POST['id']);
+                    $check_dept_query = "SELECT department_id FROM subjects WHERE id = ?";
+                    $stmt = mysqli_prepare($conn, $check_dept_query);
+                    mysqli_stmt_bind_param($stmt, "i", $subject_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    $subject_data = mysqli_fetch_assoc($result);
+                    
+                    if (!$subject_data || $subject_data['department_id'] != $_SESSION['department_id']) {
+                        $error_msg = "You don't have permission to edit this subject.";
+                        break;
+                    }
+                }
                 try {
                     $id = intval($_POST['id']);
                     $name = mysqli_real_escape_string($conn, $_POST['name']);
-                    $department_id = intval($_POST['department_id']);
                     $credits = intval($_POST['credits']);
 
                     // Begin transaction
@@ -278,10 +489,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 break;
 
             case 'add_assignment':
+                // Get department_id of the subject being assigned
+                $subject_id = intval($_POST['subject_id']);
+                $check_subject_query = "SELECT department_id FROM subjects WHERE id = ?";
+                $stmt = mysqli_prepare($conn, $check_subject_query);
+                mysqli_stmt_bind_param($stmt, "i", $subject_id);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                $subject_data = mysqli_fetch_assoc($result);
+                
+                // Check if admin has access to this department
+                if (!admin_has_department_access($subject_data['department_id'])) {
+                    $error_msg = "You don't have permission to assign subjects for this department.";
+                    break;
+                }
                 header('Content-Type: application/json');
                 try {
                     // Validate and sanitize inputs
-                    $subject_id = filter_var($_POST['subject_id'], FILTER_VALIDATE_INT);
                     $faculty_id = filter_var($_POST['faculty_id'], FILTER_VALIDATE_INT);
                     $academic_year_id = filter_var($_POST['academic_year_id'], FILTER_VALIDATE_INT);
                     $year = filter_var($_POST['year'], FILTER_VALIDATE_INT);
@@ -289,7 +513,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $section = mysqli_real_escape_string($conn, $_POST['section']);
 
                     // Validate all required fields
-                    if (!$subject_id || !$faculty_id || !$academic_year_id || 
+                    if (!$faculty_id || !$academic_year_id || 
                         !$year || !$semester || empty($section)) {
                         throw new Exception("All fields are required and must be valid");
                     }
@@ -374,42 +598,124 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 }
                 exit;
                 break;
+                
+            case 'delete_assignment':
+                header('Content-Type: application/json');
+                try {
+                    $assignment_id = intval($_POST['assignment_id']);
+                    
+                    // Check if assignment exists and if admin has access to the department
+                    $check_query = "SELECT sa.id, s.department_id 
+                                   FROM subject_assignments sa 
+                                   JOIN subjects s ON sa.subject_id = s.id 
+                                   WHERE sa.id = ?";
+                    $stmt = mysqli_prepare($conn, $check_query);
+                    mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    $assignment_data = mysqli_fetch_assoc($result);
+                    mysqli_stmt_close($stmt);
+                    
+                    if (!$assignment_data) {
+                        throw new Exception("Assignment not found");
+                    }
+                    
+                    // Check if admin has access to this department
+                    if (!admin_has_department_access($assignment_data['department_id'])) {
+                        throw new Exception("You don't have permission to delete assignments in this department");
+                    }
+                    
+                    // Begin transaction
+                    mysqli_begin_transaction($conn);
+                    
+                    // Check if there are any feedback entries for this assignment
+                    $check_feedback = "SELECT COUNT(*) as feedback_count FROM feedback WHERE assignment_id = ?";
+                    $stmt = mysqli_prepare($conn, $check_feedback);
+                    mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+                    mysqli_stmt_execute($stmt);
+                    $result = mysqli_stmt_get_result($stmt);
+                    $feedback_data = mysqli_fetch_assoc($result);
+                    mysqli_stmt_close($stmt);
+                    
+                    // If there are feedback entries, delete them first
+                    if ($feedback_data['feedback_count'] > 0) {
+                        // Get all feedback IDs for this assignment
+                        $get_feedback_ids = "SELECT id FROM feedback WHERE assignment_id = ?";
+                        $stmt = mysqli_prepare($conn, $get_feedback_ids);
+                        mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+                        mysqli_stmt_execute($stmt);
+                        $result = mysqli_stmt_get_result($stmt);
+                        
+                        while ($feedback = mysqli_fetch_assoc($result)) {
+                            // Delete feedback ratings
+                            $delete_ratings = "DELETE FROM feedback_ratings WHERE feedback_id = ?";
+                            $stmt_ratings = mysqli_prepare($conn, $delete_ratings);
+                            mysqli_stmt_bind_param($stmt_ratings, "i", $feedback['id']);
+                            if (!mysqli_stmt_execute($stmt_ratings)) {
+                                throw new Exception("Error deleting feedback ratings: " . mysqli_error($conn));
+                            }
+                            mysqli_stmt_close($stmt_ratings);
+                        }
+                        
+                        // Now delete the feedback entries
+                        $delete_feedback = "DELETE FROM feedback WHERE assignment_id = ?";
+                        $stmt = mysqli_prepare($conn, $delete_feedback);
+                        mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+                        if (!mysqli_stmt_execute($stmt)) {
+                            throw new Exception("Error deleting feedback entries: " . mysqli_error($conn));
+                        }
+                        mysqli_stmt_close($stmt);
+                    }
+                    
+                    // Finally, delete the assignment
+                    $delete_query = "DELETE FROM subject_assignments WHERE id = ?";
+                    $stmt = mysqli_prepare($conn, $delete_query);
+                    mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+                    
+                    if (!mysqli_stmt_execute($stmt)) {
+                        throw new Exception("Error deleting assignment: " . mysqli_error($conn));
+                    }
+                    mysqli_stmt_close($stmt);
+                    
+                    // Log the action
+                    $log_query = "INSERT INTO user_logs (user_id, role, action, details, ip_address, user_agent) 
+                                 VALUES (?, 'admin', 'delete_subject_assignment', ?, ?, ?)";
+                    $stmt = mysqli_prepare($conn, $log_query);
+                    $details = json_encode(['assignment_id' => $assignment_id]);
+                    mysqli_stmt_bind_param($stmt, "isss", 
+                        $_SESSION['user_id'], 
+                        $details,
+                        $_SERVER['REMOTE_ADDR'],
+                        $_SERVER['HTTP_USER_AGENT']
+                    );
+                    mysqli_stmt_execute($stmt);
+                    mysqli_stmt_close($stmt);
+                    
+                    mysqli_commit($conn);
+                    echo json_encode(['success' => true, 'message' => 'Assignment deleted successfully!']);
+                    
+                } catch (Exception $e) {
+                    mysqli_rollback($conn);
+                    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+                }
+                exit;
+                break;
         }
     }
 }
 
-// Fetch departments for dropdown
-$dept_query = "SELECT id, name FROM departments ORDER BY name";
-$departments = mysqli_query($conn, $dept_query);
-
 // Fetch faculty for dropdown
-$faculty_query = "SELECT id, name, faculty_id FROM faculty WHERE is_active = TRUE ORDER BY name";
+$faculty_query = "SELECT f.id, f.name, f.faculty_id, f.designation, f.experience, f.qualification, d.name as department_name 
+                 FROM faculty f 
+                 JOIN departments d ON f.department_id = d.id
+                 WHERE f.is_active = TRUE 
+                 ORDER BY f.name";
 $faculty_members = mysqli_query($conn, $faculty_query);
 
 // Fetch academic years for dropdown
 $academic_year_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
 $academic_years = mysqli_query($conn, $academic_year_query);
 
-// Fetch subjects with related information
-$subjects_query = "SELECT 
-    s.id,
-    s.code,
-    s.name,
-    s.department_id,
-    s.credits,
-    s.is_active,
-    d.name as department_name,
-    COUNT(DISTINCT sa.id) as assignment_count,
-    COUNT(DISTINCT fb.id) as feedback_count,
-    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
-FROM subjects s
-LEFT JOIN departments d ON s.department_id = d.id
-LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
-LEFT JOIN feedback fb ON fb.assignment_id = sa.id
-GROUP BY s.id, s.code, s.name, s.department_id, s.credits, s.is_active, d.name
-ORDER BY s.code";
-
-$subjects_result = mysqli_query($conn, $subjects_query);
 
 function getSubjectAssignments($conn, $subject_id) {
     $query = "SELECT 
@@ -428,6 +734,60 @@ function getSubjectAssignments($conn, $subject_id) {
     mysqli_stmt_execute($stmt);
     return mysqli_stmt_get_result($stmt);
 }
+
+// Return JSON for AJAX request
+if ($is_ajax_request) {
+    $subjects_data = [];
+    while ($subject = mysqli_fetch_assoc($subjects_result)) {
+        // Get sections data for this subject
+        $sections_query = "SELECT DISTINCT section FROM subject_assignments 
+                        WHERE subject_id = ? AND is_active = 1";
+        $stmt = mysqli_prepare($conn, $sections_query);
+        mysqli_stmt_bind_param($stmt, "i", $subject['id']);
+        mysqli_stmt_execute($stmt);
+        $sections_result = mysqli_stmt_get_result($stmt);
+        
+        $sections = [];
+        while ($section_row = mysqli_fetch_assoc($sections_result)) {
+            $sections[] = $section_row['section'];
+        }
+        $sections_string = implode(',', $sections);
+        
+        // Get faculty IDs for this subject
+        $faculty_query = "SELECT DISTINCT faculty_id FROM subject_assignments 
+                        WHERE subject_id = ? AND is_active = 1";
+        $stmt = mysqli_prepare($conn, $faculty_query);
+        mysqli_stmt_bind_param($stmt, "i", $subject['id']);
+        mysqli_stmt_execute($stmt);
+        $faculty_result = mysqli_stmt_get_result($stmt);
+        
+        $faculty_ids = [];
+        while ($faculty_row = mysqli_fetch_assoc($faculty_result)) {
+            $faculty_ids[] = $faculty_row['faculty_id'];
+        }
+        $faculty_string = implode(',', $faculty_ids);
+        
+        $subject['sections'] = $sections_string;
+        $subject['faculty_ids'] = $faculty_string;
+        $subjects_data[] = $subject;
+    }
+    
+    $response = [
+        'subjects' => $subjects_data,
+        'pagination' => [
+            'current_page' => $page,
+            'total_pages' => $total_pages,
+            'total_subjects' => $total_subjects
+        ]
+    ];
+    
+    header('Content-Type: application/json');
+    echo json_encode($response);
+    exit;
+}
+
+// If initial page load, limit the number of subjects displayed
+$subjects_displayed = 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -438,6 +798,10 @@ function getSubjectAssignments($conn, $subject_id) {
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
     <link rel="icon" href="../college_logo.png" type="image/png">
+    <!-- Add Select2 CSS and JS -->
+    <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <style>
         :root {
             --primary-color: #2ecc71;  /* Green theme for Subjects */
@@ -932,7 +1296,366 @@ function getSubjectAssignments($conn, $subject_id) {
         .hidden {
             display: none !important;
         }
+        
+        /* Faculty search styles */
+        .faculty-search {
+            margin-bottom: 10px;
+            border-radius: 8px;
+            padding: 10px;
+            border: 1px solid #ccc;
+        }
+        
+        .faculty-select, #facultySelect {
+            max-height: 200px;
+            font-size: 0.9rem;
+        }
+        
+        .faculty-select option, #facultySelect option {
+            padding: 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .faculty-select option:hover, #facultySelect option:hover {
+            background-color: #f5f5f5;
+        }
+        
+        /* Select2 custom styles */
+        .select2-container {
+            width: 100% ;
+            margin-bottom: 10px;
+            max-width: 50%;
+        }
+        
+        .select2-container .select2-selection--single {
+            height: auto;
+        }
+        
+        .select2-container--default .select2-selection--single {
+            min-height: 45px;
+            padding: 8px 12px;
+            font-size: 1rem;
+            border-radius: 10px;
+            border: none;
+            background-color: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+        }
+        
+        .select2-container--default .select2-selection--single:hover {
+            box-shadow: var(--shadow);
+        }
+        
+        .select2-container--default .select2-selection--single .select2-selection__rendered {
+            line-height: 28px;
+            color: var(--text-color);
+            padding-left: 0;
+            white-space: normal; /* Allow text wrapping for small screens */
+            word-break: break-word;
+        }
+        
+        .select2-container--default .select2-selection--single .select2-selection__arrow {
+            height: 45px;
+            right: 10px;
+        }
+        
+        .select2-container--default .select2-selection--single .select2-selection__arrow b {
+            border-color: var(--text-color) transparent transparent transparent;
+        }
+        
+        .select2-container--open .select2-selection--single .select2-selection__arrow b {
+            border-color: transparent transparent var(--text-color) transparent;
+        }
+        
+        .select2-dropdown {
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            border: none;
+            background-color: var(--bg-color);
+            overflow: hidden;
+            z-index: 9999;
+            width: auto !important;
+            min-width: 100%;
+        }
+        
+        .select2-search--dropdown {
+            padding: 10px;
+        }
+        
+        .select2-container--default .select2-search--dropdown .select2-search__field {
+            border: none;
+            border-radius: 8px;
+            padding: 8px 12px;
+            box-shadow: var(--inner-shadow);
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            width: 100%;
+        }
+        
+        .select2-results {
+            padding: 5px;
+        }
+        
+        .select2-results__option {
+            padding: 10px 15px;
+            font-size: 0.9rem;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
+            white-space: normal; /* Allow text wrapping for small screens */
+            word-break: break-word;
+        }
+        
+        .select2-results__option:last-child {
+            border-bottom: none;
+        }
+        
+        .select2-container--default .select2-results__option--highlighted[aria-selected] {
+            background-color: rgba(52, 152, 219, 0.1);
+            color: var(--primary-color);
+            transform: translateX(5px);
+        }
+        
+        /* Make sure select2 appears above modal but not outside its bounds */
+        .modal {
+            z-index: 1050;
+            overflow-y: auto;
+        }
+        
+        .select2-container--open {
+            z-index: 1051;
+        }
+        
+        /* Media queries for smaller screens */
+        @media (max-width: 576px) {
+            .select2-container--default .select2-selection--single {
+                min-height: 40px;
+                padding: 5px 8px;
+                font-size: 0.9rem;
+            }
+            
+            .select2-container--default .select2-selection--single .select2-selection__rendered {
+                line-height: 24px;
+            }
+            
+            .select2-container--default .select2-selection--single .select2-selection__arrow {
+                height: 40px;
+            }
+            
+            .select2-results__option {
+                padding: 8px 10px;
+                font-size: 0.85rem;
+            }
+            
+            .faculty-name {
+                font-size: 0.9rem;
+            }
+            
+            .faculty-details {
+                font-size: 0.75rem;
+            }
+        }
+        
+        /* Faculty option styles for dropdown */
+        .faculty-option {
+            padding: 5px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-width: 100%;
+        }
+        
+        .faculty-name {
+            font-weight: 500;
+            color: var(--text-color);
+            font-size: 0.95rem;
+            word-break: break-word;
+        }
+        
+        .faculty-details {
+            display: flex;
+            gap: 10px;
+            font-size: 0.8rem;
+            color: #666;
+            flex-wrap: wrap;
+        }
+        
+        .faculty-dept {
+            color: var(--primary-color);
+            padding: 2px 6px;
+            border-radius: 10px;
+            background: rgba(52, 152, 219, 0.1);
+            font-size: 0.8rem;
+            display: inline-flex;
+            align-items: center;
+        }
+        
+        .faculty-exp {
+            color: #666;
+            font-size: 0.8rem;
+        }
+        
+        .select2-results__option--highlighted .faculty-name {
+            color: var(--primary-color);
+        }
+        
+        .select2-results__option--highlighted .faculty-dept {
+            background: rgba(52, 152, 219, 0.2);
+        }
+
+        /* Update Select2 container and dropdown styles */
+        .faculty-select-container {
+            position: relative;
+            z-index: 10;
+            margin-bottom: 15px;
+            /* Debug styling */
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px dashed #2ecc71;
+            background-color: rgba(46, 204, 113, 0.05);
+        }
+
+        .select2-container {
+            width: 100% !important;
+            margin-bottom: 10px;
+            max-width: 100%;
+            display: block !important;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Fixed dropdown positioning for modals */
+        .modal .select2-dropdown {
+            z-index: 9999 !important;
+            position: absolute !important;
+            width: auto !important;
+            min-width: 100%;
+            max-width: 100vw;
+            overflow: auto;
+        }
+
+        /* Ensure container is visible on mobile */
+        .select2-container--open {
+            z-index: 1060 !important;
+        }
+
+        /* Fix for mobile display - make the search box properly sized */
+        .select2-search--dropdown .select2-search__field {
+            width: 100% !important;
+            box-sizing: border-box;
+        }
+
+        /* Modify the function to attach select2 to the body instead of modal content */
+        function addNewAssignment() {
+            const container = document.querySelector('#editModal .assignments');
+            if (!container) {
+                console.error('Assignments container not found');
+                return;
+            }
+            
+            const assignmentRow = document.createElement('div');
+            assignmentRow.className = 'assignment-row';
+            assignmentRow.innerHTML = `
+                <button type="button" class="btn-action btn-remove-assignment" onclick="removeAssignmentRow(this)">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Year & Semester</label>
+                        <div class="input-group">
+                            <select name="years[]" class="form-control" required>
+                            <option value="">Select Year</option>
+                            ${[1,2,3,4].map(year => `<option value="${year}">Year ${year}</option>`).join('')}
+                        </select>
+                            <select name="semesters[]" class="form-control" required>
+                            <option value="">Select Semester</option>
+                            ${[1,2,3,4,5,6,7,8].map(sem => `<option value="${sem}">Semester ${sem}</option>`).join('')}
+                        </select>
+                    </div>
+                </div>
+                    <div class="form-group">
+                        <label>Section & Academic Year</label>
+                        <div class="input-group">
+                            <select name="sections[]" class="form-control" required>
+                            <option value="">Select Section</option>
+                            ${['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
+                            </select>
+                            <select name="academic_year_ids[]" class="form-control" required>
+                                <option value="">Select Academic Year</option>
+                                <?php 
+                                mysqli_data_seek($academic_years, 0);
+                                while ($year = mysqli_fetch_assoc($academic_years)): 
+                                ?>
+                                    <option value="<?php echo $year['id']; ?>">
+                                        <?php echo htmlspecialchars($year['year_range']); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                        </select>
+                    </div>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group faculty-select-container">
+                        <label>Faculty</label>
+                        <select name="faculty_ids[]" class="form-control faculty-select" required>
+                            <option value="">Select Faculty</option>
+                            <?php 
+                            mysqli_data_seek($faculty_members, 0);
+                            while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                $facultyDetails = "{$faculty['name']} ({$faculty['faculty_id']})";
+                                if (!empty($faculty['designation'])) {
+                                    $facultyDetails .= " - {$faculty['designation']}";
+                                }
+                                $facultyDetails .= " | {$faculty['department_name']}";
+                                if (!empty($faculty['experience'])) {
+                                    $facultyDetails .= " | {$faculty['experience']} years";
+                                }
+                            ?>
+                                <option value="<?php echo $faculty['id']; ?>"
+                                        data-name="<?php echo strtolower(htmlspecialchars($faculty['name'])); ?>"
+                                        data-id="<?php echo strtolower(htmlspecialchars($faculty['faculty_id'])); ?>"
+                                        data-dept="<?php echo strtolower(htmlspecialchars($faculty['department_name'])); ?>">
+                                    <?php echo htmlspecialchars($facultyDetails); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                </div>
+            `;
+            container.appendChild(assignmentRow);
+            
+            // Initialize Select2 on the newly added faculty dropdown - use setTimeout for better rendering on mobile
+            const newSelect = assignmentRow.querySelector('.faculty-select');
+            if (newSelect) {
+                setTimeout(() => {
+                    try {
+                        $(newSelect).select2({
+                            placeholder: "Search for faculty by name, ID, or department...",
+                            allowClear: true,
+                            width: '100%',
+                            dropdownParent: $('body'), // Changed to attach to body instead of modal
+                            templateResult: formatFacultyOption,
+                            templateSelection: formatFacultySelection
+                        });
+                        
+                        // Add click handler to ensure dropdown opens
+                        $(newSelect).next('.select2-container').on('click', function() {
+                            setTimeout(() => {
+                                if (!$(newSelect).data('select2').isOpen()) {
+                                    $(newSelect).select2('open');
+                                }
+                            }, 0);
+                        });
+                        
+                        console.log('Select2 initialized for faculty dropdown');
+                    } catch (e) {
+                        console.error('Error initializing select2:', e);
+                    }
+                }, 100);
+            }
+        }
     </style>
+    
 </head>
 <body>
     <?php include_once 'includes/header.php'; ?>
@@ -1046,14 +1769,37 @@ function getSubjectAssignments($conn, $subject_id) {
                     $sections[] = $section_row['section'];
                 }
                 $sections_string = implode(',', $sections);
+                
+                // Get faculty IDs for this subject
+                $faculty_query = "SELECT DISTINCT faculty_id FROM subject_assignments 
+                                 WHERE subject_id = ? AND is_active = 1";
+                $stmt = mysqli_prepare($conn, $faculty_query);
+                mysqli_stmt_bind_param($stmt, "i", $subject['id']);
+                mysqli_stmt_execute($stmt);
+                $faculty_result = mysqli_stmt_get_result($stmt);
+                
+                $faculty_ids = [];
+                while ($faculty_row = mysqli_fetch_assoc($faculty_result)) {
+                    $faculty_ids[] = $faculty_row['faculty_id'];
+                }
+                $faculty_string = implode(',', $faculty_ids);
             ?>
                 <div class="subject-card" 
                      data-department="<?php echo $subject['department_id']; ?>"
-                     data-faculty="<?php echo $subject['faculty_id'] ?? ''; ?>"
-                     data-year="<?php echo $subject['min_year'] ?? ''; ?>"
-                     data-semester="<?php echo $subject['min_semester'] ?? ''; ?>"
+                     data-faculty="<?php echo $faculty_string; ?>"
+                     data-years="<?php echo htmlspecialchars($subject['years'] ?? ''); ?>"
+                     data-semesters="<?php echo htmlspecialchars($subject['semesters'] ?? ''); ?>"
                      data-section="<?php echo $sections_string; ?>"
                      data-status="<?php echo $subject['is_active'] ? '1' : '0'; ?>">
+                    <?php
+                    // Debug output
+                    if (isset($_GET['debug'])) {
+                        echo "<!-- Debug Info:
+                        Years: " . ($subject['years'] ?? 'none') . "
+                        Semesters: " . ($subject['semesters'] ?? 'none') . "
+                        -->";
+                    }
+                    ?>
                     <div class="subject-header">
                         <div class="subject-info">
                             <h3 class="subject-name"><?php echo htmlspecialchars($subject['name']); ?></h3>
@@ -1086,29 +1832,6 @@ function getSubjectAssignments($conn, $subject_id) {
                         </div>
                     </div>
 
-                    <?php 
-                    $assignments = getSubjectAssignments($conn, $subject['id']);
-                    if (mysqli_num_rows($assignments) > 0): 
-                    ?>
-                    <div class="current-assignments">
-                        <h3>Current Assignments</h3>
-                        <?php while($assignment = mysqli_fetch_assoc($assignments)): ?>
-                            <div class="current-assignment-item">
-                                <div class="assignment-details">
-                                    <span>Year <?php echo $assignment['year']; ?></span>
-                                    <span>Sem <?php echo $assignment['semester']; ?></span>
-                                    <span>Section <?php echo $assignment['section']; ?></span>
-                                    <span><?php echo htmlspecialchars($assignment['faculty_name']); ?></span>
-                                </div>
-                                <div class="assignment-actions">
-                                    <button class="btn-action" onclick="toggleAssignmentStatus(<?php echo $assignment['id']; ?>, <?php echo $assignment['is_active']; ?>)">
-                                        <i class="fas fa-<?php echo $assignment['is_active'] ? 'times' : 'check'; ?>"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        <?php endwhile; ?>
-                    </div>
-                    <?php endif; ?>
 
                     <div class="subject-actions">
                         <button class="btn-action" onclick="showEditModal(<?php echo htmlspecialchars(json_encode($subject)); ?>)">
@@ -1123,6 +1846,54 @@ function getSubjectAssignments($conn, $subject_id) {
                     </div>
                 </div>
             <?php endwhile; ?>
+        </div>
+
+        <!-- Pagination -->
+        <div class="pagination-container">
+            <div class="pagination-info">
+                Showing <span id="showing-start"><?php echo min($total_subjects, $offset + 1); ?></span>-<span id="showing-end"><?php echo min($total_subjects, $offset + $items_per_page); ?></span> of <span id="total-subjects"><?php echo $total_subjects; ?></span> subjects
+            </div>
+            <div class="pagination-controls">
+                <?php if($page > 1): ?>
+                    <button class="pagination-btn" data-page="<?php echo $page - 1; ?>">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>
+                <?php endif; ?>
+                
+                <?php
+                // Calculate range of pages to show
+                $page_range = 3;
+                $start_page = max(1, $page - $page_range);
+                $end_page = min($total_pages, $page + $page_range);
+                
+                if ($start_page > 1): ?>
+                    <button class="pagination-btn" data-page="1">1</button>
+                    <?php if($start_page > 2): ?>
+                        <span class="pagination-ellipsis">...</span>
+                    <?php endif; ?>
+                <?php endif; ?>
+                
+                <?php for($i = $start_page; $i <= $end_page; $i++): ?>
+                    <button class="pagination-btn <?php echo ($i == $page) ? 'active' : ''; ?>" data-page="<?php echo $i; ?>">
+                        <?php echo $i; ?>
+                    </button>
+                <?php endfor; ?>
+                
+                <?php if($end_page < $total_pages): ?>
+                    <?php if($end_page < $total_pages - 1): ?>
+                        <span class="pagination-ellipsis">...</span>
+                    <?php endif; ?>
+                    <button class="pagination-btn" data-page="<?php echo $total_pages; ?>">
+                        <?php echo $total_pages; ?>
+                    </button>
+                <?php endif; ?>
+                
+                <?php if($page < $total_pages): ?>
+                    <button class="pagination-btn" data-page="<?php echo $page + 1; ?>">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>
+                <?php endif; ?>
+            </div>
         </div>
     </div>
 
@@ -1162,14 +1933,25 @@ function getSubjectAssignments($conn, $subject_id) {
                     </div>
                     <div class="form-group">
                         <label for="faculty_id">Faculty</label>
-                        <select id="faculty_id" name="faculty_id" class="form-control" required>
+                        <select id="faculty_id" name="faculty_id" class="form-control select2-faculty" required>
                             <option value="">Select Faculty</option>
                             <?php 
                             mysqli_data_seek($faculty_members, 0);
                             while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                $facultyDetails = "{$faculty['name']} ({$faculty['faculty_id']})";
+                                if (!empty($faculty['designation'])) {
+                                    $facultyDetails .= " - {$faculty['designation']}";
+                                }
+                                $facultyDetails .= " | {$faculty['department_name']}";
+                                if (!empty($faculty['experience'])) {
+                                    $facultyDetails .= " | {$faculty['experience']} years";
+                                }
                             ?>
-                                <option value="<?php echo $faculty['id']; ?>">
-                                    <?php echo htmlspecialchars($faculty['name']); ?>
+                                <option value="<?php echo $faculty['id']; ?>" 
+                                        data-name="<?php echo strtolower(htmlspecialchars($faculty['name'])); ?>"
+                                        data-id="<?php echo strtolower(htmlspecialchars($faculty['faculty_id'])); ?>"
+                                        data-dept="<?php echo strtolower(htmlspecialchars($faculty['department_name'])); ?>">
+                                    <?php echo htmlspecialchars($facultyDetails); ?>
                                 </option>
                             <?php endwhile; ?>
                         </select>
@@ -1339,16 +2121,27 @@ function getSubjectAssignments($conn, $subject_id) {
                                 </div>
                             </div>
                             <div class="form-row">
-                                <div class="form-group">
+                                <div class="form-group faculty-select-container">
                                     <label>Faculty</label>
-                                    <select name="faculty_ids[]" class="form-control" required>
+                                    <select name="faculty_ids[]" class="form-control faculty-select" required>
                                         <option value="">Select Faculty</option>
                                         <?php 
                                         mysqli_data_seek($faculty_members, 0);
                                         while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                            $facultyDetails = "{$faculty['name']} ({$faculty['faculty_id']})";
+                                            if (!empty($faculty['designation'])) {
+                                                $facultyDetails .= " - {$faculty['designation']}";
+                                            }
+                                            $facultyDetails .= " | {$faculty['department_name']}";
+                                            if (!empty($faculty['experience'])) {
+                                                $facultyDetails .= " | {$faculty['experience']} years";
+                                            }
                                         ?>
-                                            <option value="<?php echo $faculty['id']; ?>">
-                                                <?php echo htmlspecialchars($faculty['name']); ?>
+                                            <option value="<?php echo $faculty['id']; ?>"
+                                                    data-name="<?php echo strtolower(htmlspecialchars($faculty['name'])); ?>"
+                                                    data-id="<?php echo strtolower(htmlspecialchars($faculty['faculty_id'])); ?>"
+                                                    data-dept="<?php echo strtolower(htmlspecialchars($faculty['department_name'])); ?>">
+                                                <?php echo htmlspecialchars($facultyDetails); ?>
                                             </option>
                                         <?php endwhile; ?>
                                     </select>
@@ -1382,14 +2175,25 @@ function getSubjectAssignments($conn, $subject_id) {
                 <div class="form-row">
                     <div class="form-group">
                         <label for="faculty_id">Faculty</label>
-                        <select name="faculty_id" class="form-control" required>
+                        <select id="faculty_id" name="facultySelect" class="form-control select2-faculty" required>
                             <option value="">Select Faculty</option>
                             <?php 
                             mysqli_data_seek($faculty_members, 0);
                             while($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                $facultyDetails = "{$faculty['name']} ({$faculty['faculty_id']})";
+                                if (!empty($faculty['designation'])) {
+                                    $facultyDetails .= " - {$faculty['designation']}";
+                                }
+                                $facultyDetails .= " | {$faculty['department_name']}";
+                                if (!empty($faculty['experience'])) {
+                                    $facultyDetails .= " | {$faculty['experience']} years";
+                                }
                             ?>
-                                <option value="<?php echo $faculty['id']; ?>">
-                                    <?php echo htmlspecialchars($faculty['name']); ?>
+                                <option value="<?php echo $faculty['id']; ?>" 
+                                        data-name="<?php echo strtolower(htmlspecialchars($faculty['name'])); ?>"
+                                        data-id="<?php echo strtolower(htmlspecialchars($faculty['faculty_id'])); ?>"
+                                        data-dept="<?php echo strtolower(htmlspecialchars($faculty['department_name'])); ?>">
+                                    <?php echo htmlspecialchars($facultyDetails); ?>
                                 </option>
                             <?php endwhile; ?>
                         </select>
@@ -1448,12 +2252,108 @@ function getSubjectAssignments($conn, $subject_id) {
         </div>
     </div>
 
+    <style>
+        /* ... existing styles ... */
+        
+        /* Pagination styles */
+        .pagination-container {
+            margin-top: 2rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .pagination-info {
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+        
+        .pagination-controls {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .pagination-btn {
+            padding: 0.6rem 1rem;
+            border: none;
+            border-radius: 8px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+        }
+        
+        .pagination-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .pagination-btn:hover:not(.active) {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 10px rgb(163,177,198,0.7), 
+                        -6px -6px 10px rgba(255,255,255, 0.6);
+        }
+        
+        .pagination-ellipsis {
+            padding: 0.6rem 0.5rem;
+            color: var(--text-color);
+        }
+        
+        /* Loading indicator */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--bg-color);
+            border-top: 5px solid var(--primary-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+    
+    <!-- Loading Overlay -->
+    <div class="loading-overlay">
+        <div class="loading-spinner"></div>
+    </div>
+
     <script>
         // Modal handling functions
         function showAddModal() {
             const modal = document.getElementById('addModal');
             modal.style.display = 'flex';
             document.querySelector('#addModal form').reset();
+            
+            // Destroy Select2 if it exists, then reinitialize
+            $('#addModal .select2-faculty').select2('destroy').select2({
+                placeholder: "Search for faculty by name, ID, or department...",
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $('#addModal .modal-content'),
+                templateResult: formatFacultyOption,
+                templateSelection: formatFacultySelection
+            });
         }
 
         function showEditModal(subject) {
@@ -1476,24 +2376,33 @@ function getSubjectAssignments($conn, $subject_id) {
             // Fetch current assignments
             fetch(`get_subject_assignments.php?subject_id=${subject.id}`)
                 .then(response => response.json())
-                .then(assignments => {
+                .then(data => {
                     const assignmentsList = document.getElementById('currentAssignmentsList');
-                    assignmentsList.innerHTML = assignments.map(assignment => `
-                        <div class="current-assignment-item">
-                            <div class="assignment-details">
-                                <span>Year ${assignment.year}</span>
-                                <span>Semester ${assignment.semester}</span>
-                                <span>Section ${assignment.section}</span>
-                                <span>${assignment.faculty_name}</span>
-                            </div>
-                            <div class="assignment-actions">
-                                <button type="button" class="btn-action" 
-                                        onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
-                                    <i class="fas fa-${assignment.is_active ? 'times' : 'check'}"></i>
+                    if (data.success && data.data) {
+                        const assignments = data.data;
+                        assignmentsList.innerHTML = assignments.map(assignment => `
+                            <div class="current-assignment-item">
+                                <div class="assignment-details">
+                                    <span>Year ${assignment.year}</span>
+                                    <span>Semester ${assignment.semester}</span>
+                                    <span>Section ${assignment.section}</span>
+                                    <span>${assignment.faculty_name}</span>
+                                </div>
+                                <div class="assignment-actions">
+                                    <button type="button" class="btn-action" 
+                                            onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
+                                            <i class="fas fa-${assignment.is_active == 1 ? 'times' : 'check'}"></i>
+                                        </button>
+                                        <button type="button" class="btn-action" 
+                                                onclick="deleteAssignment(${assignment.id})">
+                                        <i class="fas fa-trash"></i>
                                 </button>
                             </div>
                         </div>
                     `).join('');
+                    } else {
+                        assignmentsList.innerHTML = '<p>No assignments found</p>';
+                    }
                 })
                 .catch(error => {
                     console.error('Error fetching assignments:', error);
@@ -1501,6 +2410,43 @@ function getSubjectAssignments($conn, $subject_id) {
                 });
 
             showModal('editModal');
+            
+            // Clean up any existing Select2 instances in the modal
+            try {
+                $('#editModal .select2-faculty, #editModal .faculty-select').each(function() {
+                    if ($(this).data('select2')) {
+                        $(this).select2('destroy');
+                    }
+                });
+            } catch(e) {
+                console.error('Error destroying select2:', e);
+            }
+            
+            // Reinitialize all Select2 elements in the edit modal
+            setTimeout(() => {
+                $('#editModal .select2-faculty, #editModal .faculty-select').select2({
+                    placeholder: "Search for faculty by name, ID, or department...",
+                    allowClear: true,
+                    width: '100%',
+                    dropdownParent: $('body'), // Changed to body
+                    templateResult: formatFacultyOption,
+                    templateSelection: formatFacultySelection
+                });
+                
+                // Add click handlers to ensure dropdowns open
+                $('#editModal .select2-faculty, #editModal .faculty-select').each(function() {
+                    const select = $(this);
+                    select.next('.select2-container').on('click', function() {
+                        setTimeout(() => {
+                            if (!select.data('select2').isOpen()) {
+                                select.select2('open');
+                            }
+                        }, 0);
+                    });
+                });
+                
+                console.log('All select2 elements initialized in edit modal');
+            }, 100);
         }
 
         function hideModal(modalId) {
@@ -1553,8 +2499,36 @@ function getSubjectAssignments($conn, $subject_id) {
             const sectionFilter = document.getElementById('sectionFilter');
             const statusFilter = document.getElementById('statusFilter');
 
+            // Initialize faculty search styling
+            const style = document.createElement('style');
+            style.textContent = `
+                .faculty-search {
+                    margin-bottom: 10px;
+                }
+                #facultySelect {
+                    max-height: 200px;
+                }
+            `;
+            document.head.appendChild(style);
+            
+            // Initialize all controls and subject cards
+            // Make sure no cards are hidden when the page loads
+            subjectCards.forEach(card => {
+                card.classList.remove('hidden');
+            });
+            
+            // Make sure all filter inputs are cleared
+            searchInput.value = '';
+            departmentFilter.value = '';
+            facultyFilter.value = '';
+            yearFilter.value = '';
+            semesterFilter.value = '';
+            sectionFilter.value = '';
+            statusFilter.value = '';
+
             function filterSubjects() {
-                const searchTerm = searchInput.value.toLowerCase();
+                // Get filter values and convert to appropriate types
+                const searchTerm = searchInput.value.toLowerCase().trim();
                 const selectedDept = departmentFilter.value;
                 const selectedFaculty = facultyFilter.value;
                 const selectedYear = yearFilter.value;
@@ -1562,72 +2536,210 @@ function getSubjectAssignments($conn, $subject_id) {
                 const selectedSection = sectionFilter.value;
                 const selectedStatus = statusFilter.value;
 
+                console.log('Filter values:', {
+                    searchTerm,
+                    selectedDept,
+                    selectedFaculty,
+                    selectedYear,
+                    selectedSemester,
+                    selectedSection,
+                    selectedStatus
+                });
+
+                // Process each subject card
                 subjectCards.forEach(card => {
+                    // Get card data
                     const name = card.querySelector('.subject-name').textContent.toLowerCase();
                     const code = card.querySelector('.subject-code').textContent.toLowerCase();
-                    const department = card.dataset.department;
-                    const faculty = card.dataset.faculty;
-                    const year = card.dataset.year;
-                    const semester = card.dataset.semester;
-                    const section = card.dataset.section;
-                    const status = card.dataset.status;
+                    
+                    // Get data attributes
+                    const department = String(card.getAttribute('data-department') || '');
+                    const faculty = card.getAttribute('data-faculty') || '';
+                    const years = (card.getAttribute('data-years') || '').split(',').filter(Boolean).map(y => y.trim());
+                    const semesters = (card.getAttribute('data-semesters') || '').split(',').filter(Boolean).map(s => s.trim());
+                    const section = card.getAttribute('data-section') || '';
+                    const status = card.getAttribute('data-status') || '';
+                    
+                    // Debug log each card's attributes
+                    console.log('Card data for filtering:', {
+                        el: card,
+                        name, 
+                        code, 
+                        department, 
+                        faculty: faculty + ' (array: ' + faculty.split(',').map(id => id.trim()) + ')',
+                        years,
+                        semesters,
+                        section: section + ' (array: ' + section.split(',').map(s => s.trim()) + ')',
+                        status
+                    });
 
+                    // Start with card visible
                     let showCard = true;
 
+                    // Check search term (name or code)
                     if (searchTerm && !name.includes(searchTerm) && !code.includes(searchTerm)) {
                         showCard = false;
+                        console.log('Hiding based on search term:', {search: searchTerm, name, code});
                     }
                     
-                    if (selectedDept && department !== selectedDept) showCard = false;
-                    if (selectedFaculty && faculty !== selectedFaculty) showCard = false;
-                    if (selectedYear && year && year !== selectedYear) showCard = false;
-                    if (selectedSemester && semester && semester !== selectedSemester) showCard = false;
+                    // Check department
+                    if (showCard && selectedDept && department !== selectedDept) {
+                        showCard = false;
+                        console.log('Hiding based on department:', {selected: selectedDept, card: department});
+                    }
                     
-                    // Improved section filtering - check if card has any assignments with the selected section
-                    if (selectedSection) {
-                        let hasSection = false;
-                        
-                        // Check data-section attribute
-                        if (section && section.includes(selectedSection)) {
-                            hasSection = true;
-                        } else {
-                            // Check visible assignments
-                            const assignments = card.querySelectorAll('.current-assignment-item');
-                            if (assignments.length > 0) {
-                                assignments.forEach(assignment => {
-                                    const sectionText = assignment.textContent;
-                                    if (sectionText.includes('Section ' + selectedSection)) {
-                                        hasSection = true;
-                                    }
-                                });
-                            }
+                    // Check faculty (comma-separated list)
+                    if (showCard && selectedFaculty && faculty) {
+                        const facultyIds = faculty.split(',').map(id => id.trim());
+                        if (!facultyIds.includes(selectedFaculty)) {
+                            showCard = false;
+                            console.log('Hiding based on faculty:', {selected: selectedFaculty, cardFaculty: facultyIds});
                         }
-                        
-                        if (!hasSection) showCard = false;
+                    } else if (showCard && selectedFaculty && !faculty) {
+                        showCard = false;
+                        console.log('Hiding based on missing faculty data');
                     }
                     
-                    if (selectedStatus && status !== selectedStatus) showCard = false;
+                    // Check year
+                    if (showCard && selectedYear && years.length > 0) {
+                        if (!years.includes(selectedYear)) {
+                            showCard = false;
+                            console.log('Hiding based on year:', {selected: selectedYear, cardYears: years});
+                        }
+                    }
+                    
+                    // Check semester
+                    if (showCard && selectedSemester && semesters.length > 0) {
+                        if (!semesters.includes(selectedSemester)) {
+                            showCard = false;
+                            console.log('Hiding based on semester:', {selected: selectedSemester, cardSemesters: semesters});
+                        }
+                    }
+                    
+                    // Check section (comma-separated list)
+                    if (showCard && selectedSection && section) {
+                        const sectionArr = section.split(',').map(s => s.trim());
+                        if (!sectionArr.includes(selectedSection)) {
+                            showCard = false;
+                            console.log('Hiding based on section:', {selected: selectedSection, cardSections: sectionArr});
+                        }
+                    } else if (showCard && selectedSection && !section) {
+                        showCard = false;
+                        console.log('Hiding based on missing section data');
+                    }
+                    
+                    // Check status
+                    if (showCard && selectedStatus && String(status) !== String(selectedStatus)) {
+                        showCard = false;
+                        console.log('Hiding based on status:', {selected: selectedStatus, cardStatus: status});
+                    }
 
-                    card.classList.toggle('hidden', !showCard);
+                    // Apply visibility
+                    if (showCard) {
+                        card.classList.remove('hidden');
+                        console.log('Showing card:', name);
+                    } else {
+                        card.classList.add('hidden');
+                        console.log('Hiding card:', name);
+                    }
                 });
+
+                // Count visible cards after filtering
+                const visibleCards = document.querySelectorAll('.subject-card:not(.hidden)').length;
+                console.log(`Filtering complete: ${visibleCards} cards visible out of ${subjectCards.length} total`);
             }
 
-            // Add event listeners
-            [searchInput, departmentFilter, facultyFilter, yearFilter, 
-             semesterFilter, sectionFilter, statusFilter].forEach(element => {
-                element.addEventListener('change', filterSubjects);
-            });
+            // Add event listeners to all filter controls
             searchInput.addEventListener('input', filterSubjects);
+            departmentFilter.addEventListener('change', filterSubjects);
+            facultyFilter.addEventListener('change', filterSubjects);
+            yearFilter.addEventListener('change', filterSubjects);
+            semesterFilter.addEventListener('change', filterSubjects);
+            sectionFilter.addEventListener('change', filterSubjects);
+            statusFilter.addEventListener('change', filterSubjects);
+            
+            // Also listen for select2:select and select2:unselect events for select2 elements
+            $(document).on('select2:select select2:unselect', '.select2-faculty', function() {
+                filterSubjects();
+            });
         });
 
+        // Filter faculty dropdown based on search
+        function filterFaculty() {
+            const searchInput = document.getElementById('facultySearch');
+            const facultySelect = document.getElementById('facultySelect');
+            const searchText = searchInput.value.toLowerCase();
+            
+            if (!facultySelect) return;
+            
+            const options = facultySelect.options;
+            
+            for (let i = 0; i < options.length; i++) {
+                const option = options[i];
+                const facultyName = option.getAttribute('data-name') || '';
+                const facultyId = option.getAttribute('data-id') || '';
+                const facultyDept = option.getAttribute('data-dept') || '';
+                const optionText = option.text.toLowerCase();
+                
+                // Show option if any of the fields match the search text
+                const isMatch = (
+                    optionText.includes(searchText) || 
+                    facultyName.includes(searchText) || 
+                    facultyId.includes(searchText) || 
+                    facultyDept.includes(searchText)
+                );
+                
+                option.style.display = isMatch || i === 0 ? '' : 'none';
+            }
+        }
+
+        // Filter faculty dropdown in edit modal
+        function filterFacultyInEditModal(input) {
+            const searchText = input.value.toLowerCase();
+            const facultySelect = input.nextElementSibling;
+            
+            if (!facultySelect) return;
+            
+            const options = facultySelect.options;
+            
+            for (let i = 0; i < options.length; i++) {
+                const option = options[i];
+                const facultyName = option.getAttribute('data-name') || '';
+                const facultyId = option.getAttribute('data-id') || '';
+                const facultyDept = option.getAttribute('data-dept') || '';
+                const optionText = option.text.toLowerCase();
+                
+                // Show option if any of the fields match the search text
+                const isMatch = (
+                    optionText.includes(searchText) || 
+                    facultyName.includes(searchText) || 
+                    facultyId.includes(searchText) || 
+                    facultyDept.includes(searchText)
+                );
+                
+                option.style.display = isMatch || i === 0 ? '' : 'none';
+            }
+        }
+
         function resetFilters() {
+            // Reset regular filters
             document.getElementById('searchInput').value = '';
             document.getElementById('departmentFilter').value = '';
-            document.getElementById('facultyFilter').value = '';
             document.getElementById('yearFilter').value = '';
             document.getElementById('semesterFilter').value = '';
             document.getElementById('sectionFilter').value = '';
             document.getElementById('statusFilter').value = '';
+            
+            // Reset faculty filter (which might be a Select2)
+            const facultyFilter = document.getElementById('facultyFilter');
+            facultyFilter.value = '';
+            
+            // If using Select2, reset it properly
+            if ($.fn.select2 && $(facultyFilter).data('select2')) {
+                $(facultyFilter).val('').trigger('change');
+            }
+            
+            // Show all subject cards
             document.querySelectorAll('.subject-card').forEach(card => {
                 card.classList.remove('hidden');
             });
@@ -1728,19 +2840,31 @@ function getSubjectAssignments($conn, $subject_id) {
 
         // Toggle Subject Status
         function toggleSubjectStatus(id, currentStatus) {
-            if (confirm('Are you sure you want to ' + (currentStatus ? 'deactivate' : 'activate') + ' this subject?')) {
+            if (confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this subject?`)) {
+                // Show loading
+                
+                
+                // Create form data
                 const formData = new FormData();
                 formData.append('action', 'toggle_status');
                 formData.append('id', id);
                 formData.append('status', !currentStatus);
-
+                
+                // Submit via fetch
                 fetch('manage_subjects.php', {
                     method: 'POST',
                     body: formData
                 })
-                .then(response => response.text())
-                .then(() => window.location.reload())
-                .catch(error => console.error('Error:', error));
+                .then(response => {
+                    // Reload current page
+                    const currentPage = new URLSearchParams(window.location.search).get('page') || 1;
+                    loadPage(currentPage);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error updating subject status. Please try again.');
+                    document.querySelector('.loading-overlay').style.display = 'none';
+                });
             }
         }
 
@@ -1763,52 +2887,7 @@ function getSubjectAssignments($conn, $subject_id) {
         }
 
         // Show Edit Modal with Subject Data
-        function showEditModal(subject) {
-            document.getElementById('edit_id').value = subject.id;
-            document.getElementById('edit_code').value = subject.code;
-            document.getElementById('edit_name').value = subject.name;
-            
-            // Find the department select element and set its value
-            const departmentSelect = document.querySelector('#editModal select[name="department_id"]');
-            if (departmentSelect) {
-                departmentSelect.value = subject.department_id;
-            }
-            
-            // Set credits
-            const creditsInput = document.querySelector('#editModal input[name="credits"]');
-            if (creditsInput) {
-                creditsInput.value = subject.credits;
-            }
 
-            // Fetch current assignments
-            fetch(`get_subject_assignments.php?subject_id=${subject.id}`)
-                .then(response => response.json())
-                .then(assignments => {
-                    const assignmentsList = document.getElementById('currentAssignmentsList');
-                    assignmentsList.innerHTML = assignments.map(assignment => `
-                        <div class="current-assignment-item">
-                            <div class="assignment-details">
-                                <span>Year ${assignment.year}</span>
-                                <span>Semester ${assignment.semester}</span>
-                                <span>Section ${assignment.section}</span>
-                                <span>${assignment.faculty_name}</span>
-                            </div>
-                            <div class="assignment-actions">
-                                <button type="button" class="btn-action" 
-                                        onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
-                                    <i class="fas fa-${assignment.is_active ? 'times' : 'check'}"></i>
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
-                })
-                .catch(error => {
-                    console.error('Error fetching assignments:', error);
-                    document.getElementById('currentAssignmentsList').innerHTML = '<p>Error loading assignments</p>';
-                });
-
-            showModal('editModal');
-        }
 
         // Add New Assignment Row
         function addNewAssignment() {
@@ -1821,7 +2900,7 @@ function getSubjectAssignments($conn, $subject_id) {
             const assignmentRow = document.createElement('div');
             assignmentRow.className = 'assignment-row';
             assignmentRow.innerHTML = `
-                <button type="button" class="btn-action btn-remove-assignment" onclick="this.parentElement.remove()">
+                <button type="button" class="btn-action btn-remove-assignment" onclick="removeAssignmentRow(this)">
                     <i class="fas fa-times"></i>
                 </button>
                 <div class="form-row">
@@ -1860,16 +2939,27 @@ function getSubjectAssignments($conn, $subject_id) {
                     </div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="form-group faculty-select-container">
                         <label>Faculty</label>
-                        <select name="faculty_ids[]" class="form-control" required>
+                        <select name="faculty_ids[]" class="form-control faculty-select" required>
                             <option value="">Select Faculty</option>
                             <?php 
                             mysqli_data_seek($faculty_members, 0);
                             while ($faculty = mysqli_fetch_assoc($faculty_members)): 
+                                $facultyDetails = "{$faculty['name']} ({$faculty['faculty_id']})";
+                                if (!empty($faculty['designation'])) {
+                                    $facultyDetails .= " - {$faculty['designation']}";
+                                }
+                                $facultyDetails .= " | {$faculty['department_name']}";
+                                if (!empty($faculty['experience'])) {
+                                    $facultyDetails .= " | {$faculty['experience']} years";
+                                }
                             ?>
-                                <option value="<?php echo $faculty['id']; ?>">
-                                    <?php echo htmlspecialchars($faculty['name']); ?>
+                                <option value="<?php echo $faculty['id']; ?>"
+                                        data-name="<?php echo strtolower(htmlspecialchars($faculty['name'])); ?>"
+                                        data-id="<?php echo strtolower(htmlspecialchars($faculty['faculty_id'])); ?>"
+                                        data-dept="<?php echo strtolower(htmlspecialchars($faculty['department_name'])); ?>">
+                                    <?php echo htmlspecialchars($facultyDetails); ?>
                                 </option>
                             <?php endwhile; ?>
                         </select>
@@ -1877,6 +2967,36 @@ function getSubjectAssignments($conn, $subject_id) {
                 </div>
             `;
             container.appendChild(assignmentRow);
+            
+            // Initialize Select2 on the newly added faculty dropdown - use setTimeout for better rendering on mobile
+            const newSelect = assignmentRow.querySelector('.faculty-select');
+            if (newSelect) {
+                setTimeout(() => {
+                    try {
+                        $(newSelect).select2({
+                            placeholder: "Search for faculty by name, ID, or department...",
+                            allowClear: true,
+                            width: '100%',
+                            dropdownParent: $('body'), // Changed to attach to body instead of modal
+                            templateResult: formatFacultyOption,
+                            templateSelection: formatFacultySelection
+                        });
+                        
+                        // Add click handler to ensure dropdown opens
+                        $(newSelect).next('.select2-container').on('click', function() {
+                            setTimeout(() => {
+                                if (!$(newSelect).data('select2').isOpen()) {
+                                    $(newSelect).select2('open');
+                                }
+                            }, 0);
+                        });
+                        
+                        console.log('Select2 initialized for faculty dropdown');
+                    } catch (e) {
+                        console.error('Error initializing select2:', e);
+                    }
+                }, 100);
+            }
         }
 
         // Form Validation
@@ -1893,14 +3013,55 @@ function getSubjectAssignments($conn, $subject_id) {
         }
 
         function showAddAssignmentModal(subjectId) {
-            const modal = document.getElementById('addAssignmentModal');
-            const form = modal.querySelector('#newAssignmentForm');
+            const form = document.getElementById('newAssignmentForm');
             form.onsubmit = function(e) {
                 e.preventDefault();
                 submitNewAssignment(subjectId);
             };
             form.reset();
             showModal('addAssignmentModal');
+            
+            // Add the debug styling class to faculty select container
+            const facultyContainer = form.querySelector('.form-group:has(#facultySelect)');
+            if (facultyContainer) {
+                facultyContainer.classList.add('faculty-select-container');
+            }
+            
+            // Destroy Select2 if it exists, then reinitialize
+            try {
+                $('#addAssignmentModal .select2-faculty').select2('destroy');
+            } catch(e) {
+                console.error('Error destroying select2:', e);
+            }
+            
+            setTimeout(() => {
+                try {
+                    $('#addAssignmentModal .select2-faculty').select2({
+                        placeholder: "Search for faculty by name, ID, or department...",
+                        allowClear: true,
+                        width: '100%',
+                        dropdownParent: $('body'), // Changed to attach to body
+                        templateResult: formatFacultyOption,
+                        templateSelection: formatFacultySelection
+                    });
+                    
+                    // Add click handler to ensure dropdown opens
+                    $('#addAssignmentModal .select2-faculty').each(function() {
+                        const select = $(this);
+                        select.next('.select2-container').on('click', function() {
+                            setTimeout(() => {
+                                if (!select.data('select2').isOpen()) {
+                                    select.select2('open');
+                                }
+                            }, 0);
+                        });
+                    });
+                    
+                    console.log('Select2 initialized in add assignment modal');
+                } catch (e) {
+                    console.error('Error initializing select2 in add assignment modal:', e);
+                }
+            }, 100);
         }
 
         function submitNewAssignment(subjectId) {
@@ -1968,6 +3129,469 @@ function getSubjectAssignments($conn, $subject_id) {
             .catch(error => {
                 alert(error.message || 'Error adding assignment. Please try again.');
             });
+        }
+        
+        // Delete Assignment
+        function deleteAssignment(assignmentId) {
+            if (confirm('Are you sure you want to permanently delete this assignment? This action cannot be undone.')) {
+                const formData = new FormData();
+                formData.append('action', 'delete_assignment');
+                formData.append('assignment_id', assignmentId);
+                
+                fetch('manage_subjects.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message || 'Assignment deleted successfully!');
+                        // Refresh the assignments list
+                        const subjectId = document.getElementById('edit_id').value;
+                        fetch(`get_subject_assignments.php?subject_id=${subjectId}`)
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success && data.data) {
+                                    const assignmentsList = document.getElementById('currentAssignmentsList');
+                                    const assignments = data.data;
+                                    assignmentsList.innerHTML = assignments.map(assignment => `
+                                        <div class="current-assignment-item">
+                                            <div class="assignment-details">
+                                                <span>Year ${assignment.year}</span>
+                                                <span>Semester ${assignment.semester}</span>
+                                                <span>Section ${assignment.section}</span>
+                                                <span>${assignment.faculty_name}</span>
+                                            </div>
+                                            <div class="assignment-actions">
+                                                <button type="button" class="btn-action" 
+                                                        onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
+                                                    <i class="fas fa-${assignment.is_active == 1 ? 'times' : 'check'}"></i>
+                                                </button>
+                                                <button type="button" class="btn-action" 
+                                                        onclick="deleteAssignment(${assignment.id})">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    `).join('');
+                                } else {
+                                    document.getElementById('currentAssignmentsList').innerHTML = '<p>No assignments found</p>';
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error refreshing assignments:', error);
+                            });
+                    } else {
+                        throw new Error(data.message || 'Error deleting assignment');
+                    }
+                })
+                .catch(error => {
+                    alert(error.message || 'Error deleting assignment. Please try again.');
+                });
+            }
+        }
+
+        // Initialize Select2 for faculty dropdowns
+        $(document).ready(function() {
+            // Initialize Select2 on faculty dropdowns
+            $('.select2-faculty, .faculty-select').select2({
+                placeholder: "Search for faculty by name, ID, or department...",
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $('body'), // Changed to body for all select2 instances
+                templateResult: formatFacultyOption,
+                templateSelection: formatFacultySelection,
+                escapeMarkup: function(markup) {
+                    return markup;
+                },
+                matcher: function(params, data) {
+                    // If there are no search terms, return all data
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+                    
+                    // Search in the text as well as data attributes
+                    const term = params.term.toLowerCase();
+                    const $option = $(data.element);
+                    const name = $option.data('name') || '';
+                    const id = $option.data('id') || '';
+                    const dept = $option.data('dept') || '';
+                    const text = data.text.toLowerCase();
+                    
+                    if (text.indexOf(term) > -1 || 
+                        name.indexOf(term) > -1 || 
+                        id.indexOf(term) > -1 || 
+                        dept.indexOf(term) > -1) {
+                        return data;
+                    }
+                    
+                    // Return null if the term should not be displayed
+                    return null;
+                }
+            });
+            
+            // For modals that may be added dynamically
+            $('body').on('DOMNodeInserted', '.select2-faculty, .faculty-select', function() {
+                if (!$(this).hasClass('select2-hidden-accessible')) {
+                    $(this).select2({
+                        placeholder: "Search for faculty by name, ID, or department...",
+                        allowClear: true,
+                        width: '100%',
+                        dropdownParent: $('body'), // Changed to use body consistently
+                        templateResult: formatFacultyOption,
+                        templateSelection: formatFacultySelection
+                    });
+                    
+                    // Add click handler
+                    const select = $(this);
+                    select.next('.select2-container').on('click', function() {
+                        setTimeout(() => {
+                            if (!select.data('select2').isOpen()) {
+                                select.select2('open');
+                            }
+                        }, 0);
+                    });
+                }
+            });
+        });
+        
+        // Format faculty options with better styling
+        function formatFacultyOption(faculty) {
+            if (!faculty.id) return faculty.text;
+            
+            const $option = $(faculty.element);
+            const name = $option.data('name');
+            const id = $option.data('id');
+            const dept = $option.data('dept');
+            
+            // Parse the faculty text to extract components
+            const parts = faculty.text.split('|');
+            const nameSection = parts[0].trim();
+            const deptSection = parts.length > 1 ? parts[1].trim() : '';
+            const expSection = parts.length > 2 ? parts[2].trim() : '';
+            
+            // Create styled option with better text wrapping
+            return $(`
+                <div class="faculty-option">
+                    <div class="faculty-name">${nameSection}</div>
+                    <div class="faculty-details">
+                        <span class="faculty-dept">${deptSection}</span>
+                        ${expSection ? `<span class="faculty-exp">${expSection}</span>` : ''}
+                    </div>
+                </div>
+            `);
+        }
+        
+        // Format the selected faculty display
+        function formatFacultySelection(faculty) {
+            if (!faculty.id) return faculty.text;
+            
+            // Parse the faculty text to extract the name part only for the selection display
+            const parts = faculty.text.split('|');
+            const nameSection = parts[0].trim();
+            
+            return nameSection;
+        }
+
+        // Pagination AJAX functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            // Attach event listeners to pagination buttons
+            document.querySelectorAll('.pagination-btn').forEach(button => {
+                button.addEventListener('click', function() {
+                    const page = this.getAttribute('data-page');
+                    loadPage(page);
+                });
+            });
+            
+            // Attach event listeners to filter controls
+            const searchInput = document.getElementById('searchInput');
+            const departmentFilter = document.getElementById('departmentFilter');
+            const facultyFilter = document.getElementById('facultyFilter');
+            const yearFilter = document.getElementById('yearFilter');
+            const semesterFilter = document.getElementById('semesterFilter');
+            const sectionFilter = document.getElementById('sectionFilter');
+            const statusFilter = document.getElementById('statusFilter');
+            
+            // Add delay for search to prevent too many requests while typing
+            let searchTimeout;
+            searchInput.addEventListener('input', function() {
+                clearTimeout(searchTimeout);
+                searchTimeout = setTimeout(function() {
+                    loadPage(1); // Reset to first page when filtering
+                }, 500);
+            });
+            
+            // For select filters, trigger immediately
+            [departmentFilter, facultyFilter, yearFilter, semesterFilter, sectionFilter, statusFilter].forEach(filter => {
+                filter.addEventListener('change', function() {
+                    loadPage(1); // Reset to first page when filtering
+                });
+            });
+            
+            // Reset filters button
+            document.querySelector('.btn-reset').addEventListener('click', function() {
+                resetFilters();
+                loadPage(1);
+            });
+            
+            // Function to reset all filters
+            function resetFilters() {
+                searchInput.value = '';
+                departmentFilter.value = '';
+                facultyFilter.value = '';
+                yearFilter.value = '';
+                semesterFilter.value = '';
+                sectionFilter.value = '';
+                statusFilter.value = '';
+            }
+            
+            // Function to load page via AJAX
+            window.loadPage = function(page) {
+                // Show loading overlay
+                const loadingOverlay = document.querySelector('.loading-overlay');
+                loadingOverlay.style.display = 'flex';
+                
+                // Get current filter values
+                const searchTerm = searchInput.value.trim();
+                const departmentId = departmentFilter.value;
+                const facultyId = facultyFilter.value;
+                const year = yearFilter.value;
+                const semester = semesterFilter.value;
+                const section = sectionFilter.value;
+                const status = statusFilter.value;
+                
+                // Build query string with filters
+                const params = new URLSearchParams();
+                params.append('page', page);
+                params.append('ajax', 1);
+                
+                if (searchTerm) params.append('search', searchTerm);
+                if (departmentId) params.append('department_id', departmentId);
+                if (facultyId) params.append('faculty_id', facultyId);
+                if (year) params.append('year', year);
+                if (semester) params.append('semester', semester);
+                if (section) params.append('section', section);
+                if (status) params.append('status', status);
+                
+                // Make AJAX request
+                fetch(`manage_subjects.php?${params.toString()}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        // Update subject grid
+                        updateSubjectGrid(data.subjects);
+                        
+                        // Update pagination
+                        updatePagination(data.pagination);
+                        
+                        // Update URL without refreshing
+                        const url = new URL(window.location);
+                        url.searchParams.set('page', page);
+                        // Add other filters to URL
+                        if (searchTerm) url.searchParams.set('search', searchTerm);
+                        if (departmentId) url.searchParams.set('department_id', departmentId);
+                        if (facultyId) url.searchParams.set('faculty_id', facultyId);
+                        if (year) url.searchParams.set('year', year);
+                        if (semester) url.searchParams.set('semester', semester);
+                        if (section) url.searchParams.set('section', section);
+                        if (status) url.searchParams.set('status', status);
+                        
+                        window.history.pushState({}, '', url);
+                        
+                        // Hide loading overlay
+                        loadingOverlay.style.display = 'none';
+                    })
+                    .catch(error => {
+                        console.error('Error loading page:', error);
+                        alert('Error loading subjects. Please try again.');
+                        loadingOverlay.style.display = 'none';
+                    });
+            };
+            
+            // Function to update subject grid with new data
+            function updateSubjectGrid(subjects) {
+                const subjectGrid = document.querySelector('.subject-grid');
+                
+                // Clear current subjects
+                subjectGrid.innerHTML = '';
+                
+                // Add new subjects
+                subjects.forEach(subject => {
+                    const subjectCard = document.createElement('div');
+                    subjectCard.className = 'subject-card';
+                    subjectCard.setAttribute('data-department', subject.department_id);
+                    subjectCard.setAttribute('data-faculty', subject.faculty_ids || '');
+                    subjectCard.setAttribute('data-years', subject.years || '');
+                    subjectCard.setAttribute('data-semesters', subject.semesters || '');
+                    subjectCard.setAttribute('data-section', subject.sections || '');
+                    subjectCard.setAttribute('data-status', subject.is_active ? '1' : '0');
+                    
+                    subjectCard.innerHTML = `
+                        <div class="subject-header">
+                            <div class="subject-info">
+                                <h3 class="subject-name">${escapeHtml(subject.name)}</h3>
+                                <span class="subject-code">${escapeHtml(subject.code)}</span>
+                            </div>
+                            <span class="status-badge ${subject.is_active ? 'status-active' : 'status-inactive'}">
+                                ${subject.is_active ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
+
+                        <div class="subject-details">
+                            <div class="detail-item">
+                                <span class="detail-label">Department</span>
+                                <span class="detail-value">${escapeHtml(subject.department_name)}</span>
+                            </div>
+                            <div class="detail-item">
+                                <span class="detail-label">Credits</span>
+                                <span class="detail-value">${subject.credits}</span>
+                            </div>
+                        </div>
+
+                        <div class="subject-stats">
+                            <div class="stat-item">
+                                <div class="stat-value">${subject.assignment_count}</div>
+                                <div class="stat-label">Assignments</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">${subject.feedback_count || 0}</div>
+                                <div class="stat-label">Feedbacks</div>
+                            </div>
+                        </div>
+
+                        <div class="subject-actions">
+                            <button class="btn-action" onclick="showEditModal(${JSON.stringify(subject)})">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="btn-action" onclick="toggleSubjectStatus(${subject.id}, ${subject.is_active})">
+                                <i class="fas fa-power-off"></i> ${subject.is_active ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button class="btn-action" onclick="showAddAssignmentModal(${subject.id})">
+                                <i class="fas fa-plus"></i> Add Assignment
+                            </button>
+                        </div>
+                    `;
+                    
+                    subjectGrid.appendChild(subjectCard);
+                });
+                
+                // If no subjects found
+                if (subjects.length === 0) {
+                    subjectGrid.innerHTML = '<div class="no-results">No subjects found matching your criteria.</div>';
+                }
+            }
+            
+            // Function to update pagination controls
+            function updatePagination(pagination) {
+                const paginationControls = document.querySelector('.pagination-controls');
+                const paginationInfo = document.querySelector('.pagination-info');
+                
+                // Update info text
+                const showingStart = ((pagination.current_page - 1) * <?php echo $items_per_page; ?>) + 1;
+                const showingEnd = Math.min(pagination.total_subjects, pagination.current_page * <?php echo $items_per_page; ?>);
+                
+                document.getElementById('showing-start').textContent = showingStart;
+                document.getElementById('showing-end').textContent = showingEnd;
+                document.getElementById('total-subjects').textContent = pagination.total_subjects;
+                
+                // Build pagination buttons
+                let paginationHTML = '';
+                const current_page = parseInt(pagination.current_page);
+                const total_pages = parseInt(pagination.total_pages);
+                
+                // Previous button
+                if (current_page > 1) {
+                    paginationHTML += `<button class="pagination-btn" data-page="${current_page - 1}">
+                        <i class="fas fa-chevron-left"></i> Previous
+                    </button>`;
+                }
+                
+                // Calculate range of pages to show
+                const page_range = 3;
+                const start_page = Math.max(1, current_page - page_range);
+                const end_page = Math.min(total_pages, current_page + page_range);
+                
+                // First page + ellipsis if needed
+                if (start_page > 1) {
+                    paginationHTML += `<button class="pagination-btn" data-page="1">1</button>`;
+                    if (start_page > 2) {
+                        paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+                    }
+                }
+                
+                // Page numbers
+                for (let i = start_page; i <= end_page; i++) {
+                    paginationHTML += `<button class="pagination-btn ${i === current_page ? 'active' : ''}" data-page="${i}">${i}</button>`;
+                }
+                
+                // Last page + ellipsis if needed
+                if (end_page < total_pages) {
+                    if (end_page < total_pages - 1) {
+                        paginationHTML += `<span class="pagination-ellipsis">...</span>`;
+                    }
+                    paginationHTML += `<button class="pagination-btn" data-page="${total_pages}">${total_pages}</button>`;
+                }
+                
+                // Next button
+                if (current_page < total_pages) {
+                    paginationHTML += `<button class="pagination-btn" data-page="${current_page + 1}">
+                        Next <i class="fas fa-chevron-right"></i>
+                    </button>`;
+                }
+                
+                // Update HTML and re-attach event listeners
+                paginationControls.innerHTML = paginationHTML;
+                
+                // Re-attach event listeners to new buttons
+                document.querySelectorAll('.pagination-btn').forEach(button => {
+                    button.addEventListener('click', function() {
+                        const page = this.getAttribute('data-page');
+                        loadPage(page);
+                    });
+                });
+            }
+            
+            // Helper function to escape HTML
+            function escapeHtml(text) {
+                if (typeof text !== 'string') return text;
+                const map = {
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                };
+                return text.replace(/[&<>"']/g, m => map[m]);
+            }
+        });
+
+        // Function to toggle subject status
+        function toggleSubjectStatus(id, current_status) {
+            if (confirm(`Are you sure you want to ${current_status ? 'deactivate' : 'activate'} this subject?`)) {
+                // Show loading
+                document.querySelector('.loading-overlay').style.display = 'flex';
+                
+                // Create form data
+                const formData = new FormData();
+                formData.append('action', 'toggle_status');
+                formData.append('id', id);
+                formData.append('status', !current_status);
+                
+                // Submit via fetch
+                fetch('manage_subjects.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    // Reload current page
+                    const currentPage = new URLSearchParams(window.location.search).get('page') || 1;
+                    loadPage(currentPage);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('Error updating subject status. Please try again.');
+                    document.querySelector('.loading-overlay').style.display = 'none';
+                });
+            }
         }
     </script>
 </body>
