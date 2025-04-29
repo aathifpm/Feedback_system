@@ -2,10 +2,11 @@
 session_start();
 require_once '../db_connection.php';
 require_once '../functions.php';
+require_once 'includes/admin_functions.php';
 
 // Check if user is admin
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
-    header('Location: ../header.php');
+    header('Location: ../admin_login.php');
     exit();
 }
 
@@ -25,6 +26,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $experience = intval($_POST['experience']);
                     $qualification = mysqli_real_escape_string($conn, $_POST['qualification']);
                     $specialization = mysqli_real_escape_string($conn, $_POST['specialization']);
+                    
+                    // Check department access for department admin
+                    if (!admin_has_department_access($department_id)) {
+                        throw new Exception("You don't have permission to add faculty to this department.");
+                    }
                     
                     // Default password
                     $default_password = password_hash("Faculty@123", PASSWORD_DEFAULT);
@@ -92,6 +98,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $qualification = mysqli_real_escape_string($conn, $_POST['qualification']);
                     $specialization = mysqli_real_escape_string($conn, $_POST['specialization']);
 
+                    // Check department access for department admin
+                    if (!admin_has_department_access($department_id)) {
+                        throw new Exception("You don't have permission to edit faculty in this department.");
+                    }
+                    
+                    // Verify the faculty belongs to admin's department (for department admins)
+                    if (!is_super_admin()) {
+                        $check_dept_query = "SELECT department_id FROM faculty WHERE id = ?";
+                        $stmt = mysqli_prepare($conn, $check_dept_query);
+                        mysqli_stmt_bind_param($stmt, "i", $id);
+                        mysqli_stmt_execute($stmt);
+                        $result = mysqli_stmt_get_result($stmt);
+                        $faculty_data = mysqli_fetch_assoc($result);
+                        
+                        if (!$faculty_data || $faculty_data['department_id'] != $_SESSION['department_id']) {
+                            throw new Exception("You don't have permission to edit this faculty member.");
+                        }
+                    }
+
                     // Check if faculty_id or email already exists for other faculty
                     $check_query = "SELECT id FROM faculty WHERE (faculty_id = ? OR email = ?) AND id != ?";
                     $stmt = mysqli_prepare($conn, $check_query);
@@ -156,6 +181,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     $id = intval($_POST['id']);
                     $status = $_POST['status'] === 'true';
                     
+                    // Verify the faculty belongs to admin's department (for department admins)
+                    if (!is_super_admin()) {
+                        $check_dept_query = "SELECT department_id FROM faculty WHERE id = ?";
+                        $stmt = mysqli_prepare($conn, $check_dept_query);
+                        mysqli_stmt_bind_param($stmt, "i", $id);
+                        mysqli_stmt_execute($stmt);
+                        $result = mysqli_stmt_get_result($stmt);
+                        $faculty_data = mysqli_fetch_assoc($result);
+                        
+                        if (!$faculty_data || $faculty_data['department_id'] != $_SESSION['department_id']) {
+                            throw new Exception("You don't have permission to modify this faculty member.");
+                        }
+                    }
+                    
                     $query = "UPDATE faculty SET is_active = ? WHERE id = ?";
                     $stmt = mysqli_prepare($conn, $query);
                     mysqli_stmt_bind_param($stmt, "ii", $status, $id);
@@ -191,25 +230,174 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Fetch departments for dropdown
-$dept_query = "SELECT id, name FROM departments ORDER BY name";
-$departments = mysqli_query($conn, $dept_query);
+// Fetch departments for dropdown - department admins only see their department
+if (is_super_admin()) {
+    $dept_query = "SELECT id, name FROM departments ORDER BY name";
+    $departments = mysqli_query($conn, $dept_query);
+} else {
+    $dept_query = "SELECT id, name FROM departments WHERE id = ? ORDER BY name";
+    $stmt = mysqli_prepare($conn, $dept_query);
+    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
+    mysqli_stmt_execute($stmt);
+    $departments = mysqli_stmt_get_result($stmt);
+}
 
-// Fetch faculty with related information
+// Get filter parameters from URL
+$search_filter = "";
+$search_params = [];
+if (isset($_GET['search']) && !empty($_GET['search'])) {
+    $search_term = mysqli_real_escape_string($conn, $_GET['search']);
+    $search_filter = " AND (f.name LIKE ? OR f.faculty_id LIKE ? OR f.email LIKE ?)";
+    $search_params[] = "%$search_term%";
+    $search_params[] = "%$search_term%";
+    $search_params[] = "%$search_term%";
+}
+
+$designation_filter = "";
+if (isset($_GET['designation']) && !empty($_GET['designation'])) {
+    $designation = mysqli_real_escape_string($conn, $_GET['designation']);
+    $designation_filter = " AND f.designation = ?";
+    $designation_params = [$designation];
+} else {
+    $designation_params = [];
+}
+
+$experience_filter = "";
+$experience_params = [];
+if (isset($_GET['experience']) && !empty($_GET['experience'])) {
+    $experience_range = $_GET['experience'];
+    if (strpos($experience_range, '+') !== false) {
+        // Handle ranges like "15+"
+        $min_exp = intval($experience_range);
+        $experience_filter = " AND f.experience >= ?";
+        $experience_params = [$min_exp];
+    } else if (strpos($experience_range, '-') !== false) {
+        // Handle ranges like "6-10"
+        list($min_exp, $max_exp) = explode('-', $experience_range);
+        $experience_filter = " AND f.experience >= ? AND f.experience <= ?";
+        $experience_params = [intval($min_exp), intval($max_exp)];
+    }
+}
+
+$status_filter = "";
+if (isset($_GET['status']) && $_GET['status'] !== '') {
+    $status = ($_GET['status'] == '1') ? 1 : 0;
+    $status_filter = " AND f.is_active = ?";
+    $status_params = [$status];
+} else {
+    $status_params = [];
+}
+
+// Department filter
+$department_filter = "";
+$department_params = [];
+
+// Override department filter if dept is specified in URL
+if (isset($_GET['dept']) && $_GET['dept'] !== 'all' && !empty($_GET['dept'])) {
+    $dept_id = intval($_GET['dept']);
+    // Only apply if the admin has access to this department
+    if (is_super_admin() || $_SESSION['department_id'] == $dept_id) {
+        $department_filter = " AND f.department_id = ?";
+        $department_params = [$dept_id];
+    }
+} else if (!is_super_admin()) {
+    // If department admin, restrict data to their department
+    $department_filter = " AND f.department_id = ?";
+    $department_params = [$_SESSION['department_id']];
+}
+
+// Set up pagination
+$page = isset($_GET['page']) ? intval($_GET['page']) : 1;
+$items_per_page = 20;
+$offset = ($page - 1) * $items_per_page;
+
+// Combine all filters and params
+$all_filters = $department_filter . $search_filter . $designation_filter . $experience_filter . $status_filter;
+$all_params = array_merge($department_params, $search_params, $designation_params, $experience_params, $status_params);
+
+// Add index recommendations for better performance:
+// - Add index on faculty(name) for sorting
+// - Add index on subject_assignments(faculty_id) for faster aggregation
+// - Add index on feedback(assignment_id) for faster aggregation
+// - Ensure indexes exist on all JOIN columns and filter columns
+// - Add composite indexes for common filter combinations
+
+// Cache key for count query results - based on filters
+$count_cache_key = md5($all_filters . serialize($all_params));
+$count_cache_file = '../cache/faculty_count_' . $count_cache_key . '.cache';
+$count_cache_time = 3600; // 1 hour cache time
+
+// Try to get the count from cache
+$total_faculty = false;
+if (file_exists($count_cache_file) && (time() - filemtime($count_cache_file)) < $count_cache_time) {
+    $total_faculty = (int)file_get_contents($count_cache_file);
+}
+
+// If not in cache, run the count query
+if ($total_faculty === false) {
+    // Count total faculty for pagination
+    $count_query = "SELECT COUNT(*) as total 
+                    FROM faculty f 
+                    JOIN departments d ON f.department_id = d.id
+                    WHERE 1=1" . $all_filters;
+
+    if (!empty($all_params)) {
+        $stmt = mysqli_prepare($conn, $count_query);
+        $param_types = str_repeat('s', count($all_params));
+        mysqli_stmt_bind_param($stmt, $param_types, ...$all_params);
+        mysqli_stmt_execute($stmt);
+        $count_result = mysqli_stmt_get_result($stmt);
+    } else {
+        $count_result = mysqli_query($conn, $count_query);
+    }
+
+    $total_faculty = mysqli_fetch_assoc($count_result)['total'];
+    
+    // Save to cache
+    if (!is_dir('../cache')) {
+        mkdir('../cache', 0755, true);
+    }
+    file_put_contents($count_cache_file, $total_faculty);
+}
+
+$total_pages = ceil($total_faculty / $items_per_page);
+
+// Fetch faculty with related information - Optimized for performance
 $faculty_query = "SELECT 
-    f.*,
-    d.name as department_name,
-    COUNT(DISTINCT sa.id) as subject_count,
-    COUNT(DISTINCT fb.id) as feedback_count,
-    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
+    f.id, f.faculty_id, f.name, f.email, f.department_id, f.designation, 
+    f.experience, f.qualification, f.specialization, f.is_active, 
+    f.last_login, f.password_changed_at, f.created_at,
+    d.name AS department_name
 FROM faculty f
-LEFT JOIN departments d ON f.department_id = d.id
-LEFT JOIN subject_assignments sa ON f.id = sa.faculty_id
-LEFT JOIN feedback fb ON fb.assignment_id = sa.id
-GROUP BY f.id
-ORDER BY f.name";
+JOIN departments d ON f.department_id = d.id
+WHERE 1=1" . $all_filters . "
+ORDER BY f.name
+LIMIT ? OFFSET ?";
 
-$faculty_result = mysqli_query($conn, $faculty_query);
+if (!empty($all_params)) {
+    $stmt = mysqli_prepare($conn, $faculty_query);
+    $param_types = str_repeat('s', count($all_params)) . "ii";
+    $bind_params = array_merge($all_params, [$items_per_page, $offset]);
+    mysqli_stmt_bind_param($stmt, $param_types, ...$bind_params);
+    mysqli_stmt_execute($stmt);
+    $faculty_result = mysqli_stmt_get_result($stmt);
+} else {
+    $stmt = mysqli_prepare($conn, $faculty_query);
+    mysqli_stmt_bind_param($stmt, "ii", $items_per_page, $offset);
+    mysqli_stmt_execute($stmt);
+    $faculty_result = mysqli_stmt_get_result($stmt);
+}
+
+// Fetch all faculty data into an array
+$faculty_data = [];
+$faculty_ids = [];
+while ($faculty = mysqli_fetch_assoc($faculty_result)) {
+    $faculty['subject_count'] = 0;
+    $faculty['feedback_count'] = 0;
+    $faculty['avg_rating'] = 'N/A';
+    $faculty_data[$faculty['id']] = $faculty;
+    $faculty_ids[] = $faculty['id'];
+}
 ?>
 
 <!DOCTYPE html>
@@ -559,6 +747,57 @@ $faculty_result = mysqli_query($conn, $faculty_query);
         .hidden {
             display: none !important;
         }
+        
+        /* Pagination Styles */
+        .pagination-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin: 2rem 0;
+            gap: 0.5rem;
+        }
+        
+        .pagination {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .page-link {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            color: var(--text-color);
+            text-decoration: none;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+        
+        .page-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 12px rgb(163,177,198,0.7),
+                       -6px -6px 12px rgba(255,255,255, 0.6);
+        }
+        
+        .page-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .page-info {
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+        
+        @media (max-width: 768px) {
+            .pagination {
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -639,8 +878,9 @@ $faculty_result = mysqli_query($conn, $faculty_query);
         <?php endif; ?>
 
         <div class="faculty-grid">
-            <?php while ($faculty = mysqli_fetch_assoc($faculty_result)): ?>
+            <?php foreach ($faculty_data as $faculty): ?>
                 <div class="faculty-card" 
+                     data-faculty-id="<?php echo $faculty['id']; ?>"
                      data-department="<?php echo $faculty['department_id']; ?>"
                      data-designation="<?php echo htmlspecialchars($faculty['designation']); ?>"
                      data-experience="<?php echo $faculty['experience']; ?>"
@@ -676,15 +916,30 @@ $faculty_result = mysqli_query($conn, $faculty_query);
 
                     <div class="faculty-stats">
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $faculty['subject_count']; ?></div>
+                            <div class="stat-value">
+                                <span class="subject-count">0</span>
+                                <span class="stats-loading spinner-border spinner-border-sm text-primary" role="status" style="display:none;">
+                                    <span class="visually-hidden">Loading...</span>
+                                </span>
+                            </div>
                             <div class="stat-label">Subjects</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $faculty['feedback_count']; ?></div>
+                            <div class="stat-value">
+                                <span class="feedback-count">0</span>
+                                <span class="stats-loading spinner-border spinner-border-sm text-primary" role="status" style="display:none;">
+                                    <span class="visually-hidden">Loading...</span>
+                                </span>
+                            </div>
                             <div class="stat-label">Feedbacks</div>
                         </div>
                         <div class="stat-item">
-                            <div class="stat-value"><?php echo $faculty['avg_rating'] ?? 'N/A'; ?></div>
+                            <div class="stat-value">
+                                <span class="avg-rating">N/A</span>
+                                <span class="stats-loading spinner-border spinner-border-sm text-primary" role="status" style="display:none;">
+                                    <span class="visually-hidden">Loading...</span>
+                                </span>
+                            </div>
                             <div class="stat-label">Avg Rating</div>
                         </div>
                     </div>
@@ -701,7 +956,79 @@ $faculty_result = mysqli_query($conn, $faculty_query);
                         </button>
                     </div>
                 </div>
-            <?php endwhile; ?>
+            <?php endforeach; ?>
+        </div>
+        
+        <!-- Pagination Controls -->
+        <div class="pagination-container">
+            <?php if ($total_pages > 1): ?>
+                <div class="pagination">
+                    <?php 
+                    // Preserve all filter parameters in pagination links
+                    $params = $_GET;
+                    
+                    // First and previous page links
+                    if ($page > 1): 
+                        $params['page'] = 1;
+                        $first_link = '?' . http_build_query($params);
+                        
+                        $params['page'] = $page - 1;
+                        $prev_link = '?' . http_build_query($params);
+                    ?>
+                        <a href="<?php echo $first_link; ?>" class="page-link first">
+                            <i class="fas fa-angle-double-left"></i>
+                        </a>
+                        <a href="<?php echo $prev_link; ?>" class="page-link prev">
+                            <i class="fas fa-angle-left"></i>
+                        </a>
+                    <?php endif; ?>
+                    
+                    <?php
+                    // Display limited page links with current page in the middle when possible
+                    $start_page = max(1, min($page - 2, $total_pages - 4));
+                    $end_page = min($total_pages, max($page + 2, 5));
+                    
+                    // Ensure we always show at least 5 pages when available
+                    if ($end_page - $start_page + 1 < 5 && $total_pages >= 5) {
+                        if ($start_page == 1) {
+                            $end_page = min(5, $total_pages);
+                        }
+                        if ($end_page == $total_pages) {
+                            $start_page = max(1, $total_pages - 4);
+                        }
+                    }
+                    
+                    for ($i = $start_page; $i <= $end_page; $i++): 
+                        $params['page'] = $i;
+                        $page_link = '?' . http_build_query($params);
+                    ?>
+                        <a href="<?php echo $page_link; ?>" class="page-link <?php echo ($i == $page) ? 'active' : ''; ?>">
+                            <?php echo $i; ?>
+                        </a>
+                    <?php endfor; ?>
+                    
+                    <?php 
+                    // Next and last page links
+                    if ($page < $total_pages): 
+                        $params['page'] = $page + 1;
+                        $next_link = '?' . http_build_query($params);
+                        
+                        $params['page'] = $total_pages;
+                        $last_link = '?' . http_build_query($params);
+                    ?>
+                        <a href="<?php echo $next_link; ?>" class="page-link next">
+                            <i class="fas fa-angle-right"></i>
+                        </a>
+                        <a href="<?php echo $last_link; ?>" class="page-link last">
+                            <i class="fas fa-angle-double-right"></i>
+                        </a>
+                    <?php endif; ?>
+                </div>
+                <div class="page-info">
+                    Showing page <?php echo $page; ?> of <?php echo $total_pages; ?> 
+                    (<?php echo $total_faculty; ?> total faculty)
+                </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -898,7 +1225,34 @@ $faculty_result = mysqli_query($conn, $faculty_query);
             const statusFilter = document.getElementById('statusFilter');
             const departmentButtons = document.querySelectorAll('.filter-btn');
 
-            // Filter function
+            // Get URL parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            const currentPage = urlParams.get('page') || 1;
+
+            // Set filters from URL params if they exist
+            if (urlParams.has('search')) {
+                searchInput.value = urlParams.get('search');
+            }
+            if (urlParams.has('designation')) {
+                designationFilter.value = urlParams.get('designation');
+            }
+            if (urlParams.has('experience')) {
+                experienceFilter.value = urlParams.get('experience');
+            }
+            if (urlParams.has('status')) {
+                statusFilter.value = urlParams.get('status');
+            }
+            if (urlParams.has('dept')) {
+                const deptId = urlParams.get('dept');
+                departmentButtons.forEach(btn => {
+                    btn.classList.remove('active');
+                    if (btn.dataset.dept === deptId) {
+                        btn.classList.add('active');
+                    }
+                });
+            }
+
+            // Apply local filtering (for current page)
             function filterFaculty() {
                 const searchTerm = searchInput.value.toLowerCase();
                 const selectedDept = document.querySelector('.filter-btn.active').dataset.dept;
@@ -954,37 +1308,178 @@ $faculty_result = mysqli_query($conn, $faculty_query);
                 });
             }
 
-            // Event listeners
-            searchInput.addEventListener('input', filterFaculty);
-            designationFilter.addEventListener('change', filterFaculty);
-            experienceFilter.addEventListener('change', filterFaculty);
-            statusFilter.addEventListener('change', filterFaculty);
+            // Function to apply filters and redirect
+            function applyFilters() {
+                const searchTerm = searchInput.value.trim();
+                const selectedDept = document.querySelector('.filter-btn.active').dataset.dept;
+                const selectedDesignation = designationFilter.value;
+                const selectedExperience = experienceFilter.value;
+                const selectedStatus = statusFilter.value;
+                
+                const params = new URLSearchParams();
+                params.set('page', 1); // Reset to page 1 when filtering
+                
+                if (searchTerm) params.set('search', searchTerm);
+                if (selectedDept !== 'all') params.set('dept', selectedDept);
+                if (selectedDesignation) params.set('designation', selectedDesignation);
+                if (selectedExperience) params.set('experience', selectedExperience);
+                if (selectedStatus) params.set('status', selectedStatus);
+                
+                window.location.href = '?' + params.toString();
+            }
+            
+            // Apply server-side filtering with delay
+            const filterDelay = 500; // ms
+            let filterTimeout;
+            
+            function delayedFilterApply() {
+                clearTimeout(filterTimeout);
+                filterTimeout = setTimeout(applyFilters, filterDelay);
+            }
+
+            // Modified event listeners to apply server-side filtering
+            searchInput.addEventListener('input', function() {
+                filterFaculty(); // Immediate local filtering
+                delayedFilterApply(); // Delayed server-side filtering
+            });
+            
+            designationFilter.addEventListener('change', applyFilters);
+            experienceFilter.addEventListener('change', applyFilters);
+            statusFilter.addEventListener('change', applyFilters);
 
             departmentButtons.forEach(button => {
                 button.addEventListener('click', () => {
                     departmentButtons.forEach(btn => btn.classList.remove('active'));
                     button.classList.add('active');
-                    filterFaculty();
+                    applyFilters();
                 });
             });
+            
+            // Initial filtering
+            filterFaculty();
+            
+            // Load faculty statistics via AJAX
+            loadFacultyStats();
         });
 
         function resetFilters() {
-            document.getElementById('searchInput').value = '';
-            document.getElementById('designationFilter').value = '';
-            document.getElementById('experienceFilter').value = '';
-            document.getElementById('statusFilter').value = '';
+            window.location.href = '?page=1';
+        }
+        
+        // JavaScript for AJAX loading of faculty statistics
+        function loadFacultyStats(retryCount = 0, delay = 500) {
+            // Show loading state only on first attempt
+            if (retryCount === 0) {
+                document.querySelectorAll('.stats-loading').forEach(el => {
+                    el.style.display = 'inline-block';
+                });
+            }
             
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-                if(btn.dataset.dept === 'all') {
-                    btn.classList.add('active');
+            // Get all faculty IDs from the DOM
+            const facultyCards = document.querySelectorAll('.faculty-card[data-faculty-id]');
+            const facultyIds = Array.from(facultyCards).map(card => parseInt(card.dataset.facultyId));
+            
+            if (facultyIds.length === 0) {
+                console.log('No faculty cards found on the page');
+                return;
+            }
+            
+            // Set up the AJAX request
+            const xhr = new XMLHttpRequest();
+            const timeoutId = setTimeout(() => {
+                xhr.abort();
+                console.log('Stats request timed out');
+                if (retryCount < 3) {
+                    console.log(`Retrying (${retryCount + 1}/3) after ${delay}ms delay`);
+                    setTimeout(() => loadFacultyStats(retryCount + 1, delay * 2), delay);
+                } else {
+                    console.log('Max retry attempts reached, setting default values');
+                    setDefaultValues();
                 }
-            });
-
-            document.querySelectorAll('.faculty-card').forEach(card => {
-                card.classList.remove('hidden');
-            });
+            }, 10000); // 10 second timeout
+            
+            xhr.open('POST', 'ajax/get_faculty_stats.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/json');
+            
+            xhr.onload = function() {
+                clearTimeout(timeoutId);
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const response = JSON.parse(xhr.responseText);
+                        updateFacultyStats(response);
+                    } catch (e) {
+                        console.error('Error parsing JSON response:', e);
+                        if (retryCount < 3) {
+                            setTimeout(() => loadFacultyStats(retryCount + 1, delay * 2), delay);
+                        } else {
+                            setDefaultValues();
+                        }
+                    }
+                } else {
+                    console.error('Request failed with status:', xhr.status);
+                    if (retryCount < 3) {
+                        setTimeout(() => loadFacultyStats(retryCount + 1, delay * 2), delay);
+                    } else {
+                        setDefaultValues();
+                    }
+                }
+            };
+            
+            xhr.onerror = function() {
+                clearTimeout(timeoutId);
+                console.error('Request error');
+                if (retryCount < 3) {
+                    setTimeout(() => loadFacultyStats(retryCount + 1, delay * 2), delay);
+                } else {
+                    setDefaultValues();
+                }
+            };
+            
+            // Send the faculty IDs in the request
+            xhr.send(JSON.stringify({ faculty_ids: facultyIds }));
+            
+            function updateFacultyStats(data) {
+                // Hide all loading indicators
+                document.querySelectorAll('.stats-loading').forEach(el => {
+                    el.style.display = 'none';
+                });
+                
+                // Update each faculty card with the stats
+                facultyCards.forEach(card => {
+                    const facultyId = parseInt(card.dataset.facultyId);
+                    const stats = data[facultyId] || {
+                        subject_count: 0,
+                        feedback_count: 0,
+                        avg_rating: 'N/A'
+                    };
+                    
+                    const subjectCount = card.querySelector('.subject-count');
+                    const feedbackCount = card.querySelector('.feedback-count');
+                    const avgRating = card.querySelector('.avg-rating');
+                    
+                    if (subjectCount) subjectCount.textContent = stats.subject_count;
+                    if (feedbackCount) feedbackCount.textContent = stats.feedback_count;
+                    if (avgRating) avgRating.textContent = stats.avg_rating;
+                });
+            }
+            
+            function setDefaultValues() {
+                // Hide all loading indicators
+                document.querySelectorAll('.stats-loading').forEach(el => {
+                    el.style.display = 'none';
+                });
+                
+                // Set default values for all faculty cards
+                facultyCards.forEach(card => {
+                    const subjectCount = card.querySelector('.subject-count');
+                    const feedbackCount = card.querySelector('.feedback-count');
+                    const avgRating = card.querySelector('.avg-rating');
+                    
+                    if (subjectCount) subjectCount.textContent = '0';
+                    if (feedbackCount) feedbackCount.textContent = '0';
+                    if (avgRating) avgRating.textContent = 'N/A';
+                });
+            }
         }
     </script>
 </body>
