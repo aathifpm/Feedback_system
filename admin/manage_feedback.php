@@ -11,20 +11,48 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 
 $success_msg = $error_msg = '';
 
+// Get the admin user's department if they are a department admin
+$admin_query = "SELECT id, department_id FROM admin_users WHERE id = " . $_SESSION['user_id'];
+$admin_result = mysqli_query($conn, $admin_query);
+$admin_data = mysqli_fetch_assoc($admin_result);
+$is_department_admin = !empty($admin_data['department_id']);
+$admin_department_id = $is_department_admin ? $admin_data['department_id'] : null;
+
+// Debug information - can be removed once fixed
+if ($is_department_admin) {
+    $debug_msg = "Department Admin detected. Department ID: " . $admin_department_id;
+    
+    // Verify department exists
+    $dept_check_query = "SELECT id, name FROM departments WHERE id = " . intval($admin_department_id);
+    $dept_check_result = mysqli_query($conn, $dept_check_query);
+    if ($dept_check_result && mysqli_num_rows($dept_check_result) > 0) {
+        $dept_data = mysqli_fetch_assoc($dept_check_result);
+        $debug_msg .= " (" . $dept_data['name'] . ")";
+    } else {
+        $debug_msg .= " (WARNING: Department not found in departments table!)";
+    }
+} else {
+    $debug_msg = "Super Admin detected.";
+}
+
 // Get current academic year
 $current_year_query = "SELECT id, year_range FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $current_year_result = mysqli_query($conn, $current_year_query);
 $current_year = mysqli_fetch_assoc($current_year_result);
 
-// Fetch departments for filter
-$dept_query = "SELECT id, name FROM departments ORDER BY name";
+// Fetch departments for filter - if department admin, only show their department
+if ($is_department_admin) {
+    $dept_query = "SELECT id, name FROM departments WHERE id = $admin_department_id ORDER BY name";
+} else {
+    $dept_query = "SELECT id, name FROM departments ORDER BY name";
+}
 $departments = mysqli_query($conn, $dept_query);
 
 // Fetch academic years for filter
 $academic_year_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
 $academic_years = mysqli_query($conn, $academic_year_query);
 
-// Update the main query to match database structure
+// Base query for feedback data
 $query = "SELECT 
     sub.id as subject_id,
     sub.code as subject_code,
@@ -37,14 +65,15 @@ $query = "SELECT
     f.id as faculty_id,
     f.name as faculty_name,
     d.name as department_name,
+    d.id as department_id,
     ay.year_range as academic_year,
     COUNT(DISTINCT fb.id) as feedback_count,
-    ROUND(AVG(fb.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(fb.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(fb.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(fb.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(fb.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(fb.cumulative_avg), 2) as overall_rating
+    ROUND(AVG(IFNULL(fb.course_effectiveness_avg, 0)), 2) as course_effectiveness,
+    ROUND(AVG(IFNULL(fb.teaching_effectiveness_avg, 0)), 2) as teaching_effectiveness,
+    ROUND(AVG(IFNULL(fb.resources_admin_avg, 0)), 2) as resources_admin,
+    ROUND(AVG(IFNULL(fb.assessment_learning_avg, 0)), 2) as assessment_learning,
+    ROUND(AVG(IFNULL(fb.course_outcomes_avg, 0)), 2) as course_outcomes,
+    ROUND(AVG(IFNULL(fb.cumulative_avg, 0)), 2) as overall_rating
 FROM subjects sub
 JOIN subject_assignments sa ON sub.id = sa.subject_id
 JOIN faculty f ON sa.faculty_id = f.id
@@ -54,11 +83,16 @@ LEFT JOIN feedback fb ON fb.assignment_id = sa.id
 WHERE sub.is_active = 1 
 AND sa.is_active = 1";
 
-// Apply filters if set
-if (isset($_GET['department_id']) && !empty($_GET['department_id'])) {
+// If department admin, always filter by their department
+if ($is_department_admin && $admin_department_id) {
+    $query .= " AND d.id = " . intval($admin_department_id);
+} 
+// Otherwise apply department filter if set
+else if (isset($_GET['department_id']) && !empty($_GET['department_id'])) {
     $query .= " AND d.id = " . intval($_GET['department_id']);
 }
 
+// Apply other filters if set
 if (isset($_GET['academic_year_id']) && !empty($_GET['academic_year_id'])) {
     $query .= " AND sa.academic_year_id = " . intval($_GET['academic_year_id']);
 }
@@ -71,13 +105,45 @@ if (isset($_GET['rating_max']) && !empty($_GET['rating_max'])) {
     $query .= " AND fb.cumulative_avg <= " . floatval($_GET['rating_max']);
 }
 
-// Group by the specific assignment
-$query .= " GROUP BY sa.id, sub.id, sub.code, sub.name, sub.credits, sa.year, sa.semester, sa.section, f.id, f.name, d.name, ay.year_range
+// Group by the specific assignment with proper ORDER BY
+$query .= " GROUP BY sa.id, sub.id, sub.code, sub.name, f.id, f.name, d.id, d.name 
 ORDER BY sub.code, sa.year, sa.semester, sa.section";
 
-$result = mysqli_query($conn, $query);
+// Debug - can be removed after fixing
+$debug_query = $query;
 
-// Update the overall statistics query
+$result = mysqli_query($conn, $query);
+if (!$result) {
+    $error_msg = "Query error: " . mysqli_error($conn);
+}
+
+// Check if there are any rows
+$row_count = mysqli_num_rows($result);
+$has_data = $row_count > 0;
+$debug_msg .= "<br>Row count: " . $row_count;
+
+// Add this before the end of the file to debug and check each record
+if ($has_data) {
+    $debug_data = "First 3 records:<br>";
+    mysqli_data_seek($result, 0); // Reset the result pointer to the beginning
+    $counter = 0;
+    while ($row = mysqli_fetch_assoc($result)) {
+        if ($counter < 3) {
+            $debug_data .= "Record " . ($counter+1) . ": ";
+            $debug_data .= "Subject: " . $row['subject_code'] . " | ";
+            $debug_data .= "Faculty: " . $row['faculty_name'] . " | ";
+            $debug_data .= "Dept ID: " . $row['department_id'] . " | ";
+            $debug_data .= "Feedback count: " . $row['feedback_count'] . "<br>";
+            $counter++;
+        } else {
+            break;
+        }
+    }
+    $debug_msg .= "<br>" . $debug_data;
+    mysqli_data_seek($result, 0); // Reset the result pointer again for the main display
+}
+
+// Update the overall statistics query - consider department for department admin
 $stats_query = "SELECT 
     COUNT(DISTINCT fb.id) as total_feedback,
     ROUND(AVG(fb.cumulative_avg), 2) as avg_rating,
@@ -88,7 +154,13 @@ FROM feedback fb
 JOIN subject_assignments sa ON fb.assignment_id = sa.id
 JOIN subjects sub ON sa.subject_id = sub.id
 JOIN students s ON fb.student_id = s.id
+JOIN departments d ON sub.department_id = d.id
 WHERE sa.is_active = 1";
+
+// Add department filter for department admin
+if ($is_department_admin) {
+    $stats_query .= " AND d.id = " . $admin_department_id;
+}
 
 $stats_result = mysqli_query($conn, $stats_query);
 $stats = mysqli_fetch_assoc($stats_result);
@@ -103,9 +175,14 @@ LEFT JOIN subjects sub ON d.id = sub.department_id
 LEFT JOIN subject_assignments sa ON sub.id = sa.subject_id
 LEFT JOIN feedback fb ON fb.assignment_id = sa.id
 LEFT JOIN students s ON fb.student_id = s.id
-WHERE (sa.is_active = 1 OR sa.is_active IS NULL)
-GROUP BY d.id, d.name
-ORDER BY feedback_count DESC";
+WHERE (sa.is_active = 1 OR sa.is_active IS NULL)";
+
+// For department admin, only show their department stats
+if ($is_department_admin) {
+    $dept_stats_query .= " AND d.id = " . $admin_department_id;
+}
+
+$dept_stats_query .= " GROUP BY d.id, d.name ORDER BY feedback_count DESC";
 
 $dept_stats_result = mysqli_query($conn, $dept_stats_query);
 ?>
@@ -494,28 +571,39 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
     <div class="main-content">
         <div class="dashboard-header">
             <h1>Feedback Analysis</h1>
+            <?php if (isset($debug_msg)): ?>
+                <div style="background: #f0f0f0; padding: 10px; margin-top: 10px; border-radius: 5px; font-size: 0.9rem;">
+                    <strong>Debug:</strong> <?php echo $debug_msg; ?>
+                    <?php if (isset($error_msg) && !empty($error_msg)): ?>
+                        <br><strong>Error:</strong> <?php echo $error_msg; ?>
+                    <?php endif; ?>
+                    <?php if (isset($has_data)): ?>
+                        <br><strong>Data Available:</strong> <?php echo $has_data ? 'Yes' : 'No'; ?>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Statistics Section -->
         <div class="stats-grid">
             <div class="stat-card">
-                <div class="stat-value"><?php echo $stats['total_feedback']; ?></div>
+                <div class="stat-value"><?php echo isset($stats['total_feedback']) ? $stats['total_feedback'] : '0'; ?></div>
                 <div class="stat-label">Total Feedback</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?php echo $stats['avg_rating']; ?></div>
+                <div class="stat-value"><?php echo isset($stats['avg_rating']) ? $stats['avg_rating'] : '0.00'; ?></div>
                 <div class="stat-label">Average Rating</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?php echo $stats['total_students']; ?></div>
+                <div class="stat-value"><?php echo isset($stats['total_students']) ? $stats['total_students'] : '0'; ?></div>
                 <div class="stat-label">Students Participated</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?php echo $stats['total_subjects']; ?></div>
+                <div class="stat-value"><?php echo isset($stats['total_subjects']) ? $stats['total_subjects'] : '0'; ?></div>
                 <div class="stat-label">Subjects Covered</div>
             </div>
             <div class="stat-card">
-                <div class="stat-value"><?php echo $stats['total_faculty']; ?></div>
+                <div class="stat-value"><?php echo isset($stats['total_faculty']) ? $stats['total_faculty'] : '0'; ?></div>
                 <div class="stat-label">Faculty Members</div>
             </div>
         </div>
@@ -540,10 +628,11 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
             <?php endwhile; ?>
         </div>
 
-        <!-- Filter Section -->
+        <!-- Filter Section - Hide department filter for department admins -->
         <div class="filter-section">
             <form method="GET" id="filterForm">
                 <div class="filter-row">
+                    <?php if (!$is_department_admin): ?>
                     <div class="filter-group">
                         <select name="department_id" class="form-control" onchange="this.form.submit()">
                             <option value="">All Departments</option>
@@ -556,6 +645,7 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
                             <?php endwhile; ?>
                         </select>
                     </div>
+                    <?php endif; ?>
 
                     <div class="filter-group">
                         <select name="academic_year_id" class="form-control" onchange="this.form.submit()">
@@ -594,7 +684,11 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
                     </tr>
                 </thead>
                 <tbody>
-                    <?php while ($feedback = mysqli_fetch_assoc($result)): ?>
+                    <?php 
+                    $loop_count = 0;
+                    while ($feedback = mysqli_fetch_assoc($result)): 
+                        $loop_count++;
+                    ?>
                         <tr>
                             <td>
                                 <strong><?php echo htmlspecialchars($feedback['subject_code']); ?></strong><br>
@@ -629,6 +723,19 @@ $dept_stats_result = mysqli_query($conn, $dept_stats_query);
                             </td>
                         </tr>
                     <?php endwhile; ?>
+                    <?php $debug_msg .= "<br>Loop count in table display: " . $loop_count; ?>
+                    <?php if (!$has_data): ?>
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 20px;">
+                                <div style="color: #666; font-size: 1.1rem;">
+                                    <i class="fas fa-info-circle"></i> No feedback data found for the selected criteria.
+                                    <?php if ($is_department_admin): ?>
+                                        <br><small>Note: As a department admin, you can only view feedback for your department.</small>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                        </tr>
+                    <?php endif; ?>
                 </tbody>
             </table>
         </div>
