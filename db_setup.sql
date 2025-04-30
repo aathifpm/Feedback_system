@@ -139,7 +139,7 @@ CREATE TABLE password_reset_tokens (
 -- Create subjects table (Updated)
 CREATE TABLE subjects (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    code VARCHAR(20) NOT NULL UNIQUE,
+    code VARCHAR(20) NOT NULL,
     name VARCHAR(100) NOT NULL,
     department_id INT NOT NULL,
     credits INT NOT NULL,

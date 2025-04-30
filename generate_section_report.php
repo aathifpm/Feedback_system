@@ -49,6 +49,23 @@ if (!$academic_year_data) {
     die("Invalid academic year ID.");
 }
 
+// Get batch year information
+$batch_query = "SELECT 
+    by2.batch_name 
+FROM students st
+JOIN batch_years by2 ON st.batch_id = by2.id
+WHERE st.section = ?
+AND st.department_id = ?
+AND by2.current_year_of_study = ?
+LIMIT 1";
+
+$batch_stmt = mysqli_prepare($conn, $batch_query);
+mysqli_stmt_bind_param($batch_stmt, "sii", $section, $department_id, $year);
+mysqli_stmt_execute($batch_stmt);
+$batch_result = mysqli_stmt_get_result($batch_stmt);
+$batch_data = mysqli_fetch_assoc($batch_result);
+$batch_name = isset($batch_data['batch_name']) ? $batch_data['batch_name'] : 'N/A';
+
 class PDF extends FPDF {
     protected $col = 0;
     protected $y0;
@@ -122,33 +139,79 @@ class PDF extends FPDF {
     }
 
     function CreateMetricsTable($headers, $data) {
-        $this->SetFont('Helvetica', 'B', 10);
-        $this->SetFillColor(245, 247, 250);
-        $this->SetTextColor(44, 62, 80);
-        $this->SetDrawColor(189, 195, 199);
-        $this->SetLineWidth(0.2);
-
-        // Calculate column widths
-        $w = array(25, 60, 40, 20, 20, 25);
-
+        // Set styling
+        $this->SetFont('Arial', 'B', 10);
+        $this->SetFillColor(220, 220, 220);
+        
+        // Widths of columns - give more space to faculty column (60mm)
+        $w = array(20, 45, 60, 15, 20, 20);
+        
         // Header
-        foreach($headers as $i => $header) {
-            $this->Cell($w[$i], 10, $header, 1, 0, 'C', true);
+        for($i=0; $i<count($headers); $i++) {
+            $this->Cell($w[$i], 7, $headers[$i], 1, 0, 'C', true);
         }
         $this->Ln();
-
-        // Data rows
-        $this->SetFont('Helvetica', '', 10);
-        $fill = false;
+        
+        // Calculate max height for each row before drawing anything
+        $this->SetFont('Arial', '', 9);
+        
         foreach($data as $row) {
-            $this->Cell($w[0], 8, $row[0], 1, 0, 'C', $fill);
-            $this->Cell($w[1], 8, $row[1], 1, 0, 'L', $fill);
-            $this->Cell($w[2], 8, $row[2], 1, 0, 'L', $fill);
-            $this->Cell($w[3], 8, $row[3], 1, 0, 'C', $fill);
-            $this->Cell($w[4], 8, $row[4], 1, 0, 'C', $fill);
-            $this->Cell($w[5], 8, $row[5], 1, 0, 'C', $fill);
+            // Save the starting position
+            $x = $this->GetX();
+            $y = $this->GetY();
+            $lineHeight = 5; // Line height for text
+            
+            // First pass - measure heights without drawing
+            
+            // Subject column - measure height
+            $this->SetXY($x + $w[0], $y);
+            $startY = $this->GetY();
+            $this->MultiCell($w[1], $lineHeight, $row[1], 0);
+            $subjectHeight = $this->GetY() - $startY;
+            
+            // Faculty column - measure height - this needs to fit correctly
+            $this->SetXY($x + $w[0] + $w[1], $y);
+            $startY = $this->GetY();
+            $this->MultiCell($w[2], $lineHeight, $row[2], 0);
+            $facultyHeight = $this->GetY() - $startY;
+            
+            // Get maximum height from all columns + add some padding
+            $maxHeight = max($subjectHeight, $facultyHeight, 7) + 2;
+            
+            // Second pass - draw all cells
+            $this->SetXY($x, $y);
+            
+            // Draw background cells with correct height
+            $this->Cell($w[0], $maxHeight, '', 'LTR'); // Code background
+            $this->Cell($w[1], $maxHeight, '', 'LTR'); // Subject background
+            $this->Cell($w[2], $maxHeight, '', 'LTR'); // Faculty background
+            $this->Cell($w[3], $maxHeight, '', 'LTR'); // Semester background
+            $this->Cell($w[4], $maxHeight, '', 'LTR'); // Responses background
+            $this->Cell($w[5], $maxHeight, '', 'LTR'); // Rating background
             $this->Ln();
-            $fill = !$fill;
+            
+            // Now draw content on top of the cells
+            
+            // Code (centered, single line)
+            $this->SetXY($x, $y);
+            $this->Cell($w[0], $maxHeight, $row[0], 'LBR', 0, 'C');
+            
+            // Subject name - multiline text
+            $this->SetXY($x + $w[0], $y);
+            $this->MultiCell($w[1], $lineHeight, $row[1], 'LBR');
+            
+            // Faculty name - multiline text
+            $this->SetXY($x + $w[0] + $w[1], $y);
+            $this->MultiCell($w[2], $lineHeight, $row[2], 'LBR');
+            
+            // Remaining columns - centered, single line
+            $this->SetXY($x + $w[0] + $w[1] + $w[2], $y);
+            $this->Cell($w[3], $maxHeight, $row[3], 'LBR', 0, 'C');
+            $this->Cell($w[4], $maxHeight, $row[4], 'LBR', 0, 'C');
+            $this->Cell($w[5], $maxHeight, $row[5], 'LBR', 0, 'C');
+            
+            // Move to next row
+            $this->SetY($y + $maxHeight);
         }
     }
 
@@ -159,17 +222,23 @@ class PDF extends FPDF {
         $this->SetDrawColor(189, 195, 199);
         $this->SetLineWidth(0.2);
 
-        // Calculate column widths based on number of headers
+        // Calculate column widths based on content and number of columns
         $num_columns = count($headers);
-        $page_width = 190; // Total width of the page
-        $margin = 10; // Margin on each side
-        $available_width = $page_width - (2 * $margin);
+        $page_width = $this->GetPageWidth() - 20; // Total width minus margins
         
-        // Calculate individual column widths
-        $w = array();
-        $base_width = $available_width / $num_columns;
-        for ($i = 0; $i < $num_columns; $i++) {
-            $w[$i] = $base_width;
+        // If feedback table, use custom widths
+        if ($num_columns == 5) {
+            // Define width percentages for feedback categories table
+            $width_percentages = [40, 15, 15, 15, 15]; // Adjust as needed
+        } else {
+            // For tables with different column counts, distribute evenly
+            $width_percentages = array_fill(0, $num_columns, 100/$num_columns);
+        }
+        
+        // Calculate actual widths
+        $w = [];
+        foreach($width_percentages as $percentage) {
+            $w[] = $page_width * ($percentage / 100);
         }
 
         // Header
@@ -182,9 +251,25 @@ class PDF extends FPDF {
         $this->SetFont('Helvetica', '', 10);
         $fill = false;
         foreach($data as $row) {
-            foreach($row as $i => $cell) {
-                $this->Cell($w[$i], 8, $cell, 1, 0, 'C', $fill);
+            // Set a reasonable row height based on content
+            $row_height = 8; // Default height
+            
+            // For category names, check length and increase height if needed
+            if ($num_columns == 5 && strlen($row[0]) > 40) {
+                $row_height = 10;
             }
+            if ($num_columns == 5 && strlen($row[0]) > 80) {
+                $row_height = 12;
+            }
+            
+            // First column (typically category) - left aligned
+            $this->Cell($w[0], $row_height, $this->TruncateText($row[0], $w[0], 'Helvetica', '', 10), 1, 0, 'L', $fill);
+            
+            // Other columns - centered
+            for($i = 1; $i < $num_columns; $i++) {
+                $this->Cell($w[$i], $row_height, $row[$i], 1, 0, 'C', $fill);
+            }
+            
             $this->Ln();
             $fill = !$fill;
         }
@@ -197,17 +282,22 @@ class PDF extends FPDF {
         $this->SetDrawColor(189, 195, 199);
         $this->SetLineWidth(0.2);
 
-        // Calculate column widths based on number of headers
+        // Calculate column widths based on number of columns and content
         $num_columns = count($headers);
-        $page_width = 190; // Total width of the page
-        $margin = 10; // Margin on each side
-        $available_width = $page_width - (2 * $margin);
+        $page_width = $this->GetPageWidth() - 20; // Total width minus margins
         
-        // Calculate individual column widths
-        $w = array();
-        $base_width = $available_width / $num_columns;
-        for ($i = 0; $i < $num_columns; $i++) {
-            $w[$i] = $base_width;
+        // Define column width percentages based on table type
+        if ($num_columns == 7) { // Student participation table
+            $width_percentages = [15, 25, 10, 10, 15, 10, 15]; // Adjust based on content needs
+        } else {
+            // For other tables, distribute fairly
+            $width_percentages = array_fill(0, $num_columns, 100/$num_columns);
+        }
+        
+        // Calculate actual column widths
+        $w = [];
+        foreach($width_percentages as $percentage) {
+            $w[] = $page_width * ($percentage / 100);
         }
 
         // Header
@@ -220,12 +310,55 @@ class PDF extends FPDF {
         $this->SetFont('Helvetica', '', 10);
         $fill = false;
         foreach($data as $row) {
-            foreach($row as $i => $cell) {
-                $this->Cell($w[$i], 8, $cell, 1, 0, 'C', $fill);
+            // Set a reasonable row height based on content
+            $row_height = 8; // Default height
+            
+            // For student names or other potentially long text
+            if ($num_columns == 7 && strlen($row[1]) > 25) {
+                $row_height = 10;
             }
+            if ($num_columns == 7 && strlen($row[1]) > 40) {
+                $row_height = 12;
+            }
+            
+            // Process each column
+            for($i = 0; $i < $num_columns; $i++) {
+                // Left align text columns (typically column 1 for names)
+                $alignment = ($i == 1) ? 'L' : 'C';
+                
+                // Truncate text if needed for text-heavy columns
+                if ($i == 1) {
+                    $text = $this->TruncateText($row[$i], $w[$i], 'Helvetica', '', 10);
+                } else {
+                    $text = $row[$i];
+                }
+                
+                $this->Cell($w[$i], $row_height, $text, 1, 0, $alignment, $fill);
+            }
+            
             $this->Ln();
             $fill = !$fill;
         }
+    }
+    
+    // Helper method to truncate text that's too long for a cell
+    function TruncateText($text, $width, $fontname, $fontstyle, $fontsize) {
+        $this->SetFont($fontname, $fontstyle, $fontsize);
+        
+        // If text width fits, return as is
+        if ($this->GetStringWidth($text) <= $width - 4) { // 4 = cell padding
+            return $text;
+        }
+        
+        // If too long, truncate with ellipsis
+        $char_width = $this->GetStringWidth('a'); // Use 'a' as a standard character width
+        $chars_that_fit = floor(($width - 8) / $char_width); // 8 = padding + ellipsis width
+        
+        if ($chars_that_fit < 10) {
+            $chars_that_fit = 10; // Minimum characters to show
+        }
+        
+        return substr($text, 0, $chars_that_fit) . '...';
     }
 }
 
@@ -386,6 +519,7 @@ FROM students st
 JOIN batch_years by2 ON st.batch_id = by2.id
 JOIN subject_assignments sa ON sa.year = ? AND sa.section = ? AND sa.academic_year_id = ?
 " . ($semester > 0 ? "AND sa.semester = ?" : "") . "
+JOIN subjects s ON sa.subject_id = s.id AND s.department_id = ?
 LEFT JOIN feedback f ON f.assignment_id = sa.id AND f.student_id = st.id
 WHERE st.section = ?
 AND st.department_id = ?
@@ -395,9 +529,9 @@ ORDER BY st.roll_number";
 
 $student_stmt = mysqli_prepare($conn, $student_query);
 if ($semester > 0) {
-    mysqli_stmt_bind_param($student_stmt, "isiisii", $year, $section, $academic_year, $semester, $section, $department_id, $year);
+    mysqli_stmt_bind_param($student_stmt, "isiiisii", $year, $section, $academic_year, $semester, $department_id, $section, $department_id, $year);
 } else {
-    mysqli_stmt_bind_param($student_stmt, "isiiisi", $year, $section, $academic_year, $section, $department_id, $year);
+    mysqli_stmt_bind_param($student_stmt, "isiisii", $year, $section, $academic_year, $department_id, $section, $department_id, $year);
 }
 mysqli_stmt_execute($student_stmt);
 $student_result = mysqli_stmt_get_result($student_stmt);
@@ -482,7 +616,25 @@ $comments_query = "SELECT
     s.name as subject_name,
     f.name as faculty_name,
     fb.comments,
-    fb.submitted_at
+    fb.submitted_at,
+    CASE 
+        WHEN fb.comments LIKE '%excellent%' OR fb.comments LIKE '%outstanding%' OR fb.comments LIKE '%fantastic%' OR fb.comments LIKE '%amazing%' OR fb.comments LIKE '%exceptional%' THEN 5
+        WHEN fb.comments LIKE '%good%' OR fb.comments LIKE '%great%' OR fb.comments LIKE '%well%' OR fb.comments LIKE '%positive%' OR fb.comments LIKE '%helpful%' THEN 4
+        WHEN fb.comments LIKE '%average%' OR fb.comments LIKE '%okay%' OR fb.comments LIKE '%ok%' OR fb.comments LIKE '%satisfactory%' THEN 3
+        WHEN fb.comments LIKE '%poor%' OR fb.comments LIKE '%lacking%' OR fb.comments LIKE '%needs improvement%' OR fb.comments LIKE '%inadequate%' THEN 2
+        WHEN fb.comments LIKE '%terrible%' OR fb.comments LIKE '%awful%' OR fb.comments LIKE '%worst%' OR fb.comments LIKE '%horrible%' OR fb.comments LIKE '%bad%' THEN 1
+        ELSE 3
+    END as sentiment_score,
+    CASE
+        WHEN fb.comments LIKE '%important%' OR fb.comments LIKE '%critical%' OR fb.comments LIKE '%urgent%' OR fb.comments LIKE '%must%' OR fb.comments LIKE '%need to%' THEN 3
+        WHEN fb.comments LIKE '%suggest%' OR fb.comments LIKE '%recommend%' OR fb.comments LIKE '%consider%' OR fb.comments LIKE '%should%' THEN 2
+        ELSE 1
+    END as importance_score,
+    CASE
+        WHEN LENGTH(fb.comments) > 200 THEN 3
+        WHEN LENGTH(fb.comments) > 100 THEN 2
+        ELSE 1
+    END as length_score
 FROM feedback fb
 JOIN subject_assignments sa ON fb.assignment_id = sa.id
 JOIN subjects s ON sa.subject_id = s.id
@@ -494,8 +646,10 @@ AND sa.section = ?
 AND s.department_id = ?
 AND fb.comments IS NOT NULL 
 AND fb.comments != ''
-ORDER BY fb.submitted_at DESC
-LIMIT 10";
+ORDER BY 
+    (sentiment_score + importance_score + length_score) DESC, 
+    fb.submitted_at DESC
+LIMIT 20";
 
 $comments_stmt = mysqli_prepare($conn, $comments_query);
 if ($semester > 0) {
@@ -526,7 +680,7 @@ while ($comment = mysqli_fetch_assoc($comments_result)) {
 ob_clean();
 
 // Output PDF
-$filename = "section_{$section}_" . ($semester > 0 ? "semester_{$semester}" : "all_semesters") . "_report.pdf";
+$filename = "section_{$section}_" . ($semester > 0 ? "semester_{$semester}" : "all_semesters") . "_year_" . str_replace('/', '-', $academic_year_data['year_range']) . "_batch_" . $batch_name . "_report.pdf";
 $pdf->Output($filename, 'D');
 
 // End output buffering

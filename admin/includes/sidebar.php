@@ -184,8 +184,16 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
             <i class="fas fa-book"></i> Subjects
         </a>
         
+        <a href="manage_exam_timetable.php" class="nav-link">
+            <i class="fas fa-calendar-alt"></i> Exam Timetable
+        </a>
+
+        <a href="view_exam_feedbacks.php" class="nav-link">
+            <i class="fas fa-clipboard-check"></i> Exam Feedbacks
+        </a>
+        
         <a href="manage_feedback.php" class="nav-link">
-            <i class="fas fa-comments"></i> Feedback
+            <i class="fas fa-comments"></i> Course Feedback
         </a>
         
         <a href="reports.php" class="nav-link">

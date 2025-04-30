@@ -8,7 +8,9 @@ $success = '';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     try {
+        error_log("Before: " . $_POST['email']);
         $email = filter_var($_POST['email'], FILTER_SANITIZE_EMAIL);
+        error_log("After: " . $email);
         $password = $_POST['password'];
         $remember_me = isset($_POST['remember_me']) ? true : false;
 
