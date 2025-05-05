@@ -116,6 +116,7 @@ CREATE TABLE students (
     section VARCHAR(1) COLLATE utf8mb4_unicode_ci NOT NULL,
     address TEXT,
     phone VARCHAR(15),
+    profile_image_path VARCHAR(255) DEFAULT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     last_login TIMESTAMP NULL,
     password_changed_at TIMESTAMP NULL,

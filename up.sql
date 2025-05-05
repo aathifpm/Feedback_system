@@ -121,3 +121,135 @@ INSERT INTO exam_timetable (academic_year_id, semester, exam_date, exam_session,
 CREATE INDEX idx_exam_timetable_academic_year ON exam_timetable(academic_year_id);
 CREATE INDEX idx_exam_timetable_semester ON exam_timetable(semester);
 CREATE INDEX idx_exam_timetable_date ON exam_timetable(exam_date);
+
+-- Create a separate student_recruitment_profiles table instead of altering students table
+CREATE TABLE student_recruitment_profiles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    linkedin_url VARCHAR(255) NULL,
+    github_url VARCHAR(255) NULL,
+    portfolio_url VARCHAR(255) NULL,
+    resume_path VARCHAR(255) NULL,
+    skills TEXT NULL,
+    achievements TEXT NULL,
+    career_objective TEXT NULL,
+    certifications TEXT NULL,
+    internship_experience TEXT NULL,
+    placement_status ENUM('not_started', 'in_progress', 'placed', 'not_interested') DEFAULT 'not_started',
+    company_placed VARCHAR(100) NULL,
+    placement_date DATE NULL,
+    placement_package VARCHAR(50) NULL,
+    placement_role VARCHAR(100) NULL,
+    public_profile BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_student_profile (student_id),
+    headline VARCHAR(255) NULL,
+    about TEXT NULL,
+    location VARCHAR(255) NULL,
+    willing_to_relocate BOOLEAN DEFAULT FALSE,
+    looking_for ENUM('Internship', 'Full-time', 'Part-time', 'Contract', 'Not actively looking') DEFAULT 'Full-time',
+    profile_views INT DEFAULT 0,
+    last_updated TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    internship_certificates_path VARCHAR(255) NULL COMMENT 'Path to combined PDF of internship certificates',
+    course_certificates_path VARCHAR(255) NULL COMMENT 'Path to combined PDF of course completion certificates',
+    achievement_certificates_path VARCHAR(255) NULL COMMENT 'Path to combined PDF of hackathons, events, and other achievement certificates'
+);
+
+-- Create index for faster recruitment-based queries
+CREATE INDEX idx_recruitment_placement ON student_recruitment_profiles(placement_status);
+CREATE INDEX idx_recruitment_public ON student_recruitment_profiles(public_profile);
+
+-- Add index for faster certificate path lookups
+CREATE INDEX idx_certificate_paths ON student_recruitment_profiles(internship_certificates_path, course_certificates_path, achievement_certificates_path);
+
+-- Create education history table for students
+CREATE TABLE student_education (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    institution_name VARCHAR(255) NOT NULL,
+    degree VARCHAR(255) NOT NULL,
+    field_of_study VARCHAR(255) NULL,
+    start_year YEAR NOT NULL,
+    end_year YEAR NULL,
+    is_current BOOLEAN DEFAULT FALSE,
+    grade VARCHAR(50) NULL,
+    activities TEXT NULL,
+    description TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    INDEX idx_student_education (student_id)
+);
+
+-- Create work experience table for students
+CREATE TABLE student_experience (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    employment_type ENUM('Full-time', 'Part-time', 'Internship', 'Freelance', 'Contract', 'Volunteer') NULL,
+    company_name VARCHAR(255) NOT NULL,
+    location VARCHAR(255) NULL,
+    is_current BOOLEAN DEFAULT FALSE,
+    start_date DATE NOT NULL,
+    end_date DATE NULL,
+    description TEXT NULL,
+    skills_used TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    INDEX idx_student_experience (student_id)
+);
+
+-- Create table for projects
+CREATE TABLE student_projects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    title VARCHAR(255) NOT NULL,
+    start_date DATE NULL,
+    end_date DATE NULL,
+    is_current BOOLEAN DEFAULT FALSE,
+    description TEXT NULL,
+    project_url VARCHAR(255) NULL,
+    github_url VARCHAR(255) NULL,
+    technologies_used TEXT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    INDEX idx_student_projects (student_id)
+);
+
+-- Create table for skills endorsements
+CREATE TABLE student_skills (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    skill_name VARCHAR(100) NOT NULL,
+    proficiency ENUM('Beginner', 'Intermediate', 'Advanced', 'Expert') NULL,
+    is_top_skill BOOLEAN DEFAULT FALSE,
+    endorsement_count INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_student_skill (student_id, skill_name),
+    INDEX idx_student_skills (student_id)
+);
+
+-- Create table for certificate listings
+CREATE TABLE student_certificates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    student_id INT NOT NULL,
+    name VARCHAR(255) NOT NULL COMMENT 'Name of the certification',
+    issuing_organization VARCHAR(255) NOT NULL,
+    issue_date DATE NOT NULL,
+    expiry_date DATE NULL,
+    credential_id VARCHAR(100) NULL,
+    credential_url VARCHAR(255) NULL,
+    category ENUM('internship', 'course', 'achievement') NOT NULL,
+    description TEXT NULL,
+    is_verified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NULL ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (student_id) REFERENCES students(id) ON DELETE CASCADE,
+    INDEX idx_student_certificates (student_id, category)
+);
