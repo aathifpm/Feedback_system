@@ -3,3 +3,5 @@ vendor/
 db_connection.php
 cache
 db_connection.php
+uploads/
+composer.lock

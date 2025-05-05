@@ -250,6 +250,7 @@ $is_logged_in = isset($_SESSION['user_id']);
             visibility: hidden;
             transform: translateY(10px);
             transition: all 0.3s ease;
+            z-index: 1001;
         }
 
         .user-profile:hover .dropdown-menu {
@@ -287,11 +288,12 @@ $is_logged_in = isset($_SESSION['user_id']);
             background: none;
             border: none;
             color: var(--text-color);
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             cursor: pointer;
-            padding: 0.5rem;
+            padding: 0.4rem;
             border-radius: 8px;
             transition: all 0.3s ease;
+            margin-left: 0.5rem;
         }
 
         .mobile-menu-btn:hover {
@@ -322,16 +324,19 @@ $is_logged_in = isset($_SESSION['user_id']);
             :root {
                 --header-height: 80px;
             }
+            .header {
+                padding: 0 1.5rem;
+            }
             .header-left {
-                max-width: 55%;
+                max-width: 65%;
                 gap: 1rem;
             }
             .college-info h1 {
                 font-size: 1.2rem;
                 letter-spacing: 0.4px;
             }
-        .college-info p {
-            font-size: 0.8rem;
+            .college-info p {
+                font-size: 0.8rem;
             }
             .logo-container {
                 width: 50px;
@@ -349,7 +354,7 @@ $is_logged_in = isset($_SESSION['user_id']);
                 display: none;
             }
             .header-right {
-                gap: 1rem;
+                gap: 0.5rem;
             }
             .user-info1 {
                 display: none;
@@ -364,14 +369,16 @@ $is_logged_in = isset($_SESSION['user_id']);
                 font-size: 0.9rem;
             }
             .mobile-nav {
-                display: block;
-                transform: translateY(-100%);
+                display: none;
             }
         }
 
         @media (max-width: 768px) {
+            .header {
+                padding: 0 1.2rem;
+            }
             .header-left {
-                max-width: 70%;
+                max-width: 75%;
                 gap: 0.8rem;
             }
             .college-info h1 {
@@ -393,8 +400,11 @@ $is_logged_in = isset($_SESSION['user_id']);
         }
 
         @media (max-width: 480px) {
+            .header {
+                padding: 0 1rem;
+            }
             .header-left {
-                max-width: 75%;
+                max-width: 80%;
                 gap: 0.6rem;
             }
             .college-info h1 {
@@ -414,6 +424,14 @@ $is_logged_in = isset($_SESSION['user_id']);
             }
             .college-info p:last-child {
                 display: none;
+            }
+            .mobile-menu-btn {
+                font-size: 1.1rem;
+                padding: 0.3rem;
+            }
+            .user-avatar {
+                width: 30px;
+                height: 30px;
             }
         }
 
@@ -526,6 +544,11 @@ $is_logged_in = isset($_SESSION['user_id']);
                     <?php if (in_array($_SESSION['role'], ['admin', 'hod'])): ?>
                         <li><a href="survey_analytics.php" class="nav-link"><i class="fas fa-chart-bar"></i> Analytics</a></li>
                     <?php endif; ?>
+                    <li class="nav-item">
+                        <a class="nav-link" href="recruiter_view.php">
+                            <i class="fas fa-user-tie"></i> Recruitment Database
+                        </a>
+                    </li>
                 </ul>
             </nav>
 
@@ -580,18 +603,8 @@ $is_logged_in = isset($_SESSION['user_id']);
                 </li>
             <?php endif; ?>
             <li class="mobile-nav-item">
-                <a href="profile.php" class="mobile-nav-link">
-                    <i class="fas fa-user-circle"></i> Profile
-                </a>
-            </li>
-            <li class="mobile-nav-item">
-                <a href="change_password.php" class="mobile-nav-link">
-                    <i class="fas fa-key"></i> Change Password
-                </a>
-            </li>
-            <li class="mobile-nav-item">
-                <a href="logout.php" class="mobile-nav-link">
-                    <i class="fas fa-sign-out-alt"></i> Logout
+                <a href="recruiter_view.php" class="mobile-nav-link">
+                    <i class="fas fa-user-tie"></i> Recruitment Database
                 </a>
             </li>
         </ul>
@@ -604,9 +617,11 @@ $is_logged_in = isset($_SESSION['user_id']);
         // Mobile menu functionality
         const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
         const mobileNav = document.querySelector('.mobile-nav');
+        const userProfile = document.querySelector('.user-profile');
         let isMenuOpen = false;
 
-        mobileMenuBtn.addEventListener('click', () => {
+        mobileMenuBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             isMenuOpen = !isMenuOpen;
             mobileNav.classList.toggle('active', isMenuOpen);
             mobileMenuBtn.innerHTML = isMenuOpen ? 
@@ -620,6 +635,13 @@ $is_logged_in = isset($_SESSION['user_id']);
                 isMenuOpen = false;
                 mobileNav.classList.remove('active');
                 mobileMenuBtn.innerHTML = '<i class="fas fa-bars"></i>';
+            }
+        });
+        
+        // Close dropdown if mobile menu is opened
+        mobileMenuBtn.addEventListener('click', () => {
+            if (isMenuOpen) {
+                userProfile.blur();
             }
         });
     </script>
