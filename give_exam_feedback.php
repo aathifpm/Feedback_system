@@ -365,15 +365,13 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
             min-height: 100vh;
             width: 100%;
             overflow-x: hidden;
-            position: relative;
         }
 
         .container {
             max-width: 1200px;
-            width: 100%;
+            width: min(95%, 1200px);
             margin: 1rem auto;
             padding: clamp(0.5rem, 2vw, 2rem);
-            overflow-x: hidden;
         }
 
         .feedback-section {
@@ -385,7 +383,6 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
                        -9px -9px 16px rgba(255,255,255, 0.5);
             width: 100%;
             transition: all 0.3s ease;
-            overflow: hidden;
         }
 
         .purpose-box {
@@ -396,7 +393,6 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
             box-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                        inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
             width: 100%;
-            overflow: hidden;
         }
 
         .purpose-box h3 {
@@ -438,57 +434,55 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
         .rating-table {
             width: 100%;
             border-collapse: separate;
-            border-spacing: 0 clamp(0.8rem, 1.5vw, 1.2rem);
+            border-spacing: 0 clamp(0.5rem, 1vw, 1rem);
             display: block;
             overflow-x: auto;
             -webkit-overflow-scrolling: touch;
-            max-width: 100%;
         }
 
         .rating-table th, 
         .rating-table td {
-            padding: clamp(1rem, 1.5vw, 1.5rem);
+            padding: clamp(0.6rem, 1.5vw, 1.2rem);
             background: #e0e5ec;
-            border-radius: 15px;
-            box-shadow: 9px 9px 16px rgb(163,177,198,0.6), 
-                       -9px -9px 16px rgba(255,255,255, 0.5);
+            border-radius: clamp(8px, 1.5vw, 15px);
+            box-shadow: 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
+                       -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
         }
 
         .rating-table th:first-child,
         .rating-table td:first-child {
-            width: 40px;
+            width: 60px;
             min-width: 40px;
-            text-align: center;
         }
 
         .rating-table th:nth-child(2),
         .rating-table td:nth-child(2) {
             min-width: 180px;
             width: 60%;
-            padding-right: 2rem;
         }
 
         .rating-table th:last-child,
         .rating-table td:last-child {
-            width: 100%;
-            min-width: auto;
-            max-width: none;
+            width: clamp(200px, 60%, 280px);
+            min-width: 200px;
         }
 
         .rating-options {
             display: flex;
-            justify-content: flex-start;
+            justify-content: space-between;
             align-items: center;
-            gap: 12px;
-            padding: 0;
+            gap: clamp(5px, 1vw, 10px);
+            padding: clamp(3px, 1vw, 5px);
+            background: #e0e5ec;
+            border-radius: clamp(6px, 1.5vw, 10px);
             width: 100%;
-            background: transparent;
-            border-radius: 0;
-            box-shadow: none;
+            max-width: clamp(200px, 70%, 300px);
+            margin: 0 auto;
         }
 
         .rating-option {
-            flex: 0 0 auto;
+            flex: 1;
+            text-align: center;
         }
 
         .rating-input {
@@ -505,39 +499,33 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
             display: flex;
             justify-content: center;
             align-items: center;
-            width: 40px;
-            height: 40px;
+            width: clamp(30px, 7vw, 40px);
+            height: clamp(30px, 7vw, 40px);
             border-radius: 50%;
             background: #e0e5ec;
-            box-shadow: 6px 6px 12px rgb(163,177,198,0.6), 
-                       -6px -6px 12px rgba(255,255,255, 0.5);
+            box-shadow: 3px 3px 6px #b8b9be, -3px -3px 6px #fff;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.3s ease;
             font-weight: 500;
             color: #2c3e50;
-            font-size: 0.95rem;
-            border: none;
-            position: relative;
+            margin: 0 auto;
+            font-size: clamp(0.7rem, 1.5vw, 1rem);
         }
 
         .rating-input:checked + .rating-label {
-            background: #e0e5ec;
-            color: #2c3e50;
-            box-shadow: inset 3px 3px 6px rgba(163,177,198,0.6),
-                       inset -3px -3px 6px rgba(255,255,255, 0.5);
-            transform: scale(0.95);
-        }
-
-        .rating-label:hover {
-            transform: scale(1.05);
-            box-shadow: 8px 8px 16px rgb(163,177,198,0.6), 
-                       -8px -8px 16px rgba(255,255,255, 0.5);
+            background: #3498db;
+            color: white;
+            box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.2),
+                       inset -3px -3px 6px rgba(255, 255, 255, 0.1);
         }
 
         .rating-input:focus + .rating-label {
-            outline: none;
-            box-shadow: 8px 8px 16px rgb(163,177,198,0.6), 
-                       -8px -8px 16px rgba(255,255,255, 0.5);
+            outline: 2px solid #3498db;
+            outline-offset: 2px;
+        }
+
+        .rating-label:hover {
+            background: #edf2f7;
         }
 
         .section-title {
@@ -603,23 +591,15 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
             .container {
                 width: 100%;
                 padding: 0.8rem;
-                max-width: 100vw;
-                box-sizing: border-box;
             }
 
             .feedback-section {
                 padding: 0.8rem;
-                max-width: 100%;
             }
 
             .rating-options {
-                gap: 10px;
-            }
-
-            .rating-label {
-                width: 38px;
-                height: 38px;
-                font-size: 0.9rem;
+                padding: 0.3rem;
+                gap: 0.3rem;
             }
 
             .declaration-checkbox {
@@ -632,48 +612,47 @@ while ($row = mysqli_fetch_assoc($statements_result)) {
                 margin-left: 0;
             }
             
+            .rating-table th, 
             .rating-table td {
-                padding: 0.8rem;
+                padding: 0.7rem;
             }
         }
 
         @media (max-width: 480px) {
-            html, body {
-                max-width: 100vw;
-                overflow-x: hidden;
-            }
-            
             .container {
                 padding: 0.5rem;
-                width: 100%;
-                max-width: 100%;
-                overflow-x: hidden;
             }
             
             .feedback-section {
                 padding: 0.7rem;
                 border-radius: 10px;
-                max-width: 100%;
             }
             
             .purpose-box {
                 padding: 0.8rem;
                 border-radius: 10px;
-                max-width: 100%;
             }
             
+            .rating-table th:last-child,
+            .rating-table td:last-child {
+                width: 180px;
+                min-width: 180px;
+            }
+
             .rating-options {
-                gap: 8px;
+                max-width: 180px;
+                padding: 0.2rem;
             }
 
             .rating-label {
-                width: 35px;
-                height: 35px;
-                font-size: 0.85rem;
+                width: 28px;
+                height: 28px;
+                font-size: 0.7rem;
             }
 
+            .rating-table th, 
             .rating-table td {
-                padding: 0.8rem;
+                padding: 0.6rem;
             }
             
             .btn-submit {

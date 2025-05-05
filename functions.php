@@ -138,29 +138,31 @@ if (!function_exists('log_user_action')) {
         // Check if the user_logs table exists
         $table_check = mysqli_query($conn, "SHOW TABLES LIKE 'user_logs'");
         if(mysqli_num_rows($table_check) == 0) {
-            // Table doesn't exist, create it without foreign key constraint
+            // Table doesn't exist, create it with the correct schema
             $create_table = "CREATE TABLE IF NOT EXISTS user_logs (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 user_id INT NOT NULL,
                 role VARCHAR(20) NOT NULL,
                 action VARCHAR(255) NOT NULL,
-                timestamp DATETIME NOT NULL
+                details JSON,
+                status ENUM('success', 'failure') NOT NULL DEFAULT 'success',
+                ip_address VARCHAR(45),
+                user_agent VARCHAR(255),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )";
             mysqli_query($conn, $create_table);
-        } else {
-            // Table exists, remove the foreign key constraint if it exists
-            $alter_table = "ALTER TABLE user_logs DROP FOREIGN KEY IF EXISTS user_logs_ibfk_1";
-            mysqli_query($conn, $alter_table);
         }
         
         $user_id = mysqli_real_escape_string($conn, $user_id);
         $action = mysqli_real_escape_string($conn, $action);
         $role = mysqli_real_escape_string($conn, $role);
+        $ip_address = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+        $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '';
         
-        $query = "INSERT INTO user_logs (user_id, role, action, timestamp) VALUES (?, ?, ?, NOW())";
+        $query = "INSERT INTO user_logs (user_id, role, action, ip_address, user_agent) VALUES (?, ?, ?, ?, ?)";
         $stmt = mysqli_prepare($conn, $query);
         if ($stmt) {
-            mysqli_stmt_bind_param($stmt, "iss", $user_id, $role, $action);
+            mysqli_stmt_bind_param($stmt, "issss", $user_id, $role, $action, $ip_address, $user_agent);
             $result = mysqli_stmt_execute($stmt);
             mysqli_stmt_close($stmt);
             return $result;
