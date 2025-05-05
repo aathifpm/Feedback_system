@@ -117,6 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             display: flex;
             flex-direction: column;
             align-items: center;
+            padding: 2rem 1rem;
         }
 
         .header {
@@ -126,18 +127,29 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             box-shadow: var(--shadow);
             text-align: center;
             margin-bottom: 2rem;
+            border-radius: 20px;
+            max-width: 800px;
+            transition: all 0.3s ease;
+        }
+
+        .header:hover {
+            transform: translateY(-5px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                      -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
         .logo {
             max-width: 120px;
             height: auto;
             margin-bottom: 1rem;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
         }
 
         .college-info h1 {
             font-size: 1.8rem;
             color: var(--text-color);
             margin-bottom: 0.5rem;
+            font-weight: 600;
         }
 
         .college-info p {
@@ -147,36 +159,58 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         .login-container {
             background: var(--bg-color);
-            padding: 2rem;
+            padding: 2.5rem;
             border-radius: 20px;
             box-shadow: var(--shadow);
             width: 90%;
-            max-width: 400px;
+            max-width: 450px;
             margin: 2rem auto;
+            transition: all 0.3s ease;
+        }
+
+        .login-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
         .login-title {
             text-align: center;
             color: var(--text-color);
             margin-bottom: 2rem;
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: 600;
+            position: relative;
+            padding-bottom: 0.5rem;
+        }
+
+        .login-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 3px;
+            background: var(--primary-color);
+            border-radius: 3px;
         }
 
         .form-group {
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.8rem;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.7rem;
             color: var(--text-color);
             font-weight: 500;
+            font-size: 0.95rem;
         }
 
         .input-field {
             width: 100%;
-            padding: 0.8rem 1rem;
+            padding: 1rem 1.2rem;
             border: none;
             border-radius: 50px;
             background: var(--bg-color);
@@ -193,63 +227,76 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         .btn-login {
             width: 100%;
-            padding: 0.8rem;
+            padding: 1rem;
             border: none;
             border-radius: 50px;
-            background: var(--primary-color);
+            background: linear-gradient(145deg, var(--primary-color), #2980b9);
             color: white;
-            font-size: 1rem;
+            font-size: 1.1rem;
             font-weight: 500;
             cursor: pointer;
             box-shadow: var(--shadow);
             transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
         }
 
         .btn-login:hover {
-            transform: translateY(-2px);
+            transform: translateY(-3px);
             box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
                        -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
+        .btn-login:active {
+            transform: scale(0.98);
+        }
+
         .error-message {
-            background: #fee;
+            background: rgba(231, 76, 60, 0.1);
             color: #e74c3c;
             padding: 1rem;
             border-radius: 10px;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
             box-shadow: var(--inner-shadow);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .links {
-            margin-top: 1.5rem;
+            margin-top: 2rem;
             text-align: center;
+            padding: 1.2rem 0;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            gap: 15px;
         }
 
         .links a {
             color: var(--primary-color);
             text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.3s ease;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            padding: 0.6rem 1.2rem;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
         .links a:hover {
+            background: rgba(52, 152, 219, 0.1);
             color: #2980b9;
-        }
-
-        .divider {
-            margin: 0 1rem;
-            color: #666;
-        }
-
-        @media (max-width: 480px) {
-            .login-container {
-                width: 95%;
-                padding: 1.5rem;
-            }
-
-            .college-info h1 {
-                font-size: 1.5rem;
-            }
+            transform: translateY(-2px);
         }
 
         .input-with-icon {
@@ -274,26 +321,37 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             padding-left: 45px;
         }
 
-        .btn-login {
-            background: linear-gradient(145deg, var(--primary-color), #2980b9);
-        }
-
-        .links a i {
-            margin-right: 5px;
+        @media (max-width: 768px) {
+            .login-container {
+                padding: 2rem;
+            }
+            
+            .college-info h1 {
+                font-size: 1.5rem;
+            }
         }
 
         @media (max-width: 480px) {
             .login-container {
+                padding: 2rem 1.5rem;
+                width: 95%;
                 margin: 1rem auto;
             }
-
+            
             .links {
-                display: flex;
                 flex-direction: column;
-                gap: 1rem;
+                gap: 10px;
             }
-
-            .links .divider {
+            
+            .links a {
+                justify-content: center;
+            }
+            
+            .college-info h1 {
+                font-size: 1.5rem;
+            }
+            
+            .divider {
                 display: none;
             }
         }
@@ -351,7 +409,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <a href="forget_password.php">
                     <i class="fas fa-key"></i> Forgot Password?
                 </a>
-                <span class="divider">|</span>
                 <a href="index.php">
                     <i class="fas fa-home"></i> Back to Home
                 </a>
