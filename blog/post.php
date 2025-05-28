@@ -1,4 +1,13 @@
 <?php
+// Start the session
+session_start();
+
+// Add cache control headers to prevent browser caching
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+header("Expires: Mon, 26 Jul 1997 05:00:00 GMT"); // Past date to encourage expiration
+
 // Include functions
 require_once 'functions.php';
 
@@ -10,8 +19,21 @@ if (!isset($_GET['slug'])) {
 
 $slug = $_GET['slug'];
 
-// Get the post by slug
-$post = get_post_by_slug($slug);
+// Initialize session variable for tracking viewed posts if it doesn't exist
+if (!isset($_SESSION['viewed_posts'])) {
+    $_SESSION['viewed_posts'] = array();
+}
+
+// Check if this post has already been viewed in current session
+$is_new_view = !in_array($slug, $_SESSION['viewed_posts']);
+
+// Add the post to viewed posts array if it's a new view
+if ($is_new_view) {
+    $_SESSION['viewed_posts'][] = $slug;
+}
+
+// Get the post by slug with a parameter to control view counting
+$post = get_post_by_slug($slug, $is_new_view);
 
 // If post not found, redirect to home
 if (!$post) {
@@ -22,6 +44,70 @@ if (!$post) {
 // Set page variables
 $page_title = $post['title'];
 $show_header = false;
+
+// Add extra CSS for post page
+$extra_css = "
+    @media (max-width: 767px) {
+        .post-title {
+            font-size: 1.75rem;
+        }
+        .post-meta {
+            font-size: 0.85rem;
+            flex-wrap: wrap;
+        }
+        .post-meta span {
+            margin-bottom: 5px;
+        }
+        .post-content img {
+            max-width: 100%;
+            height: auto;
+        }
+        .social-links .btn {
+            margin-bottom: 8px;
+        }
+        .comment .d-flex {
+            flex-direction: column;
+        }
+        .comment-avatar {
+            margin-bottom: 10px;
+        }
+        .replies {
+            margin-left: 15px !important;
+        }
+    }
+    
+    /* Lazy loading image styles */
+    .post-content img {
+        transition: opacity 0.3s ease, filter 0.5s ease;
+    }
+    
+    .post-content img[loading] {
+        opacity: 0.5;
+        filter: blur(5px);
+    }
+    
+    .post-content img.loaded {
+        opacity: 1;
+        filter: blur(0);
+    }
+    
+    /* Placeholder for images while loading */
+    .post-featured-image {
+        position: relative;
+        background-color: #f8f9fa;
+        min-height: 200px;
+    }
+    
+    .post-featured-image::before {
+        content: 'Loading...';
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: #6c757d;
+        font-size: 0.9rem;
+    }
+";
 
 // Handle comment submission
 $comment_message = '';
@@ -66,18 +152,18 @@ include 'includes/header.php';
             <article class="single-post">
                 <div class="post-header mb-4">
                     <h1 class="post-title"><?php echo $post['title']; ?></h1>
-                    <div class="post-meta">
-                        <span><i class="far fa-user me-1"></i> <?php echo $post['first_name'] . ' ' . $post['last_name']; ?></span>
-                        <span class="mx-2">|</span>
-                        <span><i class="far fa-calendar me-1"></i> <?php echo format_blog_date($post['published_at']); ?></span>
-                        <span class="mx-2">|</span>
-                        <span><i class="far fa-eye me-1"></i> <?php echo $post['view_count']; ?> views</span>
+                    <div class="post-meta d-flex flex-wrap">
+                        <span class="me-2 mb-2"><i class="far fa-user me-1"></i> <?php echo $post['first_name'] . ' ' . $post['last_name']; ?></span>
+                        <span class="mx-2 mb-2 d-none d-sm-inline">|</span>
+                        <span class="me-2 mb-2"><i class="far fa-calendar me-1"></i> <?php echo format_blog_date($post['published_at']); ?></span>
+                        <span class="mx-2 mb-2 d-none d-sm-inline">|</span>
+                        <span class="mb-2"><i class="far fa-eye me-1"></i> <?php echo $post['view_count']; ?> views</span>
                     </div>
                 </div>
                 
                 <?php if ($post['featured_image']): ?>
                 <div class="post-featured-image mb-4">
-                    <img src="<?php echo $post['featured_image']; ?>" class="img-fluid rounded" alt="<?php echo $post['title']; ?>">
+                    <img src="<?php echo $post['featured_image']; ?>" class="img-fluid rounded w-100" alt="<?php echo $post['title']; ?>" loading="lazy">
                 </div>
                 <?php endif; ?>
                 
@@ -88,27 +174,27 @@ include 'includes/header.php';
                 <!-- Social Share -->
                 <div class="post-share mb-5">
                     <h5><i class="fas fa-share-alt me-2"></i> Share this post</h5>
-                    <div class="social-links">
-                        <a href="https://www.facebook.com/sharer/sharer.php?u=<?php echo urlencode('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>" class="btn btn-primary btn-sm me-2" target="_blank"><i class="fab fa-facebook-f"></i> Facebook</a>
-                        <a href="https://twitter.com/intent/tweet?url=<?php echo urlencode('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>&text=<?php echo urlencode($post['title']); ?>" class="btn btn-info btn-sm me-2" target="_blank"><i class="fab fa-twitter"></i> Twitter</a>
-                        <a href="https://www.linkedin.com/shareArticle?mini=true&url=<?php echo urlencode('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>" class="btn btn-secondary btn-sm me-2" target="_blank"><i class="fab fa-linkedin-in"></i> LinkedIn</a>
-                        <a href="mailto:?subject=<?php echo urlencode($post['title']); ?>&body=<?php echo urlencode('Check out this post: https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>" class="btn btn-danger btn-sm" target="_blank"><i class="far fa-envelope"></i> Email</a>
+                    <div class="social-links d-flex flex-wrap">
+                        <a href="https://www.facebook.com/sharer/sharer.php?u=<?php echo urlencode('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>" class="btn btn-primary btn-sm me-2 mb-2" target="_blank"><i class="fab fa-facebook-f"></i> Facebook</a>
+                        <a href="https://twitter.com/intent/tweet?url=<?php echo urlencode('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>&text=<?php echo urlencode($post['title']); ?>" class="btn btn-info btn-sm me-2 mb-2" target="_blank"><i class="fab fa-twitter"></i> Twitter</a>
+                        <a href="https://www.linkedin.com/shareArticle?mini=true&url=<?php echo urlencode('https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>" class="btn btn-secondary btn-sm me-2 mb-2" target="_blank"><i class="fab fa-linkedin-in"></i> LinkedIn</a>
+                        <a href="mailto:?subject=<?php echo urlencode($post['title']); ?>&body=<?php echo urlencode('Check out this post: https://' . $_SERVER['HTTP_HOST'] . $_SERVER['REQUEST_URI']); ?>" class="btn btn-danger btn-sm mb-2" target="_blank"><i class="far fa-envelope"></i> Email</a>
                     </div>
                 </div>
                 
                 <!-- Author Bio -->
-                <div class="author-bio bg-light p-4 rounded mb-5">
-                    <div class="row">
-                        <div class="col-md-2 text-center">
+                <div class="author-bio bg-light p-3 p-md-4 rounded mb-5">
+                    <div class="row align-items-center">
+                        <div class="col-sm-2 col-12 text-center mb-3 mb-sm-0">
                             <?php if ($post['profile_image']): ?>
-                                <img src="<?php echo $post['profile_image']; ?>" class="img-fluid rounded-circle" alt="<?php echo $post['first_name'] . ' ' . $post['last_name']; ?>" style="width: 80px; height: 80px; object-fit: cover;">
+                                <img src="<?php echo $post['profile_image']; ?>" class="img-fluid rounded-circle mx-auto" alt="<?php echo $post['first_name'] . ' ' . $post['last_name']; ?>" style="width: 80px; height: 80px; object-fit: cover;">
                             <?php else: ?>
-                                <div class="author-avatar rounded-circle bg-primary d-flex align-items-center justify-content-center text-white" style="width: 80px; height: 80px; font-size: 2.5rem;">
+                                <div class="author-avatar rounded-circle bg-primary d-flex align-items-center justify-content-center text-white mx-auto" style="width: 80px; height: 80px; font-size: 2.5rem;">
                                     <?php echo strtoupper(substr($post['first_name'], 0, 1)); ?>
                                 </div>
                             <?php endif; ?>
                         </div>
-                        <div class="col-md-10">
+                        <div class="col-sm-10 col-12">
                             <h5 class="mb-2"><?php echo $post['first_name'] . ' ' . $post['last_name']; ?></h5>
                             <p class="mb-2"><strong>Author</strong></p>
                             <p class="mb-0">Content author for Panimalar Engineering College Blog</p>
@@ -135,9 +221,9 @@ include 'includes/header.php';
                         <div class="comments-list mb-5">
                             <?php foreach ($comments as $comment): ?>
                                 <div class="comment bg-light p-3 rounded mb-3" id="comment-<?php echo $comment['id']; ?>">
-                                    <div class="d-flex mb-2">
-                                        <div class="comment-avatar me-3 text-center">
-                                            <div class="avatar-placeholder rounded-circle bg-primary d-flex align-items-center justify-content-center text-white" style="width: 50px; height: 50px;">
+                                    <div class="d-md-flex">
+                                        <div class="comment-avatar me-md-3 mb-3 mb-md-0 text-center text-md-start">
+                                            <div class="avatar-placeholder rounded-circle bg-primary d-flex align-items-center justify-content-center text-white mx-auto mx-md-0" style="width: 50px; height: 50px;">
                                                 <?php echo strtoupper(substr($comment['author_name'], 0, 1)); ?>
                                             </div>
                                         </div>
@@ -155,12 +241,12 @@ include 'includes/header.php';
                                     
                                     <!-- Replies -->
                                     <?php if (!empty($comment['replies'])): ?>
-                                        <div class="replies ms-5 mt-3">
+                                        <div class="replies ms-md-5 ms-3 mt-3">
                                             <?php foreach ($comment['replies'] as $reply): ?>
                                                 <div class="comment bg-white p-3 rounded mb-2" id="comment-<?php echo $reply['id']; ?>">
-                                                    <div class="d-flex">
-                                                        <div class="comment-avatar me-3 text-center">
-                                                            <div class="avatar-placeholder rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white" style="width: 40px; height: 40px;">
+                                                    <div class="d-md-flex">
+                                                        <div class="comment-avatar me-md-3 mb-3 mb-md-0 text-center text-md-start">
+                                                            <div class="avatar-placeholder rounded-circle bg-secondary d-flex align-items-center justify-content-center text-white mx-auto mx-md-0" style="width: 40px; height: 40px;">
                                                                 <?php echo strtoupper(substr($reply['author_name'], 0, 1)); ?>
                                                             </div>
                                                         </div>
@@ -180,7 +266,7 @@ include 'includes/header.php';
                                     <?php endif; ?>
                                     
                                     <!-- Reply Form (Hidden by default) -->
-                                    <div class="reply-form mt-3 ms-5 d-none" id="reply-form-<?php echo $comment['id']; ?>">
+                                    <div class="reply-form mt-3 ms-md-5 ms-3 d-none" id="reply-form-<?php echo $comment['id']; ?>">
                                         <form method="post" action="#comment-<?php echo $comment['id']; ?>">
                                             <input type="hidden" name="parent_id" value="<?php echo $comment['id']; ?>">
                                             <div class="mb-3">
@@ -195,8 +281,10 @@ include 'includes/header.php';
                                                 <label for="reply-content-<?php echo $comment['id']; ?>" class="form-label">Reply *</label>
                                                 <textarea class="form-control" id="reply-content-<?php echo $comment['id']; ?>" name="content" rows="3" required></textarea>
                                             </div>
-                                            <button type="submit" name="comment_submit" class="btn btn-primary">Submit Reply</button>
-                                            <button type="button" class="btn btn-light cancel-reply">Cancel</button>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <button type="submit" name="comment_submit" class="btn btn-primary">Submit Reply</button>
+                                                <button type="button" class="btn btn-light cancel-reply">Cancel</button>
+                                            </div>
                                         </form>
                                     </div>
                                 </div>
@@ -230,7 +318,7 @@ include 'includes/header.php';
         </div>
         
         <!-- Sidebar -->
-        <div class="col-lg-4">
+        <div class="col-lg-4 mt-4 mt-lg-0">
             <div class="sidebar-section">
                 <h4 class="sidebar-title">Recent Posts</h4>
                 <ul class="list-unstyled">
@@ -241,12 +329,14 @@ include 'includes/header.php';
                         <li class="mb-3 pb-3 border-bottom">
                             <a href="post.php?slug=<?php echo $recent_post['slug']; ?>" class="d-flex text-decoration-none">
                                 <?php if ($recent_post['featured_image']): ?>
-                                    <img src="<?php echo $recent_post['featured_image']; ?>" class="me-3" alt="<?php echo $recent_post['title']; ?>" style="width: 70px; height: 50px; object-fit: cover;">
+                                    <img src="<?php echo $recent_post['featured_image']; ?>" class="me-3 rounded" alt="<?php echo $recent_post['title']; ?>" style="width: 70px; height: 50px; object-fit: cover;" loading="lazy">
                                 <?php else: ?>
-                                    <div class="me-3 bg-light" style="width: 70px; height: 50px;"></div>
+                                    <div class="me-3 bg-light rounded d-flex align-items-center justify-content-center" style="width: 70px; height: 50px; color: #6c757d;">
+                                        <i class="fas fa-newspaper" style="font-size: 1.5rem;"></i>
+                                    </div>
                                 <?php endif; ?>
                                 <div>
-                                    <h6 class="mb-1"><?php echo $recent_post['title']; ?></h6>
+                                    <h6 class="mb-1 text-truncate" style="max-width: 200px;"><?php echo $recent_post['title']; ?></h6>
                                     <span class="text-muted small"><?php echo format_blog_date($recent_post['published_at']); ?></span>
                                 </div>
                             </a>
@@ -272,18 +362,198 @@ include 'includes/header.php';
 
 <?php
 $extra_js = "
-    $(document).ready(function() {
-        // Toggle reply form
-        $('.reply-btn').click(function() {
-            var parentId = $(this).data('parent-id');
-            $('#reply-form-' + parentId).removeClass('d-none');
+    // Check if jQuery is loaded, if not, use vanilla JS
+    if (typeof jQuery === 'undefined') {
+        // Vanilla JS version
+        document.addEventListener('DOMContentLoaded', function() {
+            // Reply button click handler
+            document.querySelectorAll('.reply-btn').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    var parentId = this.getAttribute('data-parent-id');
+                    document.getElementById('reply-form-' + parentId).classList.remove('d-none');
+                });
+            });
+            
+            // Cancel reply button click handler
+            document.querySelectorAll('.cancel-reply').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    this.closest('.reply-form').classList.add('d-none');
+                });
+            });
+            
+            // Apply lazy loading to all content images
+            document.querySelectorAll('.post-content img').forEach(function(img) {
+                if (!img.hasAttribute('loading')) {
+                    img.setAttribute('loading', 'lazy');
+                }
+                
+                // Add blur-up loading effect
+                img.style.transition = 'filter 0.5s';
+                img.style.filter = 'blur(5px)';
+                img.onload = function() {
+                    this.style.filter = 'blur(0)';
+                };
+                
+                // Handle broken images
+                img.onerror = function() {
+                    this.style.display = 'none';
+                };
+            });
+            
+            // Apply lazy loading to sidebar images
+            document.querySelectorAll('.sidebar-section img').forEach(function(img) {
+                img.setAttribute('loading', 'lazy');
+            });
+            
+            // Make videos responsive
+            document.querySelectorAll('.post-content iframe').forEach(function(iframe) {
+                if (!iframe.parentElement.classList.contains('video-container')) {
+                    var wrapper = document.createElement('div');
+                    wrapper.className = 'video-container';
+                    iframe.parentNode.insertBefore(wrapper, iframe);
+                    wrapper.appendChild(iframe);
+                }
+            });
+            
+            // Make tables mobile-friendly
+            function makeTablesResponsive() {
+                document.querySelectorAll('.post-content table').forEach(function(table) {
+                    // Add mobile-cards class for the card-based layout
+                    if (window.innerWidth <= 767.98) {
+                        table.classList.add('mobile-cards');
+                        
+                        // Process table structure for mobile
+                        var headers = Array.from(table.querySelectorAll('th')).map(function(th) {
+                            return th.textContent.trim();
+                        });
+                        
+                        // If no headers found, try using first row as header
+                        if (headers.length === 0) {
+                            var firstRow = table.querySelector('tr');
+                            if (firstRow) {
+                                headers = Array.from(firstRow.querySelectorAll('td')).map(function(td) {
+                                    return td.textContent.trim();
+                                });
+                                // Hide the first row since we're using it as headers
+                                firstRow.style.display = 'none';
+                            }
+                        }
+                        
+                        if (headers.length > 0) {
+                            // Apply data-label to all cells
+                            table.querySelectorAll('tbody tr').forEach(function(row) {
+                                row.querySelectorAll('td').forEach(function(cell, index) {
+                                    if (headers[index]) {
+                                        cell.setAttribute('data-label', headers[index]);
+                                    }
+                                });
+                            });
+                        }
+                    } else {
+                        table.classList.remove('mobile-cards');
+                    }
+                });
+            }
+            
+            // Run initially
+            makeTablesResponsive();
+            
+            // Rerun on resize
+            window.addEventListener('resize', makeTablesResponsive);
         });
-        
-        // Cancel reply
-        $('.cancel-reply').click(function() {
-            $(this).closest('.reply-form').addClass('d-none');
+    } else {
+        // jQuery version
+        $(document).ready(function() {
+            // Toggle reply form
+            $('.reply-btn').click(function() {
+                var parentId = $(this).data('parent-id');
+                $('#reply-form-' + parentId).removeClass('d-none');
+            });
+            
+            // Cancel reply
+            $('.cancel-reply').click(function() {
+                $(this).closest('.reply-form').addClass('d-none');
+            });
+            
+            // Apply lazy loading to all content images
+            $('.post-content img').each(function() {
+                if (!$(this).attr('loading')) {
+                    $(this).attr('loading', 'lazy');
+                }
+                
+                // Add blur-up loading effect
+                $(this).css({
+                    'transition': 'filter 0.5s',
+                    'filter': 'blur(5px)'
+                });
+                
+                $(this).on('load', function() {
+                    $(this).css('filter', 'blur(0)');
+                });
+                
+                // Handle broken images
+                $(this).on('error', function() {
+                    $(this).hide();
+                });
+            });
+            
+            // Apply lazy loading to sidebar images
+            $('.sidebar-section img').attr('loading', 'lazy');
+            
+            // Make sure videos are responsive
+            $('.post-content iframe').each(function(){
+                if (!$(this).parent().hasClass('video-container')) {
+                    $(this).wrap('<div class=\"video-container\"></div>');
+                }
+            });
+            
+            // Make tables mobile-friendly
+            function makeTablesResponsive() {
+                $('.post-content table').each(function() {
+                    // Add mobile-cards class for the card-based layout
+                    if ($(window).width() <= 767.98) {
+                        $(this).addClass('mobile-cards');
+                        
+                        // Process table structure for mobile
+                        var headers = $(this).find('th').map(function() {
+                            return $(this).text().trim();
+                        }).get();
+                        
+                        // If no headers found, try using first row as header
+                        if (headers.length === 0) {
+                            var firstRow = $(this).find('tr:first');
+                            if (firstRow.length) {
+                                headers = firstRow.find('td').map(function() {
+                                    return $(this).text().trim();
+                                }).get();
+                                // Hide the first row since we're using it as headers
+                                firstRow.hide();
+                            }
+                        }
+                        
+                        if (headers.length > 0) {
+                            // Apply data-label to all cells
+                            $(this).find('tbody tr').each(function() {
+                                $(this).find('td').each(function(index) {
+                                    if (headers[index]) {
+                                        $(this).attr('data-label', headers[index]);
+                                    }
+                                });
+                            });
+                        }
+                    } else {
+                        $(this).removeClass('mobile-cards');
+                    }
+                });
+            }
+            
+            // Run initially
+            makeTablesResponsive();
+            
+            // Rerun on resize
+            $(window).resize(makeTablesResponsive);
         });
-    });
+    }
 ";
 
 // Include footer
