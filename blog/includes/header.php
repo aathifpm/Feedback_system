@@ -176,6 +176,106 @@ require_once dirname(__FILE__) . '/../functions.php';
             border-radius: 25px;
             padding: 0.375rem 1.5rem;
         }
+        
+        /* Responsive video container */
+        .video-container {
+            position: relative;
+            padding-bottom: 56.25%; /* 16:9 aspect ratio */
+            height: 0;
+            overflow: hidden;
+            margin: 15px 0;
+            width: 100%;
+        }
+        
+        .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+        
+        /* Forceful responsive table styles */
+        .post-content table {
+            width: 100% !important;
+            margin-bottom: 1rem !important;
+            color: #212529 !important;
+            border-collapse: collapse !important;
+        }
+        
+        .post-content table th,
+        .post-content table td {
+            padding: 0.75rem !important;
+            vertical-align: top !important;
+            border-top: 1px solid #dee2e6 !important;
+        }
+        
+        .post-content table thead th {
+            vertical-align: bottom !important;
+            border-bottom: 2px solid #dee2e6 !important;
+            background-color: #f8f9fa !important;
+        }
+        
+        .post-content table tbody + tbody {
+            border-top: 2px solid #dee2e6 !important;
+        }
+        
+        @media (max-width: 767.98px) {
+            .post-content table {
+                display: block !important;
+                width: 100% !important;
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch !important;
+            }
+            
+            .post-content table.mobile-cards {
+                /* This class will be added via JS for tables that should stack */
+                display: block !important;
+                overflow-x: visible !important;
+            }
+            
+            .post-content table.mobile-cards thead {
+                display: none !important;
+            }
+            
+            .post-content table.mobile-cards tbody,
+            .post-content table.mobile-cards tr {
+                display: block !important;
+                width: 100% !important;
+            }
+            
+            .post-content table.mobile-cards tr {
+                margin-bottom: 1rem !important;
+                border: 1px solid #dee2e6 !important;
+                border-radius: 0.25rem !important;
+                background-color: #fff !important;
+                box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075) !important;
+            }
+            
+            .post-content table.mobile-cards td {
+                display: flex !important;
+                justify-content: space-between !important;
+                align-items: center !important;
+                border-top: none !important;
+                border-bottom: 1px solid #eee !important;
+                padding: 0.5rem 0.75rem !important;
+                text-align: right !important;
+                font-size: 0.9rem !important;
+            }
+            
+            .post-content table.mobile-cards td:last-child {
+                border-bottom: none !important;
+            }
+            
+            .post-content table.mobile-cards td::before {
+                content: attr(data-label) !important;
+                font-weight: bold !important;
+                margin-right: auto !important;
+                text-align: left !important;
+                color: #495057 !important;
+            }
+        }
     </style>
     <?php if (isset($extra_css)): ?>
         <style>
