@@ -2,6 +2,12 @@
 // Include functions
 require_once 'functions.php';
 
+// Add cache control headers to prevent browser caching
+header("Cache-Control: no-store, no-cache, must-revalidate, max-age=0");
+header("Cache-Control: post-check=0, pre-check=0", false);
+header("Pragma: no-cache");
+header("Expires: Mon, 26 Jul 1997 05:00:00 GMT");
+
 // Set page variables
 $page_title = 'Home';
 $show_header = true;
@@ -34,9 +40,17 @@ include 'includes/header.php';
                             <div class="carousel-item <?php echo $index === 0 ? 'active' : ''; ?>">
                                 <div class="featured-post">
                                     <?php if ($post['featured_image']): ?>
-                                        <img src="<?php echo $post['featured_image']; ?>" class="post-img" alt="<?php echo $post['title']; ?>">
+                                        <img src="<?php echo $post['featured_image']; ?>" class="post-img" alt="<?php echo $post['title']; ?>" loading="lazy">
                                     <?php else: ?>
-                                        <img src="https://via.placeholder.com/800x400?text=Featured+Post" class="post-img" alt="<?php echo $post['title']; ?>">
+                                        <div class="post-img d-flex align-items-center justify-content-center position-relative" style="background: linear-gradient(135deg, #f8f9fa 25%, #e9ecef 25%, #e9ecef 50%, #f8f9fa 50%, #f8f9fa 75%, #e9ecef 75%, #e9ecef 100%); background-size: 20px 20px;">
+                                            <div class="text-center bg-white py-3 px-4 rounded shadow-sm" style="position: relative; z-index: 1;">
+                                                <i class="fas fa-camera text-primary mb-2" style="font-size: 2.5rem;"></i>
+                                                <h5 class="mb-0 text-truncate px-2" style="max-width: 200px;"><?php echo htmlspecialchars($post['title']); ?></h5>
+                                            </div>
+                                            <div class="position-absolute" style="top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; font-size: 0.8rem;">
+                                                <i class="fas fa-calendar-alt text-primary"></i> <?php echo format_blog_date($post['published_at']); ?>
+                                            </div>
+                                        </div>
                                     <?php endif; ?>
                                     <div class="post-content">
                                         <h3 class="post-title"><?php echo $post['title']; ?></h3>
@@ -77,9 +91,17 @@ include 'includes/header.php';
                             <div class="col-md-6 mb-4">
                                 <div class="post-card h-100">
                                     <?php if ($post['featured_image']): ?>
-                                        <img src="<?php echo $post['featured_image']; ?>" class="post-img" alt="<?php echo $post['title']; ?>">
+                                        <img src="<?php echo $post['featured_image']; ?>" class="post-img" alt="<?php echo $post['title']; ?>" loading="lazy">
                                     <?php else: ?>
-                                        <img src="https://via.placeholder.com/600x300?text=Blog+Post" class="post-img" alt="<?php echo $post['title']; ?>">
+                                        <div class="post-img d-flex align-items-center justify-content-center position-relative" style="background: linear-gradient(135deg, #f8f9fa 25%, #e9ecef 25%, #e9ecef 50%, #f8f9fa 50%, #f8f9fa 75%, #e9ecef 75%, #e9ecef 100%); background-size: 20px 20px;">
+                                            <div class="text-center bg-white py-3 px-4 rounded shadow-sm" style="position: relative; z-index: 1;">
+                                                <i class="fas fa-camera text-primary mb-2" style="font-size: 2.5rem;"></i>
+                                                <h5 class="mb-0 text-truncate px-2" style="max-width: 200px;"><?php echo htmlspecialchars($post['title']); ?></h5>
+                                            </div>
+                                            <div class="position-absolute" style="top: 10px; right: 10px; background: rgba(255,255,255,0.8); padding: 5px 10px; border-radius: 20px; font-size: 0.8rem;">
+                                                <i class="fas fa-calendar-alt text-primary"></i> <?php echo format_blog_date($post['published_at']); ?>
+                                            </div>
+                                        </div>
                                     <?php endif; ?>
                                     <div class="post-content">
                                         <h3 class="post-title"><?php echo $post['title']; ?></h3>
