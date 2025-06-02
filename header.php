@@ -544,6 +544,9 @@ $is_logged_in = isset($_SESSION['user_id']);
                     <?php if (in_array($_SESSION['role'], ['admin', 'hod'])): ?>
                         <li><a href="survey_analytics.php" class="nav-link"><i class="fas fa-chart-bar"></i> Analytics</a></li>
                     <?php endif; ?>
+                    <?php if ($_SESSION['role'] === 'student'): ?>
+                        <li><a href="student_attendance.php" class="nav-link"><i class="fas fa-calendar-check"></i> Attendance</a></li>
+                    <?php endif; ?>
                     <li class="nav-item">
                         <a class="nav-link" href="recruiter_view.php">
                             <i class="fas fa-user-tie"></i> Recruitment Database
@@ -599,6 +602,13 @@ $is_logged_in = isset($_SESSION['user_id']);
                 <li class="mobile-nav-item">
                     <a href="survey_analytics.php" class="mobile-nav-link">
                         <i class="fas fa-chart-bar"></i> Analytics
+                    </a>
+                </li>
+            <?php endif; ?>
+            <?php if ($_SESSION['role'] === 'student'): ?>
+                <li class="mobile-nav-item">
+                    <a href="student_attendance.php" class="mobile-nav-link">
+                        <i class="fas fa-calendar-check"></i> Attendance
                     </a>
                 </li>
             <?php endif; ?>
