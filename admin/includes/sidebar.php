@@ -184,6 +184,22 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
             <i class="fas fa-book"></i> Subjects
         </a>
         
+        <a href="manage_schedules.php" class="nav-link">
+            <i class="fas fa-calendar"></i> Schedules
+        </a>
+        
+        <a href="manage_venues.php" class="nav-link">
+            <i class="fas fa-map-marker-alt"></i> Venues
+        </a>
+        
+        <a href="manage_attendance_records.php" class="nav-link">
+            <i class="fas fa-clipboard-list"></i> Attendance
+        </a>
+        
+        <a href="manage_training_batches.php" class="nav-link">
+            <i class="fas fa-users"></i> Training Batches
+        </a>
+        
         <a href="manage_exam_timetable.php" class="nav-link">
             <i class="fas fa-calendar-alt"></i> Exam Timetable
         </a>

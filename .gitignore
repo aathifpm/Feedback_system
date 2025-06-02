@@ -4,3 +4,4 @@ db_connection.php
 cache
 uploads/
 composer.lock
+blog/
