@@ -2197,6 +2197,18 @@ switch ($role) {
                         <i class="fas fa-clipboard-check"></i> Examination Feedback
                     </a>
                 </div>
+                <div class="stat-card">
+                    <i class="fas fa-file-alt icon"></i>
+                    <a href="attendance_marking.php" class="btn btn-primary" style="text-decoration: none;">
+                        <i class="fas fa-clipboard-check"></i> Attendance Marking
+                    </a>
+                </div>
+                <div class="stat-card">
+                    <i class="fas fa-file-alt icon"></i>
+                    <a href="view_training_attendance.php" class="btn btn-primary" style="text-decoration: none;">
+                        <i class="fas fa-clipboard-check"></i> Training Attendance
+                    </a>
+                </div>
             </div>
 
             <div class="content-section">
