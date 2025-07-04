@@ -646,111 +646,440 @@ $total_pages = ceil($total_available / $per_page);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Batch Students - Admin Dashboard</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.22/css/dataTables.bootstrap4.min.css">
-    <link rel="stylesheet" href="https://cdn.datatables.net/select/1.3.1/css/select.bootstrap4.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css">
+    <link rel="icon" href="../college_logo.png" type="image/png">
     <style>
-        .card {
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            margin-bottom: 20px;
+        :root {
+            --primary-color: #4e73df;  /* Blue theme */
+            --text-color: #2c3e50;
+            --bg-color: #e0e5ec;
+            --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
+                     -9px -9px 16px rgba(255,255,255, 0.5);
+            --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
+                           inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --header-height: 90px;
         }
-        .card-header {
-            background-color: #f8f9fa;
-            border-bottom: 1px solid #e3e6f0;
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
         }
-        .btn-primary {
-            background-color: #4e73df;
-            border-color: #4e73df;
+
+        body {
+            background: var(--bg-color);
+            min-height: 100vh;
+            padding-top: var(--header-height);
         }
-        .btn-primary:hover {
-            background-color: #2e59d9;
-            border-color: #2e59d9;
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            background: var(--bg-color);
+            margin-left: 280px; /* Add margin for fixed sidebar */
         }
-        .btn-success {
-            background-color: #1cc88a;
-            border-color: #1cc88a;
+
+        @media (max-width: 768px) {
+            .main-content {
+                margin-left: 0; /* Remove margin on mobile */
+            }
         }
-        .btn-success:hover {
-            background-color: #17a673;
-            border-color: #17a673;
-        }
-        .btn-info {
-            background-color: #36b9cc;
-            border-color: #36b9cc;
-        }
-        .btn-info:hover {
-            background-color: #2c9faf;
-            border-color: #2c9faf;
-        }
-        .btn-danger {
-            background-color: #e74a3b;
-            border-color: #e74a3b;
-        }
-        .btn-danger:hover {
-            background-color: #be2617;
-            border-color: #be2617;
-        }
-        .badge-success {
-            background-color: #1cc88a;
-        }
-        .badge-danger {
-            background-color: #e74a3b;
-        }
-        .table-responsive {
-            border-radius: 8px;
-            overflow: hidden;
-        }
-        .form-control {
-            border-radius: 5px;
-        }
-        .batch-info {
-            background-color: #f8f9fa;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .batch-name {
-            font-size: 1.4rem;
-            font-weight: 600;
-            color: #4e73df;
-        }
-        .filter-section {
-            background-color: rgba(78, 115, 223, 0.05);
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-        }
-        .dataTables_length, .dataTables_filter {
-            margin-bottom: 10px;
-        }
-        /* Add admin type indicator styling */
-        .admin-type-badge {
-            padding: 0.25rem 0.5rem;
+
+        .dashboard-header {
+            background: var(--bg-color);
+            padding: 1.5rem;
             border-radius: 15px;
-            font-size: 0.75rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dashboard-header h1 {
+            color: var(--text-color);
+            font-size: 1.8rem;
+        }
+
+        .card {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+            border: none;
+        }
+
+        .card-header {
+            background: transparent;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            padding-bottom: 1rem;
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h5 {
             font-weight: 600;
-            margin-left: 0.5rem;
+            color: var(--text-color);
+            font-size: 1.1rem;
+            margin: 0;
+        }
+
+        .btn {
+            padding: 0.8rem;
+            border: none;
+            border-radius: 8px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 10px rgb(163,177,198,0.7), 
+                        -6px -6px 10px rgba(255,255,255, 0.6);
+        }
+
+        .btn-primary {
+            color: #fff;
+            background: var(--primary-color);
+        }
+        
+        .btn-success {
+            color: #fff;
+            background: #1cc88a;
+        }
+        
+        .btn-info {
+            color: #fff;
+            background: #36b9cc;
+        }
+        
+        .btn-danger {
+            color: #fff;
+            background: #e74a3b;
+        }
+
+        .btn-secondary {
+            color: #fff;
+            background: #858796;
+        }
+
+        .btn-sm {
+            padding: 0.5rem 0.7rem;
+            font-size: 0.8rem;
+        }
+
+        .badge {
+            padding: 0.3rem 0.6rem;
+            border-radius: 20px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+
+        .badge-success {
+            color: #1cc88a;
+        }
+        
+        .badge-danger {
+            color: #e74a3b;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        .table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 8px;
+        }
+
+        .table thead th {
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-weight: 600;
+            padding: 1rem;
+            text-align: left;
+            border-bottom: 2px solid rgba(0,0,0,0.1);
+        }
+
+        .table tbody td {
+            padding: 1rem;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+        }
+
+        .table tbody tr {
+            transition: transform 0.3s ease;
+        }
+
+        .table tbody tr:hover {
+            transform: translateY(-2px);
+        }
+
+        .alert {
+            border-radius: 15px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow);
+        }
+
+        .alert-success {
+            background: rgba(28, 200, 138, 0.1);
+            color: #1cc88a;
+        }
+
+        .alert-danger {
+            background: rgba(231, 74, 59, 0.1);
+            color: #e74a3b;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.8rem;
+            border: none;
+            border-radius: 8px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            font-family: inherit;
+            margin-bottom: 1rem;
+        }
+
+        .modal-content {
+            background: var(--bg-color);
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            border: none;
+        }
+
+        .modal-header {
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            background: transparent;
+        }
+
+        .modal-footer {
+            border-top: 1px solid rgba(0,0,0,0.1);
+            background: transparent;
+        }
+
+        .custom-control-input:checked ~ .custom-control-label::before {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        /* Additional styles for batch students page */
+        .batch-info {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+
+        .batch-name {
+            color: var(--primary-color);
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+
+        .filter-section {
+            background: rgba(78, 115, 223, 0.05);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--inner-shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .admin-type-badge {
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-left: 0.8rem;
+            box-shadow: var(--inner-shadow);
         }
         
         .admin-type-super {
-            background-color: #4e73df;
+            background: var(--primary-color);
             color: white;
         }
         
         .admin-type-department {
-            background-color: #1cc88a;
+            background: #1cc88a;
             color: white;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-top: 1.5rem;
+        }
+
+        .page-link {
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            color: var(--text-color);
+            border: none;
+            transition: all 0.3s ease;
+        }
+
+        .page-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 6px 6px 10px rgb(163,177,198,0.7), 
+                        -6px -6px 10px rgba(255,255,255, 0.6);
+        }
+
+        .page-item.active .page-link {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .nav-tabs {
+            border: none;
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-tabs .nav-link {
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            color: var(--text-color);
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            margin-right: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        .nav-tabs .nav-link:hover {
+            transform: translateY(-2px);
+        }
+
+        .nav-tabs .nav-link.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .custom-file-input:focus ~ .custom-file-label {
+            border: none;
+            box-shadow: none;
+        }
+
+        .custom-file-label {
+            background: var(--bg-color);
+            border: none;
+            box-shadow: var(--inner-shadow);
+            border-radius: 8px;
+        }
+
+        .custom-file-label::after {
+            background: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 0 8px 8px 0;
+        }
+
+        /* New modern styles for pagination and buttons */
+        .pagination-circle .page-link {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            font-weight: 500;
+        }
+
+        .pagination-circle .page-item.active .page-link {
+            box-shadow: 0 4px 8px rgba(78, 115, 223, 0.5);
+        }
+
+        .btn-modern {
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            padding: 0.8rem 1.5rem;
+            border-radius: 50px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+
+        .btn-modern:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn-modern i {
+            margin-right: 8px;
+        }
+
+        .form-control-modern {
+            border-radius: 50px;
+            padding: 0.8rem 1.2rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control-modern:focus {
+            box-shadow: 0 0 0 3px rgba(78, 115, 223, 0.25);
+            transform: translateY(-2px);
+        }
+
+        .nav-tabs-modern {
+            border-radius: 50px;
+            background: rgba(255, 255, 255, 0.3);
+            padding: 0.5rem;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .nav-tabs-modern .nav-link {
+            border-radius: 50px;
+            margin: 0 0.3rem;
+            font-weight: 500;
+        }
+
+        .nav-tabs-modern .nav-link.active {
+            box-shadow: 0 4px 10px rgba(78, 115, 223, 0.4);
         }
     </style>
 </head>
 <body>
     <?php include 'includes/header.php'; ?>
+    <?php include_once 'includes/sidebar.php'; ?>
     
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-lg-12">
+    <div class="main-content">
+        <div class="dashboard-header">
+            <h1>
+                Manage Students in Training Batch
+                <?php if (is_super_admin()): ?>
+                    <span class="admin-type-badge admin-type-super">Super Admin</span>
+                <?php else: ?>
+                    <span class="admin-type-badge admin-type-department">Department Admin: <?php echo get_admin_department_name($conn); ?></span>
+                <?php endif; ?>
+            </h1>
+            <a href="manage_training_batches.php" class="btn btn-secondary">
+                <i class="fas fa-arrow-left fa-sm"></i> Back to Training Batches
+            </a>
+        </div>
+
                 <?php if ($success): ?>
                 <div class="alert alert-success alert-dismissible fade show" role="alert">
                     <?php echo $success; ?>
@@ -778,45 +1107,31 @@ $total_pages = ceil($total_available / $per_page);
                 </div>
                 <?php endif; ?>
                 
-                <div class="d-sm-flex align-items-center justify-content-between mb-4">
-                    <h1 class="h3 mb-0 text-gray-800">
-                        Manage Students in Training Batch
-                        <?php if (is_super_admin()): ?>
-                            <span class="admin-type-badge admin-type-super">Super Admin</span>
-                        <?php else: ?>
-                            <span class="admin-type-badge admin-type-department">Department Admin: <?php echo get_admin_department_name($conn); ?></span>
-                        <?php endif; ?>
-                    </h1>
-                    <a href="manage_training_batches.php" class="d-none d-sm-inline-block btn btn-sm btn-secondary shadow-sm">
-                        <i class="fas fa-arrow-left fa-sm"></i> Back to Training Batches
-                    </a>
-                </div>
-                
                 <div class="batch-info">
                     <div class="row">
                         <div class="col-md-3">
                             <span class="text-muted">Batch Name:</span>
-                            <span class="batch-name ml-2"><?php echo htmlspecialchars($batch['batch_name']); ?></span>
+                    <span class="batch-name"><?php echo htmlspecialchars($batch['batch_name']); ?></span>
                         </div>
                         <div class="col-md-3">
                             <span class="text-muted">Department:</span>
-                            <span class="font-weight-bold ml-2"><?php echo htmlspecialchars($batch['department_name']); ?></span>
+                    <span class="font-weight-bold"><?php echo htmlspecialchars($batch['department_name']); ?></span>
                         </div>
                         <div class="col-md-3">
                             <span class="text-muted">Academic Year:</span>
-                            <span class="font-weight-bold ml-2"><?php echo htmlspecialchars($batch['year_range']); ?></span>
+                    <span class="font-weight-bold"><?php echo htmlspecialchars($batch['year_range']); ?></span>
                         </div>
                         <div class="col-md-3">
                             <span class="text-muted">Status:</span>
                             <?php if ($batch['is_active']): ?>
-                                <span class="badge badge-success ml-2">Active</span>
+                        <span class="badge badge-success">Active</span>
                             <?php else: ?>
-                                <span class="badge badge-danger ml-2">Inactive</span>
+                        <span class="badge badge-danger">Inactive</span>
                             <?php endif; ?>
                         </div>
                     </div>
                     <?php if (!empty($batch['description'])): ?>
-                    <div class="row mt-2">
+            <div class="row mt-3">
                         <div class="col-12">
                             <span class="text-muted">Description:</span>
                             <span class="ml-2"><?php echo htmlspecialchars($batch['description']); ?></span>
@@ -828,26 +1143,20 @@ $total_pages = ceil($total_available / $per_page);
                 <!-- Current Batch Students -->
                 <div class="card">
                     <div class="card-header">
-                        <div class="row align-items-center">
-                            <div class="col">
-                                <h5 class="m-0 font-weight-bold text-primary">
+                <h5 class="font-weight-bold text-primary">
                                     <i class="fas fa-users mr-2"></i>Students in this Batch
-                                    <span class="badge badge-primary ml-2"><?php echo count($batch_students); ?></span>
+                    <span class="badge badge-primary"><?php echo count($batch_students); ?></span>
                                 </h5>
-                            </div>
-                            <div class="col text-right">
-                                <button onclick="handleRemoveStudents()" class="btn btn-danger btn-sm" id="removeStudentsBtn" disabled>
-                                    <i class="fas fa-user-minus mr-2"></i>Remove Selected Students
+                <button onclick="handleRemoveStudents()" class="btn btn-danger" id="removeStudentsBtn" disabled>
+                    <i class="fas fa-user-minus"></i> Remove Selected Students
                                 </button>
-                            </div>
-                        </div>
                     </div>
                     <div class="card-body">
                         <?php if (count($batch_students) > 0): ?>
                             <form id="removeStudentsForm" method="post" action="">
                                 <div class="table-responsive">
-                                    <table class="table table-bordered" id="currentStudentsTable" width="100%" cellspacing="0">
-                                        <thead class="thead-light">
+                            <table class="table table-sm" id="currentStudentsTable" width="100%" cellspacing="3">
+                                <thead>
                                             <tr>
                                                 <th>
                                                     <div class="custom-control custom-checkbox">
@@ -883,10 +1192,10 @@ $total_pages = ceil($total_available / $per_page);
                                                 <td><?php echo htmlspecialchars($student['batch_name']); ?></td>
                                                 <td>
                                                     <?php if (!empty($student['phone'])): ?>
-                                                        <i class="fas fa-phone-alt mr-1"></i> <?php echo htmlspecialchars($student['phone']); ?><br>
+                                                <i class="fas fa-phone-alt"></i> <?php echo htmlspecialchars($student['phone']); ?><br>
                                                     <?php endif; ?>
                                                     <?php if (!empty($student['email'])): ?>
-                                                        <i class="fas fa-envelope mr-1"></i> <?php echo htmlspecialchars($student['email']); ?>
+                                                <i class="fas fa-envelope"></i> <?php echo htmlspecialchars($student['email']); ?>
                                                     <?php endif; ?>
                                                 </td>
                                                 <td><?php echo date('d-m-Y', strtotime($student['assigned_date'])); ?></td>
@@ -899,7 +1208,7 @@ $total_pages = ceil($total_available / $per_page);
                             </form>
                         <?php else: ?>
                             <div class="alert alert-info">
-                                <i class="fas fa-info-circle mr-2"></i>No students assigned to this batch yet.
+                        <i class="fas fa-info-circle"></i> No students assigned to this batch yet.
                             </div>
                         <?php endif; ?>
                     </div>
@@ -908,21 +1217,15 @@ $total_pages = ceil($total_available / $per_page);
                 <!-- Available Students to Add -->
                 <div class="card">
                     <div class="card-header">
-                        <div class="row align-items-center">
-                            <div class="col">
-                                <h5 class="m-0 font-weight-bold text-primary">
+                <h5 class="font-weight-bold text-primary">
                                     <i class="fas fa-user-plus mr-2"></i>Add Students to Batch
                                 </h5>
-                            </div>
-                            <div class="col text-right">
-                                <button onclick="handleAddStudents()" class="btn btn-success btn-sm" id="addStudentsBtn" disabled>
-                                    <i class="fas fa-plus-circle mr-2"></i>Add Selected Students
+                <button onclick="handleAddStudents()" class="btn btn-success" id="addStudentsBtn" disabled>
+                    <i class="fas fa-plus-circle"></i> Add Selected Students
                                 </button>
-                            </div>
-                        </div>
                     </div>
                     <div class="card-body">
-                        <div class="filter-section mb-3">
+                <div class="filter-section">
                             <form method="get" action="">
                                 <input type="hidden" name="batch_id" value="<?php echo $batch_id; ?>">
                                 <div class="row">
@@ -971,16 +1274,14 @@ $total_pages = ceil($total_available / $per_page);
                         </div>
                         
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                            <div>
                                 <span class="text-muted">Showing <?php echo count($available_students); ?> of <?php echo $total_available; ?> available students</span>
-                            </div>
                         </div>
                         
                         <?php if (count($available_students) > 0): ?>
                             <form id="addStudentsForm" method="post" action="">
                                 <div class="table-responsive">
-                                    <table class="table table-bordered" id="availableStudentsTable" width="100%" cellspacing="0">
-                                        <thead class="thead-light">
+                            <table class="table" id="availableStudentsTable" width="100%" cellspacing="0">
+                                <thead>
                                             <tr>
                                                 <th>
                                                     <div class="custom-control custom-checkbox">
@@ -1012,7 +1313,7 @@ $total_pages = ceil($total_available / $per_page);
                                                 <td>
                                                     <?php echo htmlspecialchars($student['name']); ?>
                                                     <?php if (!empty($student['other_batches'])): ?>
-                                                        <span class="badge badge-warning ml-2" data-toggle="tooltip" 
+                                                <span class="badge badge-warning" data-toggle="tooltip" 
                                                               title="Already in: <?php echo htmlspecialchars($student['other_batches']); ?>">
                                                             <i class="fas fa-exclamation-triangle"></i> In other batch
                                                         </span>
@@ -1030,32 +1331,31 @@ $total_pages = ceil($total_available / $per_page);
                                 <?php if ($total_pages > 1): ?>
                                 <div class="d-flex justify-content-center mt-4">
                                     <nav aria-label="Page navigation">
-                                        <ul class="pagination">
+                                <ul class="pagination pagination-circle">
                                             <?php if ($current_page > 1): ?>
                                                 <li class="page-item">
-                                                    <a class="page-link" href="?batch_id=<?php echo $batch_id; ?>&page=1<?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="First">
-                                                        <span aria-hidden="true">&laquo;&laquo;</span>
+                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=1<?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="First">
+                                                <span aria-hidden="true"><i class="fas fa-angle-double-left"></i></span>
                                                     </a>
                                                 </li>
                                                 <li class="page-item">
-                                                    <a class="page-link" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $current_page-1; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Previous">
-                                                        <span aria-hidden="true">&laquo;</span>
+                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $current_page-1; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Previous">
+                                                <span aria-hidden="true"><i class="fas fa-angle-left"></i></span>
                                                     </a>
                                                 </li>
                                             <?php endif; ?>
                                             
                                             <?php
-                                            // Show limited page numbers with ellipsis
                                             $start_page = max(1, $current_page - 2);
                                             $end_page = min($total_pages, $current_page + 2);
                                             
                                             if ($start_page > 1) {
-                                                echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                                        echo '<li class="page-item disabled"><span class="page-link shadow-sm">...</span></li>';
                                             }
                                             
                                             for ($i = $start_page; $i <= $end_page; $i++) {
                                                 echo '<li class="page-item '.($i == $current_page ? 'active' : '').'">
-                                                    <a class="page-link" href="?batch_id='.$batch_id.'&page='.$i.
+                                            <a class="page-link shadow-sm" href="?batch_id='.$batch_id.'&page='.$i.
                                                     ($filter_department ? '&filter_dept='.$filter_department : '').
                                                     ($filter_batch ? '&filter_batch='.$filter_batch : '').
                                                     '">'.$i.'</a>
@@ -1063,19 +1363,19 @@ $total_pages = ceil($total_available / $per_page);
                                             }
                                             
                                             if ($end_page < $total_pages) {
-                                                echo '<li class="page-item disabled"><span class="page-link">...</span></li>';
+                                        echo '<li class="page-item disabled"><span class="page-link shadow-sm">...</span></li>';
                                             }
                                             ?>
                                             
                                             <?php if ($current_page < $total_pages): ?>
                                                 <li class="page-item">
-                                                    <a class="page-link" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $current_page+1; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Next">
-                                                        <span aria-hidden="true">&raquo;</span>
+                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $current_page+1; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Next">
+                                                <span aria-hidden="true"><i class="fas fa-angle-right"></i></span>
                                                     </a>
                                                 </li>
                                                 <li class="page-item">
-                                                    <a class="page-link" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $total_pages; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Last">
-                                                        <span aria-hidden="true">&raquo;&raquo;</span>
+                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $total_pages; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Last">
+                                                <span aria-hidden="true"><i class="fas fa-angle-double-right"></i></span>
                                                     </a>
                                                 </li>
                                             <?php endif; ?>
@@ -1088,7 +1388,7 @@ $total_pages = ceil($total_available / $per_page);
                             </form>
                         <?php else: ?>
                             <div class="alert alert-info">
-                                <i class="fas fa-info-circle mr-2"></i>No more students available to add to this batch.
+                        <i class="fas fa-info-circle"></i> No more students available to add to this batch.
                             </div>
                         <?php endif; ?>
                     </div>
@@ -1097,32 +1397,32 @@ $total_pages = ceil($total_available / $per_page);
                 <!-- Bulk Add Students -->
                 <div class="card">
                     <div class="card-header">
-                        <div class="row align-items-center">
-                            <div class="col">
-                                <h5 class="m-0 font-weight-bold text-primary">
+                <h5 class="font-weight-bold text-primary">
                                     <i class="fas fa-users-cog mr-2"></i>Bulk Add Students
                                 </h5>
-                            </div>
-                        </div>
                     </div>
                     <div class="card-body">
-                        <ul class="nav nav-tabs" id="bulkAddTabs" role="tablist">
+                <ul class="nav nav-tabs nav-fill nav-tabs-modern mb-4" id="bulkAddTabs" role="tablist">
                             <li class="nav-item">
-                                <a class="nav-link active" id="section-tab" data-toggle="tab" href="#sectionTab" role="tab" aria-controls="sectionTab" aria-selected="true">Add By Section</a>
+                        <a class="nav-link active" id="section-tab" data-toggle="tab" href="#sectionTab" role="tab" aria-controls="sectionTab" aria-selected="true">
+                            <i class="fas fa-layer-group mr-2"></i> Add By Section
+                        </a>
                             </li>
                             <li class="nav-item">
-                                <a class="nav-link" id="excel-tab" data-toggle="tab" href="#excelTab" role="tab" aria-controls="excelTab" aria-selected="false">Import from Excel</a>
+                        <a class="nav-link" id="excel-tab" data-toggle="tab" href="#excelTab" role="tab" aria-controls="excelTab" aria-selected="false">
+                            <i class="fas fa-file-excel mr-2"></i> Import from Excel
+                        </a>
                             </li>
                         </ul>
-                        <div class="tab-content mt-3" id="bulkAddTabContent">
+                <div class="tab-content mt-4" id="bulkAddTabContent">
                             <!-- Add By Section Tab -->
                             <div class="tab-pane fade show active" id="sectionTab" role="tabpanel" aria-labelledby="section-tab">
                                 <form method="post" action="" id="bulkSectionForm">
                                     <div class="row">
                                         <div class="col-md-4">
                                             <div class="form-group">
-                                                <label for="bulk_department_id">Department</label>
-                                                <select class="form-control" id="bulk_department_id" name="bulk_department_id" required <?php echo !is_super_admin() ? 'disabled' : ''; ?>>
+                                        <label for="bulk_department_id" class="font-weight-bold"><i class="fas fa-building mr-1"></i> Department</label>
+                                        <select class="form-control form-control-modern" id="bulk_department_id" name="bulk_department_id" required <?php echo !is_super_admin() ? 'disabled' : ''; ?>>
                                                     <option value="">Select Department</option>
                                                     <?php 
                                                     mysqli_data_seek($departments_result, 0);
@@ -1140,8 +1440,8 @@ $total_pages = ceil($total_available / $per_page);
                                         </div>
                                         <div class="col-md-3">
                                             <div class="form-group">
-                                                <label for="bulk_batch_year_id">Academic Batch</label>
-                                                <select class="form-control" id="bulk_batch_year_id" name="bulk_batch_year_id" required>
+                                        <label for="bulk_batch_year_id" class="font-weight-bold"><i class="fas fa-calendar-alt mr-1"></i> Academic Batch</label>
+                                        <select class="form-control form-control-modern" id="bulk_batch_year_id" name="bulk_batch_year_id" required>
                                                     <option value="">Select Batch</option>
                                                     <?php foreach ($batch_years as $year): ?>
                                                         <option value="<?php echo $year['id']; ?>">
@@ -1153,8 +1453,8 @@ $total_pages = ceil($total_available / $per_page);
                                         </div>
                                         <div class="col-md-3">
                                             <div class="form-group">
-                                                <label for="bulk_section">Section</label>
-                                                <select class="form-control" id="bulk_section" name="bulk_section" required>
+                                        <label for="bulk_section" class="font-weight-bold"><i class="fas fa-puzzle-piece mr-1"></i> Section</label>
+                                        <select class="form-control form-control-modern" id="bulk_section" name="bulk_section" required>
                                                     <option value="">Select Section</option>
                                                     <?php foreach ($sections as $section): ?>
                                                         <option value="<?php echo $section; ?>"><?php echo $section; ?></option>
@@ -1165,35 +1465,45 @@ $total_pages = ceil($total_available / $per_page);
                                         <div class="col-md-2">
                                             <div class="form-group">
                                                 <label>&nbsp;</label>
-                                                <button type="button" class="btn btn-info btn-block" id="previewSectionBtn">
-                                                    <i class="fas fa-search mr-1"></i> Preview
+                                        <button type="button" class="btn btn-info btn-block btn-modern" id="previewSectionBtn">
+                                            <i class="fas fa-search"></i> Preview
                                                 </button>
                                             </div>
                                         </div>
                                     </div>
-                                    <div id="sectionPreviewContainer" class="mt-3" style="display: none;">
-                                        <div class="alert alert-info">
-                                            <span id="sectionPreviewCount">0</span> students will be added to this batch.
+                            <div id="sectionPreviewContainer" class="mt-4 p-4 border rounded bg-light" style="display: none;">
+                                <div class="d-flex align-items-center">
+                                    <div class="preview-icon mr-3">
+                                        <i class="fas fa-users fa-2x text-primary"></i>
                                         </div>
-                                        <button type="submit" name="bulk_add_section" class="btn btn-success">
-                                            <i class="fas fa-user-plus mr-1"></i> Add Students
+                                    <div>
+                                        <h5 class="mb-1">Preview Results</h5>
+                                        <p class="mb-3"><span id="sectionPreviewCount" class="font-weight-bold text-primary">0</span> students will be added to this batch.</p>
+                                        <button type="submit" name="bulk_add_section" class="btn btn-success btn-modern">
+                                            <i class="fas fa-user-plus"></i> Add Students
                                         </button>
+                                    </div>
+                                </div>
                                     </div>
                                 </form>
                             </div>
                             
                             <!-- Import from Excel Tab -->
                             <div class="tab-pane fade" id="excelTab" role="tabpanel" aria-labelledby="excel-tab">
-                                <div class="alert alert-info">
-                                    <i class="fas fa-info-circle mr-2"></i>
-                                    Upload a CSV file with student IDs in the first column (excluding header row).
+                                <div class="alert alert-info d-flex align-items-center">
+                                    <i class="fas fa-info-circle fa-2x mr-3"></i>
+                                    <div>
+                                        Upload a CSV or Excel file with student IDs in the first column (excluding header row).
+                                    </div>
                                 </div>
-                                <form method="post" action="" enctype="multipart/form-data" id="bulkExcelForm">
+                                <form method="post" action="" enctype="multipart/form-data" id="bulkExcelForm" class="p-4 border rounded bg-light">
                                     <div class="row">
                                         <div class="col-md-6">
                                             <div class="form-group">
-                                                <label for="id_type">Student ID Type</label>
-                                                <select class="form-control" id="id_type" name="id_type" required>
+                                                <label for="id_type" class="font-weight-bold">
+                                                    <i class="fas fa-id-card mr-1"></i> Student ID Type
+                                                </label>
+                                                <select class="form-control form-control-modern" id="id_type" name="id_type" required>
                                                     <option value="roll_number">Roll Number</option>
                                                     <option value="register_number">Register Number</option>
                                                 </select>
@@ -1201,54 +1511,69 @@ $total_pages = ceil($total_available / $per_page);
                                         </div>
                                         <div class="col-md-6">
                                             <div class="form-group">
-                                                <label for="student_list_file">Upload File (CSV)</label>
-                                                <div class="custom-file">
-                                                    <input type="file" class="custom-file-input" id="student_list_file" name="student_list_file" accept=".csv,.xlsx" required>
-                                                    <label class="custom-file-label" for="student_list_file">Choose file</label>
-                                                </div>
-                                                <small class="form-text text-muted">
-                                                    Upload file containing student IDs in the first column. 
+                                                <label for="student_list_file" class="font-weight-bold">
+                                                    <i class="fas fa-file-upload mr-1"></i> Upload File
+                                                </label>
+                                                <input type="file" class="form-control" id="student_list_file" name="student_list_file" 
+                                                       accept=".csv,.xlsx" required>
+                                                <small class="form-text text-muted mt-2">
+                                                    <i class="fas fa-exclamation-circle mr-1"></i>
+                                                    Upload file containing student IDs in the first column.
                                                     <span id="id_type_text">Roll numbers</span> must match records in the system.
                                                 </small>
                                             </div>
                                         </div>
                                     </div>
-                                    <button type="submit" name="bulk_add_excel" class="btn btn-success">
-                                        <i class="fas fa-file-upload mr-1"></i> Upload and Add Students
+                                    <button type="submit" name="bulk_add_excel" class="btn btn-success btn-modern mt-2">
+                                        <i class="fas fa-file-upload"></i> Upload and Add Students
                                     </button>
                                 </form>
-                                <div class="mt-3">
-                                    <h6>Supported File Formats:</h6>
-                                    <ul>
-                                        <li><strong>Excel (.xlsx)</strong> - Microsoft Excel spreadsheet</li>
-                                        <li><strong>CSV (.csv)</strong> - Comma-separated values file</li>
-                                    </ul>
-                                    <h6>Sample Format:</h6>
-                                    <pre class="bg-light p-2">
+
+                                <div class="mt-4 p-4 border rounded bg-light">
+                                    <h6 class="font-weight-bold">
+                                        <i class="fas fa-file-alt mr-2"></i>Supported File Formats:
+                                    </h6>
+                                    <div class="row mt-3">
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <i class="fas fa-file-excel text-success mr-2"></i>
+                                                <strong>Excel (.xlsx)</strong> - Microsoft Excel spreadsheet
+                                            </div>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <div class="d-flex align-items-center mb-2">
+                                                <i class="fas fa-file-csv text-primary mr-2"></i>
+                                                <strong>CSV (.csv)</strong> - Comma-separated values file
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <h6 class="font-weight-bold mt-3">
+                                        <i class="fas fa-code mr-2"></i>Sample Format:
+                                    </h6>
+                                    <pre class="bg-dark text-light p-3 rounded">
 student_id
 2022PECAI001
 2022PECAI002
-2022PECAI003
-                                    </pre>
-                                    <p class="small text-muted">
-                                        <i class="fas fa-info-circle"></i> The first row is treated as a header and will be skipped.
-                                        Only the first column is processed for student identification.
-                                        Make sure the header is exactly <code>student_id</code> (lowercase).
-                                    </p>
+2022PECAI003</pre>
+                                    <div class="alert alert-warning mt-3 d-flex align-items-center">
+                                        <i class="fas fa-info-circle mr-2"></i>
+                                        <div>
+                                            <strong>Important:</strong> The first row is treated as a header and will be skipped.
+                                            Only the first column is processed for student identification.
+                                            Make sure the header is exactly <code>student_id</code> (lowercase).
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
 
-    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.5.2/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.datatables.net/1.10.22/js/jquery.dataTables.min.js"></script>
-    <script src="https://cdn.datatables.net/1.10.22/js/dataTables.bootstrap4.min.js"></script>
-    <script src="https://cdn.datatables.net/select/1.3.1/js/dataTables.select.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
 
     <script>
         $(document).ready(function() {
@@ -1371,18 +1696,18 @@ student_id
         function updateRemoveButtonState() {
             var selectedCount = $('.current-student-cb:checked').length;
             $('#removeStudentsBtn').prop('disabled', selectedCount === 0);
-            $('#removeStudentsBtn').text(selectedCount > 0 ? 
-                `Remove Selected Students (${selectedCount})` : 
-                'Remove Selected Students');
+            $('#removeStudentsBtn').html(selectedCount > 0 ? 
+                `<i class="fas fa-user-minus"></i> Remove Selected Students (${selectedCount})` : 
+                '<i class="fas fa-user-minus"></i> Remove Selected Students');
         }
         
         // Update Add Students button state
         function updateAddButtonState() {
             var selectedCount = $('.available-student-cb:checked').length;
             $('#addStudentsBtn').prop('disabled', selectedCount === 0);
-            $('#addStudentsBtn').text(selectedCount > 0 ? 
-                `Add Selected Students (${selectedCount})` : 
-                'Add Selected Students');
+            $('#addStudentsBtn').html(selectedCount > 0 ? 
+                `<i class="fas fa-plus-circle"></i> Add Selected Students (${selectedCount})` : 
+                '<i class="fas fa-plus-circle"></i> Add Selected Students');
         }
         
         // Handle Remove Students button click
