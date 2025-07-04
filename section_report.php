@@ -12,6 +12,75 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'hod') {
 $current_year_query = "SELECT id, year_range FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $current_year_result = mysqli_query($conn, $current_year_query);
 $current_year = mysqli_fetch_assoc($current_year_result);
+
+// Function to get the correct batch for a given academic year and year of study
+function getBatchForAcademicYear($conn, $academic_year_id, $year_of_study) {
+    // Get the academic year details
+    $year_query = "SELECT year_range FROM academic_years WHERE id = ?";
+    $stmt = mysqli_prepare($conn, $year_query);
+    mysqli_stmt_bind_param($stmt, "i", $academic_year_id);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    $academic_year = mysqli_fetch_assoc($result);
+    
+    if (!$academic_year) {
+        return null;
+    }
+    
+    // Extract the start year from year_range (e.g., "2023-24" -> 2023)
+    $academic_start_year = intval(substr($academic_year['year_range'], 0, 4));
+    
+    // Calculate the admission year for the batch we're looking for
+    // If we're looking for 2nd year students in 2023-24, their admission year would be 2022
+    $admission_year = $academic_start_year - $year_of_study + 1;
+    
+    // Get the batch details
+    $batch_query = "SELECT * FROM batch_years WHERE admission_year = ?";
+    $stmt = mysqli_prepare($conn, $batch_query);
+    mysqli_stmt_bind_param($stmt, "i", $admission_year);
+    mysqli_stmt_execute($stmt);
+    $result = mysqli_stmt_get_result($stmt);
+    
+    return mysqli_fetch_assoc($result);
+}
+
+// If form is submitted
+if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semester']) && isset($_GET['section'])) {
+    $academic_year_id = $_GET['academic_year'];
+    $year_of_study = $_GET['year'];
+    $semester = $_GET['semester'];
+    $section = $_GET['section'];
+    $export_format = $_GET['export_format'];
+    
+    // Get the correct batch for this academic year and year of study
+    $batch = getBatchForAcademicYear($conn, $academic_year_id, $year_of_study);
+    
+    if (!$batch) {
+        $_SESSION['error'] = "No matching batch found for the selected criteria.";
+        header('Location: section_report.php');
+        exit();
+    }
+    
+    // Modify the report generation query to include batch_id
+    if ($export_format === 'pdf') {
+        header('Location: generate_section_report.php?' . http_build_query([
+            'academic_year' => $academic_year_id,
+            'year' => $year_of_study,
+            'semester' => $semester,
+            'section' => $section,
+            'batch_id' => $batch['id']
+        ]));
+    } else {
+        header('Location: generate_section_excel.php?' . http_build_query([
+            'academic_year' => $academic_year_id,
+            'year' => $year_of_study,
+            'semester' => $semester,
+            'section' => $section,
+            'batch_id' => $batch['id']
+        ]));
+    }
+    exit();
+}
 ?>
 
 <!DOCTYPE html>
@@ -169,6 +238,13 @@ $current_year = mysqli_fetch_assoc($current_year_result);
 
     <div class="container">
         <div class="card">
+            <?php
+            // Display error message if any
+            if (isset($_SESSION['error'])) {
+                echo '<div class="alert alert-danger">' . $_SESSION['error'] . '</div>';
+                unset($_SESSION['error']);
+            }
+            ?>
             <div class="page-header">
                 <h1 class="page-title">Section-wise Report Generation</h1>
                 <p class="page-subtitle">Generate comprehensive feedback reports for specific sections</p>
