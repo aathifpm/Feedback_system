@@ -2,6 +2,7 @@
 session_start();
 require_once '../functions.php';
 require_once '../db_connection.php';
+require_once 'includes/admin_functions.php';
 
 // Check if admin is logged in
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
@@ -33,6 +34,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $repeat_until = isset($_POST['repeat_until']) ? $_POST['repeat_until'] : null;
     $topic = $_POST['topic'];
     $is_cancelled = isset($_POST['is_cancelled']) ? 1 : 0;
+    $skip_holidays = isset($_POST['skip_holidays']) ? 1 : 0;
+    
+    // Get department and batch information for holiday checking
+    $assign_query = "SELECT sa.department_id, s.name as subject_name, 
+                          (SELECT GROUP_CONCAT(DISTINCT by.id) 
+                           FROM batch_years by 
+                           WHERE by.current_year_of_study = sa.year) as batch_ids
+                     FROM subject_assignments sa
+                     JOIN subjects s ON sa.subject_id = s.id
+                     WHERE sa.id = ?";
+    $stmt = mysqli_prepare($conn, $assign_query);
+    mysqli_stmt_bind_param($stmt, "i", $assignment_id);
+    mysqli_stmt_execute($stmt);
+    $assign_result = mysqli_stmt_get_result($stmt);
+    $assignment_info = mysqli_fetch_assoc($assign_result);
+    $department_id = $assignment_info['department_id'];
+    $batch_ids = explode(',', $assignment_info['batch_ids']);
     
     // Validate time slots
     if (strtotime($end_time) <= strtotime($start_time)) {
@@ -69,64 +87,115 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                      date('h:i A', strtotime($conflict['start_time'])) . " - " . 
                      date('h:i A', strtotime($conflict['end_time']));
         } else {
-            // If no conflicts, proceed with save/update
-            if (isset($_POST['id'])) {
-                // Update existing schedule
-                $query = "UPDATE academic_class_schedule 
-                          SET assignment_id = ?, venue_id = ?, class_date = ?, 
-                              start_time = ?, end_time = ?, topic = ?, is_cancelled = ?
-                          WHERE id = ?";
-                $stmt = mysqli_prepare($conn, $query);
-                mysqli_stmt_bind_param($stmt, "iissssii", $assignment_id, $venue_id, $class_date, 
-                                     $start_time, $end_time, $topic, $is_cancelled, $_POST['id']);
-                
-                if (mysqli_stmt_execute($stmt)) {
-                    $success = "Schedule updated successfully";
-                    $filter_date = $class_date; // Set filter to the edited date
-                } else {
-                    $error = "Failed to update schedule: " . mysqli_error($conn);
+            // Check if date is a holiday
+            $is_holiday_on_date = false;
+            foreach ($batch_ids as $batch_id) {
+                if (is_holiday($conn, $class_date, $department_id, $batch_id)) {
+                    $is_holiday_on_date = true;
+                    break;
                 }
+            }
+
+            if ($is_holiday_on_date && !$skip_holidays && !isset($_POST['id'])) {
+                $holiday_info = is_holiday($conn, $class_date, $department_id, $batch_ids[0]);
+                $error = "Warning: " . $class_date . " is a holiday (" . $holiday_info['holiday_name'] . "). 
+                        <form method='post' action=''>
+                            <input type='hidden' name='assignment_id' value='" . $assignment_id . "'>
+                            <input type='hidden' name='venue_id' value='" . $venue_id . "'>
+                            <input type='hidden' name='class_date' value='" . $class_date . "'>
+                            <input type='hidden' name='start_time' value='" . $start_time . "'>
+                            <input type='hidden' name='end_time' value='" . $end_time . "'>
+                            <input type='hidden' name='recurring' value='" . $recurring . "'>
+                            <input type='hidden' name='repeat_until' value='" . $repeat_until . "'>
+                            <input type='hidden' name='topic' value='" . $topic . "'>
+                            <input type='hidden' name='is_cancelled' value='" . $is_cancelled . "'>
+                            <input type='hidden' name='skip_holidays' value='1'>
+                            <button type='submit' class='btn btn-warning'>Schedule Anyway</button>
+                        </form>";
             } else {
-                // Create new schedule(s)
-                if ($recurring == 'yes' && $repeat_until) {
-                    $current_date = new DateTime($class_date);
-                    $end_date = new DateTime($repeat_until);
-                    $interval = new DateInterval('P7D'); // 1 week interval
-                    $period = new DatePeriod($current_date, $interval, $end_date);
+                // If no conflicts or holidays (or holiday override), proceed with save/update
+                if (isset($_POST['id'])) {
+                    // Update existing schedule
+                    $query = "UPDATE academic_class_schedule 
+                              SET assignment_id = ?, venue_id = ?, class_date = ?, 
+                                  start_time = ?, end_time = ?, topic = ?, is_cancelled = ?
+                              WHERE id = ?";
+                    $stmt = mysqli_prepare($conn, $query);
+                    mysqli_stmt_bind_param($stmt, "iissssii", $assignment_id, $venue_id, $class_date, 
+                                         $start_time, $end_time, $topic, $is_cancelled, $_POST['id']);
                     
-                    $success_count = 0;
-                    
-                    foreach ($period as $date) {
-                        $formatted_date = $date->format('Y-m-d');
+                    if (mysqli_stmt_execute($stmt)) {
+                        $success = "Schedule updated successfully";
+                        $filter_date = $class_date; // Set filter to the edited date
+                    } else {
+                        $error = "Failed to update schedule: " . mysqli_error($conn);
+                    }
+                } else {
+                    // Create new schedule(s)
+                    if ($recurring == 'yes' && $repeat_until) {
+                        $current_date = new DateTime($class_date);
+                        $end_date = new DateTime($repeat_until);
+                        $interval = new DateInterval('P7D'); // 1 week interval
+                        $period = new DatePeriod($current_date, $interval, $end_date);
                         
+                        $success_count = 0;
+                        $skipped_holidays = 0;
+                        
+                        // Get all holidays in the range
+                        $holidays = get_holidays_in_range($conn, $class_date, $repeat_until, $department_id, null);
+                        $holiday_dates = array_map(function($holiday) {
+                            return $holiday['holiday_date'];
+                        }, $holidays);
+                        
+                        foreach ($period as $date) {
+                            $formatted_date = $date->format('Y-m-d');
+                            
+                            // Skip holidays unless overridden
+                            $is_holiday_date = false;
+                            foreach ($batch_ids as $batch_id) {
+                                if (is_holiday($conn, $formatted_date, $department_id, $batch_id)) {
+                                    $is_holiday_date = true;
+                                    break;
+                                }
+                            }
+                            
+                            if ($is_holiday_date && !$skip_holidays) {
+                                $skipped_holidays++;
+                                continue;
+                            }
+                            
+                            $query = "INSERT INTO academic_class_schedule 
+                                      (assignment_id, venue_id, class_date, start_time, end_time, topic, is_cancelled) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?)";
+                            $stmt = mysqli_prepare($conn, $query);
+                            mysqli_stmt_bind_param($stmt, "iissssi", $assignment_id, $venue_id, $formatted_date, 
+                                                 $start_time, $end_time, $topic, $is_cancelled);
+                            
+                            if (mysqli_stmt_execute($stmt)) {
+                                $success_count++;
+                            }
+                        }
+                        
+                        $success = "$success_count recurring classes scheduled successfully";
+                        if ($skipped_holidays > 0) {
+                            $success .= " ($skipped_holidays holiday dates skipped)";
+                        }
+                        $filter_date = $class_date; // Set filter to the first date
+                    } else {
+                        // Single class
                         $query = "INSERT INTO academic_class_schedule 
                                   (assignment_id, venue_id, class_date, start_time, end_time, topic, is_cancelled) 
                                   VALUES (?, ?, ?, ?, ?, ?, ?)";
                         $stmt = mysqli_prepare($conn, $query);
-                        mysqli_stmt_bind_param($stmt, "iissssi", $assignment_id, $venue_id, $formatted_date, 
+                        mysqli_stmt_bind_param($stmt, "iissssi", $assignment_id, $venue_id, $class_date, 
                                              $start_time, $end_time, $topic, $is_cancelled);
                         
                         if (mysqli_stmt_execute($stmt)) {
-                            $success_count++;
+                            $success = "Class scheduled successfully";
+                            $filter_date = $class_date; // Set filter to the new date
+                        } else {
+                            $error = "Failed to schedule class: " . mysqli_error($conn);
                         }
-                    }
-                    
-                    $success = "$success_count recurring classes scheduled successfully";
-                    $filter_date = $class_date; // Set filter to the first date
-                } else {
-                    // Single class
-                    $query = "INSERT INTO academic_class_schedule 
-                              (assignment_id, venue_id, class_date, start_time, end_time, topic, is_cancelled) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?)";
-                    $stmt = mysqli_prepare($conn, $query);
-                    mysqli_stmt_bind_param($stmt, "iissssi", $assignment_id, $venue_id, $class_date, 
-                                         $start_time, $end_time, $topic, $is_cancelled);
-                    
-                    if (mysqli_stmt_execute($stmt)) {
-                        $success = "Class scheduled successfully";
-                        $filter_date = $class_date; // Set filter to the new date
-                    } else {
-                        $error = "Failed to schedule class: " . mysqli_error($conn);
                     }
                 }
             }
@@ -266,6 +335,9 @@ while ($row = mysqli_fetch_assoc($result)) {
 // Navigation to previous and next days
 $prev_date = date('Y-m-d', strtotime($filter_date . ' -1 day'));
 $next_date = date('Y-m-d', strtotime($filter_date . ' +1 day'));
+
+// Get holidays for the current filter date
+$holiday = is_holiday($conn, $filter_date, null, null);
 ?>
 
 <!DOCTYPE html>
@@ -387,6 +459,19 @@ $next_date = date('Y-m-d', strtotime($filter_date . ' +1 day'));
             </a>
         </div>
         
+        <?php if ($holiday): ?>
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <i class="fas fa-calendar-times"></i> <strong>Holiday Alert:</strong> 
+                <?php echo htmlspecialchars($holiday['holiday_name']); ?> on <?php echo date('d M Y', strtotime($filter_date)); ?>
+                <?php if (!empty($holiday['description'])): ?>
+                    - <?php echo htmlspecialchars($holiday['description']); ?>
+                <?php endif; ?>
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                    <span aria-hidden="true">&times;</span>
+                </button>
+            </div>
+        <?php endif; ?>
+        
         <?php if ($success): ?>
             <div class="alert alert-success alert-dismissible fade show" role="alert">
                 <i class="fas fa-check-circle"></i> <?php echo $success; ?>
@@ -481,6 +566,14 @@ $next_date = date('Y-m-d', strtotime($filter_date . ' +1 day'));
                                     <label for="repeat_until">Repeat Until:</label>
                                     <input type="date" name="repeat_until" id="repeat_until" class="form-control" 
                                            value="<?php echo date('Y-m-d', strtotime('+2 months')); ?>">
+                                </div>
+
+                                <div class="form-group">
+                                    <div class="custom-control custom-switch">
+                                        <input type="checkbox" class="custom-control-input" id="skip_holidays" name="skip_holidays" value="1">
+                                        <label class="custom-control-label" for="skip_holidays">Schedule on holidays</label>
+                                        <small class="form-text text-muted">Check this to schedule classes even on holidays</small>
+                                    </div>
                                 </div>
                             <?php endif; ?>
                             
