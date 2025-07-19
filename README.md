@@ -9,8 +9,6 @@ The **Feedback System** is a robust, web-based application designed and develope
 > This project is the intellectual property of **Panimalar Engineering College, Chennai**.  
 > **Use, copying, or distribution is _strictly prohibited_ without explicit, prior written permission from the institution.**
 
----
----
 
 ## Live Demo & Video
 
@@ -184,7 +182,7 @@ All rights reserved.
 For permissions, questions, or collaborations, please contact:
 
 **Panimalar Engineering College, Chennai**  
-
+[email : aathifpm123@gmail.com](Mail)
 [https://panimalar.ac.in]
 [https://ads.panimalar.in]
 
