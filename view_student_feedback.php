@@ -49,8 +49,8 @@ $stats_query = "SELECT
     f.submitted_at,
     fac.name as faculty_name
 FROM feedback f
-JOIN subjects s ON f.subject_id = s.id
-JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
+JOIN subject_assignments sa ON f.assignment_id = sa.id
+JOIN subjects s ON sa.subject_id = s.id
 JOIN faculty fac ON sa.faculty_id = fac.id
 WHERE f.student_id = ?
 AND sa.is_active = TRUE
@@ -77,14 +77,14 @@ $ratings_query = "SELECT
     fr.rating,
     fs.statement,
     fs.section as feedback_section,
-    f.subject_id,
+    sa.subject_id,
     sa.year,
     sa.semester,
     sa.section
 FROM feedback f
 JOIN feedback_ratings fr ON f.id = fr.feedback_id
 JOIN feedback_statements fs ON fr.statement_id = fs.id
-JOIN subject_assignments sa ON f.subject_id = sa.subject_id AND sa.academic_year_id = f.academic_year_id
+JOIN subject_assignments sa ON f.assignment_id = sa.id
 WHERE f.student_id = ?
 AND sa.is_active = TRUE
 AND sa.section = ?
@@ -325,7 +325,11 @@ foreach ($ratings as $rating) {
             <?php endforeach; ?>
         <?php endif; ?>
         
-        <a href="dashboard.php" class="btn">Back to Dashboard</a>
+        <?php if($_SESSION['role'] == 'admin'): ?>
+            <a href="admin/dashboard.php" class="btn">Back to Admin Dashboard</a>
+        <?php else: ?>
+            <a href="dashboard.php" class="btn">Back to Dashboard</a>
+        <?php endif; ?>
     </div>
 </body>
 </html>

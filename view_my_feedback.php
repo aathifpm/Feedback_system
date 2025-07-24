@@ -35,21 +35,52 @@ if (!$feedback) {
     exit();
 }
 
-// Fetch ratings by section
-$ratings_query = "SELECT fr.*, fs.statement, fs.section
-                 FROM feedback_ratings fr
-                 JOIN feedback_statements fs ON fr.statement_id = fs.id
-                 WHERE fr.feedback_id = ?
-                 ORDER BY fs.section, fs.id";
+// Fetch ratings from optimized table
+$ratings_query = "SELECT fro.ratings 
+                  FROM feedback_ratings_optimized fro
+                  WHERE fro.feedback_id = ?";
 
 $ratings_stmt = mysqli_prepare($conn, $ratings_query);
 mysqli_stmt_bind_param($ratings_stmt, "i", $feedback_id);
 mysqli_stmt_execute($ratings_stmt);
 $ratings_result = mysqli_stmt_get_result($ratings_stmt);
+$ratings_data = mysqli_fetch_assoc($ratings_result);
 
+// Initialize ratings by section
 $ratings_by_section = [];
-while ($rating = mysqli_fetch_assoc($ratings_result)) {
-    $ratings_by_section[$rating['section']][] = $rating;
+
+if ($ratings_data) {
+    $ratings_json = json_decode($ratings_data['ratings'], true);
+    
+    // Fetch all feedback statements to get their details
+    $statements_query = "SELECT id, statement, section FROM feedback_statements WHERE is_active = 1 ORDER BY section, id";
+    $statements_result = mysqli_query($conn, $statements_query);
+    
+    // Organize statements by their IDs for easy lookup
+    $statements = [];
+    while ($stmt = mysqli_fetch_assoc($statements_result)) {
+        $statements[$stmt['id']] = $stmt;
+    }
+    
+    // Organize ratings by section using the statement lookup
+    foreach ($ratings_json as $statement_id => $rating_value) {
+        // Skip the average values that were stored in the JSON
+        if (strpos($statement_id, '_avg') !== false) {
+            continue;
+        }
+        
+        if (isset($statements[$statement_id])) {
+            $section = $statements[$statement_id]['section'];
+            $statement = $statements[$statement_id]['statement'];
+            
+            $ratings_by_section[$section][] = [
+                'statement_id' => $statement_id,
+                'statement' => $statement,
+                'rating' => $rating_value,
+                'section' => $section
+            ];
+        }
+    }
 }
 ?>
 
@@ -282,30 +313,39 @@ while ($rating = mysqli_fetch_assoc($ratings_result)) {
             <h2 class="section-title">Overall Ratings</h2>
             <div class="average-card">
                 <div class="average-circle">
-                    <span class="average-number"><?php echo number_format($feedback['cumulative_avg'], 2); ?></span>
+                    <?php 
+                    // Use ratings from the JSON data instead of the feedback table
+                    $cumulative_avg = $ratings_json['cumulative_avg'] ?? $feedback['cumulative_avg'];
+                    ?>
+                    <span class="average-number"><?php echo number_format($cumulative_avg, 2); ?></span>
                     <span class="average-label">Overall Average</span>
                 </div>
             </div>
             <div class="feedback-meta">
                 <div class="meta-card">
                     <h3>Course Effectiveness</h3>
-                    <p><?php echo number_format($feedback['course_effectiveness_avg'], 2); ?></p>
+                    <?php $ce_avg = $ratings_json['course_effectiveness_avg'] ?? $feedback['course_effectiveness_avg']; ?>
+                    <p><?php echo number_format($ce_avg, 2); ?></p>
                 </div>
                 <div class="meta-card">
                     <h3>Teaching Effectiveness</h3>
-                    <p><?php echo number_format($feedback['teaching_effectiveness_avg'], 2); ?></p>
+                    <?php $te_avg = $ratings_json['teaching_effectiveness_avg'] ?? $feedback['teaching_effectiveness_avg']; ?>
+                    <p><?php echo number_format($te_avg, 2); ?></p>
                 </div>
                 <div class="meta-card">
                     <h3>Resources & Admin</h3>
-                    <p><?php echo number_format($feedback['resources_admin_avg'], 2); ?></p>
+                    <?php $ra_avg = $ratings_json['resources_admin_avg'] ?? $feedback['resources_admin_avg']; ?>
+                    <p><?php echo number_format($ra_avg, 2); ?></p>
                 </div>
                 <div class="meta-card">
                     <h3>Assessment & Learning</h3>
-                    <p><?php echo number_format($feedback['assessment_learning_avg'], 2); ?></p>
+                    <?php $al_avg = $ratings_json['assessment_learning_avg'] ?? $feedback['assessment_learning_avg']; ?>
+                    <p><?php echo number_format($al_avg, 2); ?></p>
                 </div>
                 <div class="meta-card">
                     <h3>Course Outcomes</h3>
-                    <p><?php echo number_format($feedback['course_outcomes_avg'], 2); ?></p>
+                    <?php $co_avg = $ratings_json['course_outcomes_avg'] ?? $feedback['course_outcomes_avg']; ?>
+                    <p><?php echo number_format($co_avg, 2); ?></p>
                 </div>
             </div>
         </div>
