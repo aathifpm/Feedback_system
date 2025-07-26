@@ -29,8 +29,8 @@ function handleDatabaseError($stmt, $error_message) {
 
 // Get current academic year
 $academic_year_query = "SELECT * FROM academic_years WHERE is_current = TRUE LIMIT 1";
-$academic_year_result = mysqli_query($conn, $academic_year_query);
-$current_academic_year = mysqli_fetch_assoc($academic_year_result);
+$stmt = $pdo->query($academic_year_query);
+$current_academic_year = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if (!$current_academic_year) {
     die("Error: No active academic year found. Please contact administrator.");
@@ -38,7 +38,6 @@ if (!$current_academic_year) {
 
 // Fetch user details based on role
 $user = null;
-$stmt = null;
 
 switch ($role) {
     case 'student':
@@ -56,8 +55,8 @@ switch ($role) {
                     JOIN departments d ON s.department_id = d.id
                     JOIN batch_years `by` ON s.batch_id = `by`.id
                     WHERE s.id = ? AND s.is_active = TRUE";
-        $stmt = mysqli_prepare($conn, $user_query);
-        mysqli_stmt_bind_param($stmt, "i", $user_id);
+        $stmt = $pdo->prepare($user_query);
+        $stmt->execute([$user_id]);
         break;
 
     case 'faculty':
@@ -82,16 +81,13 @@ switch ($role) {
                     FROM faculty f
                     JOIN departments d ON f.department_id = d.id
                     WHERE f.id = ? AND f.is_active = TRUE";
-        $stmt = mysqli_prepare($conn, $user_query);
-        if (!$stmt) {
-            die("Error preparing statement: " . mysqli_error($conn));
-        }
-        mysqli_stmt_bind_param($stmt, "iiii", 
+        $stmt = $pdo->prepare($user_query);
+        $stmt->execute([
             $current_academic_year['id'],
             $current_academic_year['id'],
             $current_academic_year['id'],
             $user_id
-        );
+        ]);
         break;
 
     case 'hod':
@@ -117,13 +113,12 @@ switch ($role) {
                     FROM hods h
                     JOIN departments d ON h.department_id = d.id
                     WHERE h.id = ? AND h.is_active = TRUE";
-
-        $stmt = mysqli_prepare($conn, $user_query);
-        mysqli_stmt_bind_param($stmt, "iii", 
+        $stmt = $pdo->prepare($user_query);
+        $stmt->execute([
             $current_academic_year['id'],
             $current_academic_year['id'],
             $user_id
-        );
+        ]);
         break;
 
     default:
@@ -131,14 +126,9 @@ switch ($role) {
         exit();
 }
 
-// Execute the prepared statement
+// Get the user data
 if ($stmt) {
-    if (!mysqli_stmt_execute($stmt)) {
-        die("Error executing query: " . mysqli_error($conn));
-    }
-    $result = mysqli_stmt_get_result($stmt);
-    $user = mysqli_fetch_assoc($result);
-    mysqli_stmt_close($stmt);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
 if (!$user) {
@@ -151,7 +141,7 @@ $data = [];
 switch ($role) {
     case 'student':
         // Get student feedback status
-        $stmt = mysqli_prepare($conn, "SELECT 
+        $stmt = $pdo->prepare("SELECT 
             sa.id as assignment_id,
             s.name, s.code,
             f.name as faculty_name,
@@ -173,13 +163,8 @@ switch ($role) {
         AND s.department_id = st.department_id
         ORDER BY sa.semester ASC");
         
-        mysqli_stmt_bind_param($stmt, "iii", 
-            $user_id,
-            $user_id,
-            $current_academic_year['id']
-        );
-        mysqli_stmt_execute($stmt);
-        $data['subjects'] = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+        $stmt->execute([$user_id, $user_id, $current_academic_year['id']]);
+        $data['subjects'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         // Calculate feedback statistics
         $data['feedback_stats'] = [
@@ -195,7 +180,7 @@ switch ($role) {
 
     case 'faculty':
         // Get faculty feedback summary
-        $stmt = mysqli_prepare($conn, "SELECT 
+        $stmt = $pdo->prepare("SELECT 
             sa.id as assignment_id, 
             s.name, 
             s.code,
@@ -214,15 +199,15 @@ switch ($role) {
         ORDER BY sa.year, sa.semester, sa.section");
         
         if (!$stmt) {
-            die("Error preparing statement: " . mysqli_error($conn));
+            die("Error preparing statement: " . implode(", ", $pdo->errorInfo()));
         }
         
-        mysqli_stmt_bind_param($stmt, "ii", 
+        $stmt->execute([
             $user_id,
             $current_academic_year['id']
-        );
-        mysqli_stmt_execute($stmt);
-        $data['feedback_summary'] = mysqli_fetch_all(mysqli_stmt_get_result($stmt), MYSQLI_ASSOC);
+        ]);
+        $data['feedback_summary'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $stmt = null; // Close the statement
 
         // Calculate overall statistics
         $data['overall_stats'] = [
@@ -284,12 +269,28 @@ switch ($role) {
                 END
             ) as higher_studies_count
         FROM exit_surveys
-        WHERE department_id = ? 
-        AND academic_year_id = ?";
+        WHERE department_id = :department_id 
+        AND academic_year_id = :academic_year_id";
         
-        $exit_survey_stmt = mysqli_prepare($conn, $exit_survey_query);
-        if (!$exit_survey_stmt) {
-            error_log("Error preparing exit survey query: " . mysqli_error($conn));
+        try {
+            $exit_survey_stmt = $pdo->prepare($exit_survey_query);
+            $exit_survey_stmt->bindParam(':department_id', $user['department_id'], PDO::PARAM_INT);
+            $exit_survey_stmt->bindParam(':academic_year_id', $current_academic_year['id'], PDO::PARAM_INT);
+            $exit_survey_stmt->execute();
+            
+            $data['exit_survey_summary'] = $exit_survey_stmt->fetch(PDO::FETCH_ASSOC);
+            
+            // Ensure we have numeric values
+            $data['exit_survey_summary']['po_avg'] = 
+                number_format($data['exit_survey_summary']['po_avg'] ?? 0, 2);
+            $data['exit_survey_summary']['pso_avg'] = 
+                number_format($data['exit_survey_summary']['pso_avg'] ?? 0, 2);
+            $data['exit_survey_summary']['employed_count'] = 
+                intval($data['exit_survey_summary']['employed_count'] ?? 0);
+            $data['exit_survey_summary']['higher_studies_count'] = 
+                intval($data['exit_survey_summary']['higher_studies_count'] ?? 0);
+        } catch (PDOException $e) {
+            error_log("Error in exit survey query: " . $e->getMessage());
             $data['exit_survey_summary'] = [
                 'total_surveys' => 0,
                 'po_avg' => 0,
@@ -297,35 +298,6 @@ switch ($role) {
                 'employed_count' => 0,
                 'higher_studies_count' => 0
             ];
-        } else {
-            mysqli_stmt_bind_param($exit_survey_stmt, "ii", 
-                $user['department_id'], 
-                $current_academic_year['id']
-            );
-            
-            if (!mysqli_stmt_execute($exit_survey_stmt)) {
-                error_log("Error executing exit survey query: " . mysqli_stmt_error($exit_survey_stmt));
-                $data['exit_survey_summary'] = [
-                    'total_surveys' => 0,
-                    'po_avg' => 0,
-                    'pso_avg' => 0,
-                    'employed_count' => 0,
-                    'higher_studies_count' => 0
-                ];
-            } else {
-                $result = mysqli_stmt_get_result($exit_survey_stmt);
-                $data['exit_survey_summary'] = mysqli_fetch_assoc($result);
-                
-                // Ensure we have numeric values
-                $data['exit_survey_summary']['po_avg'] = 
-                    number_format($data['exit_survey_summary']['po_avg'] ?? 0, 2);
-                $data['exit_survey_summary']['pso_avg'] = 
-                    number_format($data['exit_survey_summary']['pso_avg'] ?? 0, 2);
-                $data['exit_survey_summary']['employed_count'] = 
-                    intval($data['exit_survey_summary']['employed_count'] ?? 0);
-                $data['exit_survey_summary']['higher_studies_count'] = 
-                    intval($data['exit_survey_summary']['higher_studies_count'] ?? 0);
-            }
         }
 
         // Fetch faculty feedback summary with detailed metrics
@@ -354,46 +326,40 @@ switch ($role) {
         FROM faculty f
         JOIN departments d ON f.department_id = d.id
         LEFT JOIN subject_assignments sa ON sa.faculty_id = f.id 
-            AND sa.academic_year_id = ?
+            AND sa.academic_year_id = :academic_year_id
             AND sa.is_active = TRUE
         LEFT JOIN subjects s ON sa.subject_id = s.id
         LEFT JOIN feedback fb ON fb.assignment_id = sa.id
-        WHERE f.department_id = ? 
+        WHERE f.department_id = :department_id 
         AND f.is_active = TRUE
         GROUP BY f.id, f.name, f.faculty_id, f.designation, f.experience, 
                  f.qualification, f.specialization, d.name
         ORDER BY f.name";
         
-        $faculty_stmt = mysqli_prepare($conn, $faculty_query);
-        if (!$faculty_stmt) {
-            error_log("Error preparing faculty query: " . mysqli_error($conn));
-            $data['faculty'] = [];
-        } else {
-            mysqli_stmt_bind_param($faculty_stmt, "ii", 
-                $current_academic_year['id'],
-                $user['department_id']
-            );
+        try {
+            $faculty_stmt = $pdo->prepare($faculty_query);
+            $faculty_stmt->bindParam(':academic_year_id', $current_academic_year['id'], PDO::PARAM_INT);
+            $faculty_stmt->bindParam(':department_id', $user['department_id'], PDO::PARAM_INT);
+            $faculty_stmt->execute();
             
-            if (!mysqli_stmt_execute($faculty_stmt)) {
-                error_log("Error executing faculty query: " . mysqli_stmt_error($faculty_stmt));
-                $data['faculty'] = [];
-            } else {
-                $data['faculty'] = mysqli_fetch_all(mysqli_stmt_get_result($faculty_stmt), MYSQLI_ASSOC);
-                
-                // Format the ratings and handle NULL values
-                foreach ($data['faculty'] as &$faculty) {
-                    $faculty['overall_avg'] = number_format($faculty['overall_avg'] ?? 0, 2);
-                    $faculty['course_effectiveness'] = number_format($faculty['course_effectiveness'] ?? 0, 2);
-                    $faculty['teaching_effectiveness'] = number_format($faculty['teaching_effectiveness'] ?? 0, 2);
-                    $faculty['resources_admin'] = number_format($faculty['resources_admin'] ?? 0, 2);
-                    $faculty['assessment_learning'] = number_format($faculty['assessment_learning'] ?? 0, 2);
-                    $faculty['course_outcomes'] = number_format($faculty['course_outcomes'] ?? 0, 2);
-                    $faculty['min_rating'] = number_format($faculty['min_rating'] ?? 0, 2);
-                    $faculty['max_rating'] = number_format($faculty['max_rating'] ?? 0, 2);
-                    $faculty['total_subjects'] = intval($faculty['total_subjects']);
-                    $faculty['total_feedback'] = intval($faculty['total_feedback']);
-                }
+            $data['faculty'] = $faculty_stmt->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Format the ratings and handle NULL values
+            foreach ($data['faculty'] as &$faculty) {
+                $faculty['overall_avg'] = number_format($faculty['overall_avg'] ?? 0, 2);
+                $faculty['course_effectiveness'] = number_format($faculty['course_effectiveness'] ?? 0, 2);
+                $faculty['teaching_effectiveness'] = number_format($faculty['teaching_effectiveness'] ?? 0, 2);
+                $faculty['resources_admin'] = number_format($faculty['resources_admin'] ?? 0, 2);
+                $faculty['assessment_learning'] = number_format($faculty['assessment_learning'] ?? 0, 2);
+                $faculty['course_outcomes'] = number_format($faculty['course_outcomes'] ?? 0, 2);
+                $faculty['min_rating'] = number_format($faculty['min_rating'] ?? 0, 2);
+                $faculty['max_rating'] = number_format($faculty['max_rating'] ?? 0, 2);
+                $faculty['total_subjects'] = intval($faculty['total_subjects']);
+                $faculty['total_feedback'] = intval($faculty['total_feedback']);
             }
+        } catch (PDOException $e) {
+            error_log("Error in faculty query: " . $e->getMessage());
+            $data['faculty'] = [];
         }
 
         // Get subject-wise feedback summary
@@ -412,28 +378,22 @@ switch ($role) {
         JOIN subject_assignments sa ON s.id = sa.subject_id
         JOIN faculty f ON sa.faculty_id = f.id
         LEFT JOIN feedback fb ON fb.assignment_id = sa.id
-        WHERE s.department_id = ?
-        AND sa.academic_year_id = ?
+        WHERE s.department_id = :department_id
+        AND sa.academic_year_id = :academic_year_id
         AND sa.is_active = TRUE
         GROUP BY s.id, s.code, s.name, sa.id, sa.year, sa.semester, sa.section, f.name
         ORDER BY s.code, sa.year, sa.semester, sa.section";
 
-        $subject_stmt = mysqli_prepare($conn, $subject_query);
-        if (!$subject_stmt) {
-            error_log("Error preparing subject query: " . mysqli_error($conn));
-            $data['subjects'] = [];
-        } else {
-            mysqli_stmt_bind_param($subject_stmt, "ii", 
-                $user['department_id'],
-                $current_academic_year['id']
-            );
+        try {
+            $subject_stmt = $pdo->prepare($subject_query);
+            $subject_stmt->bindParam(':department_id', $user['department_id'], PDO::PARAM_INT);
+            $subject_stmt->bindParam(':academic_year_id', $current_academic_year['id'], PDO::PARAM_INT);
+            $subject_stmt->execute();
             
-            if (!mysqli_stmt_execute($subject_stmt)) {
-                error_log("Error executing subject query: " . mysqli_stmt_error($subject_stmt));
-                $data['subjects'] = [];
-            } else {
-                $data['subjects'] = mysqli_fetch_all(mysqli_stmt_get_result($subject_stmt), MYSQLI_ASSOC);
-            }
+            $data['subjects'] = $subject_stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (PDOException $e) {
+            error_log("Error in subject query: " . $e->getMessage());
+            $data['subjects'] = [];
         }
         break;
 }
@@ -893,6 +853,15 @@ switch ($role) {
         .btn-secondary {
             background: var(--secondary-color);
             color: white;
+            margin-left: 10px;
+            transition: all 0.3s ease;
+        }
+
+        .btn-secondary:hover {
+            transform: translateY(-2px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
+            background: #27ae60;
         }
 
         .faculty-card {
@@ -1926,47 +1895,7 @@ switch ($role) {
                                                 <a href="give_feedback.php?assignment_id=<?php echo urlencode($subject['assignment_id']); ?>" class="btn btn-primary">
                                                     <i class="fas fa-comment"></i> Give Feedback
                                                 </a>
-                                            <?php endif; 
-
-                                            // Check if there's an exam scheduled for today or past for this subject
-                                            $exam_check_query = "SELECT et.* 
-                                                               FROM subject_assignments sa1 
-                                                               JOIN subjects s ON s.id = sa1.subject_id
-                                                               LEFT JOIN exam_timetable et ON et.subject_id = s.id 
-                                                                    AND et.semester = sa1.semester 
-                                                                    AND et.academic_year_id = sa1.academic_year_id
-                                                                    AND et.exam_date <= CURDATE()
-                                                                    AND et.is_active = TRUE
-                                                               WHERE sa1.id = ?
-                                                               ORDER BY et.exam_date DESC
-                                                               LIMIT 1";
-                                            $exam_check_stmt = mysqli_prepare($conn, $exam_check_query);
-                                            mysqli_stmt_bind_param($exam_check_stmt, "i", $subject['assignment_id']);
-                                            mysqli_stmt_execute($exam_check_stmt);
-                                            $exam_result = mysqli_stmt_get_result($exam_check_stmt);
-                                            $exam_available = mysqli_fetch_assoc($exam_result);
-
-                                            // Only show exam feedback option if exam exists and is today or past
-                                            if ($exam_available && !is_null($exam_available['id'])) {
-                                                // Check if exam feedback already submitted
-                                                $feedback_check_query = "SELECT id FROM examination_feedback 
-                                                                       WHERE student_id = ? 
-                                                                       AND subject_assignment_id = ?";
-                                                $feedback_check_stmt = mysqli_prepare($conn, $feedback_check_query);
-                                                mysqli_stmt_bind_param($feedback_check_stmt, "ii", $user_id, $subject['assignment_id']);
-                                                mysqli_stmt_execute($feedback_check_stmt);
-                                                $feedback_exists = mysqli_fetch_assoc(mysqli_stmt_get_result($feedback_check_stmt));
-                                                
-                                                if (!$feedback_exists) { ?>
-                                                    <a href="give_exam_feedback.php?assignment_id=<?php echo urlencode($subject['assignment_id']); ?>" class="btn btn-secondary">
-                                                        <i class="fas fa-file-alt"></i> Exam Feedback
-                                                    </a>
-                                                <?php } else { ?>
-                                                    <span class="badge bg-success">
-                                                        <i class="fas fa-check"></i> Exam Feedback Submitted
-                                                    </span>
-                                                <?php }
-                                            } ?>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
@@ -1975,6 +1904,24 @@ switch ($role) {
                     <?php else: ?>
                         <p>No subjects found for the current academic year.</p>
                     <?php endif; ?>
+                </div>
+            </div>
+
+            <!-- Add Class Committee Meetings Section -->
+            <div class="content-section">
+                <h2 class="section-title">
+                    <i class="fas fa-users"></i> Class Committee Meetings
+                </h2>
+                <div class="subject-card">
+                    <div class="subject-info">
+                        <h3>Class Committee Feedback</h3>
+                        <p>Provide feedback for your current semester subjects through class committee meetings</p>
+                    </div>
+                    <div class="subject-actions">
+                        <a href="class_committee_meetings.php" class="btn btn-primary">
+                            <i class="fas fa-users"></i> View Subjects
+                        </a>
+                    </div>
                 </div>
             </div>
 
@@ -2064,10 +2011,9 @@ switch ($role) {
                     WHERE f.student_id = ?
                     ORDER BY f.submitted_at DESC";
                     
-                    $history_stmt = mysqli_prepare($conn, $feedback_history_query);
-                    mysqli_stmt_bind_param($history_stmt, "i", $user_id);
-                    mysqli_stmt_execute($history_stmt);
-                    $feedback_history = mysqli_fetch_all(mysqli_stmt_get_result($history_stmt), MYSQLI_ASSOC);
+                    $history_stmt = $pdo->prepare($feedback_history_query);
+                    $history_stmt->execute([$user_id]);
+                    $feedback_history = $history_stmt->fetchAll(PDO::FETCH_ASSOC);
                     ?>
 
                     <?php if (!empty($feedback_history)): ?>
@@ -2408,8 +2354,8 @@ switch ($role) {
                                         <select id="reportAcademicYear" class="input-field" required>
                                             <?php
                                             $academic_years_query = "SELECT * FROM academic_years ORDER BY year_range DESC";
-                                            $academic_years_result = mysqli_query($conn, $academic_years_query);
-                                            while ($year = mysqli_fetch_assoc($academic_years_result)) {
+                                            $stmt = $pdo->query($academic_years_query);
+                                            while ($year = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                                 $selected = $year['is_current'] ? 'selected' : '';
                                                 echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
                                             }
@@ -2700,8 +2646,8 @@ switch ($role) {
                         <select name="academic_year" class="input-field" required>
                             <?php
                             $academic_years_query = "SELECT * FROM academic_years ORDER BY year_range DESC";
-                            $academic_years_result = mysqli_query($conn, $academic_years_query);
-                            while ($year = mysqli_fetch_assoc($academic_years_result)) {
+                            $stmt = $pdo->query($academic_years_query);
+                            while ($year = $stmt->fetch(PDO::FETCH_ASSOC)) {
                                 $selected = $year['is_current'] ? 'selected' : '';
                                 echo "<option value='{$year['id']}' {$selected}>{$year['year_range']}</option>";
                             }

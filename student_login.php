@@ -30,18 +30,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                  JOIN departments d ON s.department_id = d.id
                  WHERE (s.email = ? OR s.roll_number = ?) AND s.is_active = TRUE";
                  
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "ss", $identifier, $identifier);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $student = mysqli_fetch_assoc($result);
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$identifier, $identifier]);
+        $student = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = null; // Close the statement
 
         if ($student && password_verify($password, $student['password'])) {
             // Update last login timestamp
             $update_query = "UPDATE students SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
-            $update_stmt = mysqli_prepare($conn, $update_query);
-            mysqli_stmt_bind_param($update_stmt, "i", $student['id']);
-            mysqli_stmt_execute($update_stmt);
+            $update_stmt = $pdo->prepare($update_query);
+            $update_stmt->execute([$student['id']]);
+            $update_stmt = null; // Close the statement
 
             // Set session variables
             $_SESSION['user_id'] = $student['id'];
@@ -64,14 +63,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 'email' => $student['email'],
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
-            $log_stmt = mysqli_prepare($conn, $log_query);
-            mysqli_stmt_bind_param($log_stmt, "isss", 
+            $log_stmt = $pdo->prepare($log_query);
+            $log_stmt->execute([
                 $student['id'], 
                 $log_details,
                 $_SERVER['REMOTE_ADDR'],
                 $_SERVER['HTTP_USER_AGENT']
-            );
-            mysqli_stmt_execute($log_stmt);
+            ]);
+            $log_stmt = null; // Close the statement
 
             header('Location: dashboard.php');
             exit();
@@ -90,9 +89,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Login - Panimalar Engineering College</title>
+    <meta name="description" content="Student login portal for Panimalar Engineering College. Access attendance records, feedback forms, exam schedules, and academic resources.">
+    <meta name="keywords" content="panimalar engineering college, student login, panimalar student portal, student attendance, college login">
+    <meta name="robots" content="index, follow">
+    <meta name="author" content="Panimalar Engineering College">
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]"; ?>">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]"; ?>">
+    <meta property="og:title" content="Student Login - Panimalar Engineering College">
+    <meta property="og:description" content="Student login portal for Panimalar Engineering College. Access attendance records, feedback forms, and academic resources.">
+    <meta property="og:image" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]"; ?>/college_logo.png">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:url" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]"; ?>">
+    <meta property="twitter:title" content="Student Login - Panimalar Engineering College">
+    <meta property="twitter:description" content="Student login portal for Panimalar Engineering College. Access attendance records, feedback forms, and academic resources.">
+    <meta property="twitter:image" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]"; ?>/college_logo.png">
+    
     <link rel="icon" href="college_logo.png" type="image/png">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+    
+    <!-- Preload key resources -->
+    <link rel="preload" href="college_logo.png" as="image">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" as="style">
+    
     <style>
         :root {
             --primary-color: #3498db;
@@ -358,20 +384,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </style>
 </head>
 <body>
-    <div class="header">
-        <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo">
+    <header class="header">
+        <img src="college_logo.png" alt="Panimalar Engineering College Logo" class="logo" width="120" height="120">
         <div class="college-info">
             <h1>Panimalar Engineering College</h1>
             <p>An Autonomous Institution, Affiliated to Anna University, Chennai</p>
             <p>Bangalore Trunk Road, Varadharajapuram, Poonamallee, Chennai – 600 123.</p>
         </div>
-    </div>
+    </header>
 
-    <div class="login-container">
+    <main class="login-container">
         <h2 class="login-title">Student Login</h2>
         
         <?php if ($error): ?>
-            <div class="error-message">
+            <div class="error-message" role="alert">
                 <i class="fas fa-exclamation-circle"></i>
                 <?php echo htmlspecialchars($error); ?>
             </div>
@@ -381,11 +407,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="form-group">
                 <label for="identifier">Email or Roll Number</label>
                 <div class="input-with-icon">
-                    <i class="fas fa-user"></i>
+                    <i class="fas fa-user" aria-hidden="true"></i>
                     <input type="text" id="identifier" name="identifier" 
                            class="input-field" 
                            placeholder="Enter email or roll number"
                            value="<?php echo isset($_POST['identifier']) ? htmlspecialchars($_POST['identifier']) : ''; ?>"
+                           autocomplete="username"
                            required>
                 </div>
             </div>
@@ -393,30 +420,51 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="form-group">
                 <label for="password">Password</label>
                 <div class="input-with-icon">
-                    <i class="fas fa-lock"></i>
+                    <i class="fas fa-lock" aria-hidden="true"></i>
                     <input type="password" id="password" name="password" 
                            class="input-field" 
-                           placeholder="Enter your password" required>
-                    <i class="fas fa-eye toggle-password"></i>
+                           placeholder="Enter your password" 
+                           autocomplete="current-password"
+                           required>
+                    <i class="fas fa-eye toggle-password" aria-hidden="true" title="Toggle password visibility"></i>
                 </div>
             </div>
 
             <button type="submit" class="btn-login">
-                <i class="fas fa-sign-in-alt"></i> Login
+                <i class="fas fa-sign-in-alt" aria-hidden="true"></i> Login
             </button>
 
-            <div class="links">
+            <nav class="links">
                 <a href="forget_password.php">
-                    <i class="fas fa-key"></i> Forgot Password?
+                    <i class="fas fa-key" aria-hidden="true"></i> Forgot Password?
                 </a>
                 <a href="index.php">
-                    <i class="fas fa-home"></i> Back to Home
+                    <i class="fas fa-home" aria-hidden="true"></i> Back to Home
                 </a>
-            </div>
+            </nav>
         </form>
-    </div>
+    </main>
 
     <?php include 'footer.php'; ?>
+
+    <!-- Structured Data / Schema.org -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "EducationalOrganization",
+      "name": "Panimalar Engineering College",
+      "url": "<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]"; ?>",
+      "logo": "<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]"; ?>/college_logo.png",
+      "description": "An Autonomous Institution, Affiliated to Anna University, Chennai",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bangalore Trunk Road, Varadharajapuram, Poonamallee",
+        "addressLocality": "Chennai",
+        "postalCode": "600123",
+        "addressCountry": "IN"
+      }
+    }
+    </script>
 
     <script>
     document.addEventListener('DOMContentLoaded', function() {

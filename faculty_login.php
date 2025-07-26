@@ -29,11 +29,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                  FROM faculty 
                  WHERE email = ? AND is_active = TRUE";
                  
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "s", $email);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $faculty = mysqli_fetch_assoc($result);
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$email]);
+        $faculty = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = null; // Close the statement
 
         if ($faculty && password_verify($password, $faculty['password'])) {
             loginSuccess($faculty);
@@ -48,7 +47,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
 // Helper functions
 function checkLoginAttempts($ip) {
-    global $conn;
+    global $pdo;
     
     // Check failed attempts in the last 15 minutes
     $query = "SELECT COUNT(*) as attempts 
@@ -58,17 +57,16 @@ function checkLoginAttempts($ip) {
               AND status = 'failure' 
               AND created_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)";
               
-    $stmt = mysqli_prepare($conn, $query);
-    mysqli_stmt_bind_param($stmt, "s", $ip);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $row = mysqli_fetch_assoc($result);
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([$ip]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
     
     return $row['attempts'];
 }
 
 function recordFailedAttempt($ip) {
-    global $conn;
+    global $pdo;
     
     // Log the failed attempt
     $details = json_encode([
@@ -79,14 +77,13 @@ function recordFailedAttempt($ip) {
     $query = "INSERT INTO user_logs (user_id, role, action, details, status, ip_address, user_agent) 
               VALUES (0, 'faculty', 'login', ?, 'failure', ?, ?)";
               
-    $stmt = mysqli_prepare($conn, $query);
-    mysqli_stmt_bind_param($stmt, "sss", 
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([
         $details,
         $ip,
         $_SERVER['HTTP_USER_AGENT']
-    );
-    
-    mysqli_stmt_execute($stmt);
+    ]);
+    $stmt = null; // Close the statement
 }
 
 function generateRememberMeToken() {
@@ -94,13 +91,13 @@ function generateRememberMeToken() {
 }
 
 function loginSuccess($faculty) {
-    global $conn;
+    global $pdo;
     
     // Update last login timestamp
     $update_query = "UPDATE faculty SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
-    $update_stmt = mysqli_prepare($conn, $update_query);
-    mysqli_stmt_bind_param($update_stmt, "i", $faculty['id']);
-    mysqli_stmt_execute($update_stmt);
+    $update_stmt = $pdo->prepare($update_query);
+    $update_stmt->execute([$faculty['id']]);
+    $update_stmt = null; // Close the statement
 
     // Set session variables
     $_SESSION['user_id'] = $faculty['id'];
@@ -118,7 +115,7 @@ function loginSuccess($faculty) {
 }
 
 function logUserActivity($user_id, $role, $action, $status) {
-    global $conn;
+    global $pdo;
     
     $details = json_encode([
         'ip_address' => $_SERVER['REMOTE_ADDR'],
@@ -128,8 +125,8 @@ function logUserActivity($user_id, $role, $action, $status) {
     $query = "INSERT INTO user_logs (user_id, role, action, details, status, ip_address, user_agent) 
               VALUES (?, ?, ?, ?, ?, ?, ?)";
               
-    $stmt = mysqli_prepare($conn, $query);
-    mysqli_stmt_bind_param($stmt, "issssss", 
+    $stmt = $pdo->prepare($query);
+    $stmt->execute([
         $user_id,
         $role,
         $action,
@@ -137,9 +134,8 @@ function logUserActivity($user_id, $role, $action, $status) {
         $status,
         $_SERVER['REMOTE_ADDR'],
         $_SERVER['HTTP_USER_AGENT']
-    );
-    
-    mysqli_stmt_execute($stmt);
+    ]);
+    $stmt = null; // Close the statement
 }
 ?>
 
