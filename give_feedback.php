@@ -95,14 +95,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             assignment_id, 
             student_id,
             comments,
-            course_effectiveness_avg,
-            teaching_effectiveness_avg,
-            resources_admin_avg,
-            assessment_learning_avg,
-            course_outcomes_avg,
-            cumulative_avg,
             submitted_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+        ) VALUES (?, ?, ?, NOW())";
 
         $stmt = mysqli_prepare($conn, $insert_query);
         if (!$stmt) {
@@ -110,16 +104,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         $comments = isset($_POST['comments']) ? $_POST['comments'] : '';
-        mysqli_stmt_bind_param($stmt, "iisdddddd", 
+        mysqli_stmt_bind_param($stmt, "iis", 
             $assignment_id,
             $_SESSION['user_id'],
-            $comments,
-            $section_averages['course_effectiveness_avg'],
-            $section_averages['teaching_effectiveness_avg'],
-            $section_averages['resources_admin_avg'],
-            $section_averages['assessment_learning_avg'],
-            $section_averages['course_outcomes_avg'],
-            $cumulative_avg
+            $comments
         );
 
         if (!mysqli_stmt_execute($stmt)) {
@@ -128,32 +116,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
         $feedback_id = mysqli_insert_id($conn);
 
-        // Insert ratings with dynamic statement IDs
-        $rating_query = "INSERT INTO feedback_ratings (
-            feedback_id, 
-            statement_id, 
-            rating
-        ) VALUES (?, ?, ?)";
+        // Prepare the ratings JSON data
+        $ratings_json = [];
         
-        $rating_stmt = mysqli_prepare($conn, $rating_query);
-
-        // Insert ratings for each section with actual statement IDs
+        // Add all individual ratings to the JSON data
         foreach ($all_ratings as $section => $ratings) {
             foreach ($ratings as $statement_id => $rating) {
-                if (!$rating_stmt) {
-                    throw new Exception("Failed to prepare rating statement");
-                }
-
-                mysqli_stmt_bind_param($rating_stmt, "iii", 
-                    $feedback_id, 
-                    $statement_id, 
-                    $rating
-                );
-
-                if (!mysqli_stmt_execute($rating_stmt)) {
-                    throw new Exception("Failed to insert rating: " . mysqli_stmt_error($rating_stmt));
-                }
+                $ratings_json[$statement_id] = (int)$rating;
             }
+        }
+        
+        // Add section averages to the JSON
+        foreach ($section_averages as $key => $value) {
+            $ratings_json[$key] = (float)$value;
+        }
+        
+        // Add cumulative average
+        $ratings_json['cumulative_avg'] = (float)$cumulative_avg;
+        
+        // Insert into optimized ratings table
+        $ratings_json_str = json_encode($ratings_json);
+        $optimized_query = "INSERT INTO feedback_ratings_optimized (
+            feedback_id,
+            ratings
+        ) VALUES (?, ?)";
+        
+        $optimized_stmt = mysqli_prepare($conn, $optimized_query);
+        if (!$optimized_stmt) {
+            throw new Exception("Failed to prepare optimized ratings statement: " . mysqli_error($conn));
+        }
+        
+        mysqli_stmt_bind_param($optimized_stmt, "is", $feedback_id, $ratings_json_str);
+        
+        if (!mysqli_stmt_execute($optimized_stmt)) {
+            throw new Exception("Failed to insert optimized ratings: " . mysqli_stmt_error($optimized_stmt));
         }
 
         // Log the action

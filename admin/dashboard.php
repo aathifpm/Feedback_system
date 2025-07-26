@@ -1,4 +1,9 @@
 <?php
+// Enable error reporting for all environments
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+
 session_start();
 require_once '../db_connection.php';
 require_once '../functions.php';
@@ -73,18 +78,16 @@ LEFT JOIN departments d ON s.department_id = d.id
 $department_filter";
 
 if (!empty($department_params)) {
-    $stmt = mysqli_prepare($conn, $student_query);
-    mysqli_stmt_bind_param($stmt, $param_types, ...$department_params);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
+    $stmt = $pdo->prepare($student_query);
+    $stmt->execute([$_SESSION['department_id']]);
+    $student_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 } else {
-    $result = mysqli_query($conn, $student_query);
+    $stmt = $pdo->prepare($student_query);
+    $stmt->execute();
+    $student_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 }
-
-if (!$result) {
-    die("Error in query: " . mysqli_error($conn));
-}
-$student_stats = mysqli_fetch_assoc($result);
 
 $stats['students'] = [
     'total' => $student_stats['total'] ?? 0,
@@ -110,18 +113,16 @@ JOIN departments d ON f.department_id = d.id
 $department_filter";
 
 if (!empty($department_params)) {
-    $stmt = mysqli_prepare($conn, $faculty_query);
-    mysqli_stmt_bind_param($stmt, $param_types, ...$department_params);
-    mysqli_stmt_execute($stmt);
-    $faculty_result = mysqli_stmt_get_result($stmt);
+    $stmt = $pdo->prepare($faculty_query);
+    $stmt->execute([$_SESSION['department_id']]);
+    $faculty_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 } else {
-    $faculty_result = mysqli_query($conn, $faculty_query);
+    $stmt = $pdo->prepare($faculty_query);
+    $stmt->execute();
+    $faculty_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 }
-
-if (!$faculty_result) {
-    die("Error in faculty query: " . mysqli_error($conn));
-}
-$faculty_stats = mysqli_fetch_assoc($faculty_result);
 
 // Initialize faculty stats with default values if null
 $stats['faculty'] = [
@@ -145,21 +146,23 @@ $department_filter
 GROUP BY d.id, d.name";
 
 if (!empty($department_params)) {
-    $stmt = mysqli_prepare($conn, $dept_faculty_query);
-    mysqli_stmt_bind_param($stmt, $param_types, ...$department_params);
-    mysqli_stmt_execute($stmt);
-    $dept_faculty_result = mysqli_stmt_get_result($stmt);
+    $stmt = $pdo->prepare($dept_faculty_query);
+    $stmt->execute([$_SESSION['department_id']]);
+    $dept_faculty_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 } else {
-    $dept_faculty_result = mysqli_query($conn, $dept_faculty_query);
+    $stmt = $pdo->prepare($dept_faculty_query);
+    $stmt->execute();
+    $dept_faculty_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 }
 
-if ($dept_faculty_result) {
-    while ($row = mysqli_fetch_assoc($dept_faculty_result)) {
-        $stats['faculty']['by_department'][$row['department_name']] = [
-            'total' => $row['total'],
-            'active' => $row['active']
-        ];
-    }
+$stats['faculty']['by_department'] = [];
+foreach ($dept_faculty_result as $row) {
+    $stats['faculty']['by_department'][$row['department_name']] = [
+        'total' => $row['total'],
+        'active' => $row['active']
+    ];
 }
 
 // Get feedback statistics
@@ -175,17 +178,14 @@ WHERE sa.academic_year_id = ?
 " . (!empty($department_filter) ? "AND d.id = ?" : "");
 
 $feedback_params = [$current_academic_year['id']];
-$feedback_param_types = "i";
-
 if (!empty($department_params)) {
     $feedback_params[] = $_SESSION['department_id'];
-    $feedback_param_types .= "i";
 }
 
-$stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, $feedback_param_types, ...$feedback_params);
-mysqli_stmt_execute($stmt);
-$feedback_stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+$stmt = $pdo->prepare($feedback_query);
+$stmt->execute($feedback_params);
+$feedback_stats = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt = null; // Close the statement
 
 $stats['feedback'] = [
     'total' => $feedback_stats['total_feedback'] ?? 0,
@@ -202,34 +202,42 @@ $activities_query = "SELECT
         WHEN ul.role = 'student' THEN s.name
         WHEN ul.role = 'faculty' THEN f.name
         WHEN ul.role = 'hod' THEN h.name
-        ELSE 'Admin'
-    END as user_name
+        WHEN ul.role = 'admin' THEN a.username
+        ELSE 'Unknown'
+    END as user_name,
+    CASE
+        WHEN ul.role = 'student' THEN d_s.name
+        WHEN ul.role = 'faculty' THEN d_f.name
+        WHEN ul.role = 'hod' THEN d_h.name
+        ELSE NULL
+    END as department_name
 FROM user_logs ul
 LEFT JOIN students s ON ul.user_id = s.id AND ul.role = 'student'
 LEFT JOIN faculty f ON ul.user_id = f.id AND ul.role = 'faculty'
-LEFT JOIN hods h ON ul.user_id = h.id AND ul.role = 'hod'";
+LEFT JOIN hods h ON ul.user_id = h.id AND ul.role = 'hod'
+LEFT JOIN admin_users a ON ul.user_id = a.id AND ul.role = 'admin'
+LEFT JOIN departments d_s ON s.department_id = d_s.id
+LEFT JOIN departments d_f ON f.department_id = d_f.id
+LEFT JOIN departments d_h ON h.department_id = d_h.id";
 
 // Add department filter to activities if department admin
 if (!empty($department_params)) {
     $activities_query .= " 
-    LEFT JOIN departments d ON 
-        (ul.role = 'student' AND s.department_id = d.id) OR 
-        (ul.role = 'faculty' AND f.department_id = d.id) OR 
-        (ul.role = 'hod' AND h.department_id = d.id)
-    WHERE (d.id = ? OR ul.role = 'admin')";
+    WHERE (d_s.id = ? OR d_f.id = ? OR d_h.id = ? OR ul.role = 'admin')";
     
-    $activities_query .= " ORDER BY ul.created_at DESC LIMIT 10";
+    $activities_query .= " ORDER BY ul.created_at DESC LIMIT 15";
     
-    $stmt = mysqli_prepare($conn, $activities_query);
-    mysqli_stmt_bind_param($stmt, "i", $_SESSION['department_id']);
-    mysqli_stmt_execute($stmt);
-    $activities_result = mysqli_stmt_get_result($stmt);
+    $stmt = $pdo->prepare($activities_query);
+    $stmt->execute([$_SESSION['department_id'], $_SESSION['department_id'], $_SESSION['department_id']]);
+    $recent_activities = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 } else {
-    $activities_query .= " ORDER BY ul.created_at DESC LIMIT 10";
-    $activities_result = mysqli_query($conn, $activities_query);
+    $activities_query .= " ORDER BY ul.created_at DESC LIMIT 15";
+    $stmt = $pdo->prepare($activities_query);
+    $stmt->execute();
+    $recent_activities = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $stmt = null; // Close the statement
 }
-
-$recent_activities = mysqli_fetch_all($activities_result, MYSQLI_ASSOC);
 
 // Get pending tasks
 $pending_tasks = [
@@ -419,7 +427,7 @@ include_once "includes/sidebar.php";
 
         .activity-item {
             display: grid;
-            grid-template-columns: 2fr 3fr 1fr;
+            grid-template-columns: 1fr 3fr 1fr;
             gap: 1rem;
             padding: 1rem;
             border-bottom: 1px solid rgba(0,0,0,0.1);
@@ -433,18 +441,85 @@ include_once "includes/sidebar.php";
         .activity-user {
             font-weight: 500;
             color: var(--primary-color);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .activity-user small {
+            font-size: 0.75rem;
+            color: #7f8c8d;
+            font-weight: normal;
+        }
+
+        .department-name {
+            background-color: rgba(52, 152, 219, 0.1);
+            color: #3498db !important;
+            padding: 2px 6px;
+            border-radius: 4px;
+            display: inline-block;
+            margin-top: 3px;
         }
 
         .activity-action {
             color: var(--text-color);
+            position: relative;
+        }
+
+        .details-preview {
+            display: block;
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.3rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 100%;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            margin-left: 5px;
+        }
+
+        .status-success {
+            background-color: rgba(46, 204, 113, 0.2);
+            color: #27ae60;
+        }
+
+        .status-failure {
+            background-color: rgba(231, 76, 60, 0.2);
+            color: #c0392b;
         }
 
         .activity-time {
             color: #666;
             font-size: 0.9rem;
             text-align: right;
+            display: flex;
+            flex-direction: column;
         }
 
+        .ip-address {
+            font-size: 0.75rem;
+            color: #95a5a6;
+            margin-top: 3px;
+            cursor: help;
+        }
+
+        .view-more-container {
+            text-align: center;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .view-more-btn {
+            padding: 0.5rem 1.5rem;
+            font-size: 0.9rem;
+        }
+        
         @media (max-width: 768px) {
             .main-content {
                 margin-left: 0;
@@ -457,6 +532,10 @@ include_once "includes/sidebar.php";
             .activity-item {
                 grid-template-columns: 1fr;
                 gap: 0.5rem;
+            }
+            
+            .activity-time {
+                text-align: left;
             }
         }
 
@@ -758,11 +837,49 @@ include_once "includes/sidebar.php";
             <h3>Recent Activity</h3>
             <?php foreach ($recent_activities as $activity): ?>
                 <div class="activity-item">
-                    <span class="activity-user"><?php echo htmlspecialchars($activity['user_name']); ?></span>
-                    <span class="activity-action"><?php echo htmlspecialchars($activity['action']); ?></span>
-                    <span class="activity-time"><?php echo date('M d, Y H:i', strtotime($activity['created_at'])); ?></span>
+                    <span class="activity-user">
+                        <?php echo htmlspecialchars($activity['user_name'] ?? ''); ?> 
+                        <small>(<?php echo htmlspecialchars($activity['role'] ?? ''); ?>)</small>
+                        <?php if(!empty($activity['department_name'])): ?>
+                            <small class="department-name"><?php echo htmlspecialchars($activity['department_name']); ?></small>
+                        <?php endif; ?>
+                    </span>
+                    <span class="activity-action">
+                        <?php echo htmlspecialchars($activity['action'] ?? ''); ?>
+                        <?php if (!empty($activity['details'])): ?>
+                            <small class="details-preview">
+                                <?php 
+                                $details = json_decode($activity['details'], true);
+                                if (is_array($details)) {
+                                    foreach ($details as $key => $value) {
+                                        if (is_string($value) || is_numeric($value)) {
+                                            echo htmlspecialchars($key) . ': ' . htmlspecialchars($value) . ' | ';
+                                        }
+                                    }
+                                }
+                                ?>
+                            </small>
+                        <?php endif; ?>
+                        <small class="status-badge <?php echo $activity['status'] == 'success' ? 'status-success' : 'status-failure'; ?>">
+                            <?php echo ucfirst(htmlspecialchars($activity['status'] ?? '')); ?>
+                        </small>
+                    </span>
+                    <span class="activity-time">
+                        <?php echo date('M d, Y H:i', strtotime($activity['created_at'])); ?>
+                        <small class="ip-address" title="<?php echo htmlspecialchars($activity['user_agent'] ?? ''); ?>">
+                            <?php echo htmlspecialchars($activity['ip_address'] ?? ''); ?>
+                        </small>
+                    </span>
                 </div>
             <?php endforeach; ?>
+            
+            <?php if (count($recent_activities) >= 10): ?>
+                <div class="view-more-container">
+                    <button class="btn view-more-btn" onclick="location.href='export_logs.php'">
+                        <i class="fas fa-list"></i> View All Logs
+                    </button>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Import Modal -->
