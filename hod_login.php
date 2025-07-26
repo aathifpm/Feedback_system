@@ -21,18 +21,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                  JOIN departments d ON h.department_id = d.id
                  WHERE h.email = ? AND h.is_active = TRUE";
                  
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "s", $email);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $hod = mysqli_fetch_assoc($result);
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$email]);
+        $hod = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = null; // Close the statement
 
         if ($hod && password_verify($password, $hod['password'])) {
             // Update last login timestamp
             $update_query = "UPDATE hods SET last_login = CURRENT_TIMESTAMP WHERE id = ?";
-            $update_stmt = mysqli_prepare($conn, $update_query);
-            mysqli_stmt_bind_param($update_stmt, "i", $hod['id']);
-            mysqli_stmt_execute($update_stmt);
+            $update_stmt = $pdo->prepare($update_query);
+            $update_stmt->execute([$hod['id']]);
+            $update_stmt = null; // Close the statement
 
             // Set session variables
             $_SESSION['user_id'] = $hod['id'];
@@ -50,14 +49,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 'email' => $hod['email'],
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
-            $log_stmt = mysqli_prepare($conn, $log_query);
-            mysqli_stmt_bind_param($log_stmt, "isss", 
+            $log_stmt = $pdo->prepare($log_query);
+            $log_stmt->execute([
                 $hod['id'], 
                 $log_details,
                 $_SERVER['REMOTE_ADDR'],
                 $_SERVER['HTTP_USER_AGENT']
-            );
-            mysqli_stmt_execute($log_stmt);
+            ]);
+            $log_stmt = null; // Close the statement
 
             // Debug information
             error_log("HOD Login Successful - Redirecting to dashboard.php");

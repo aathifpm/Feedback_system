@@ -10,38 +10,48 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] != 'hod') {
 
 // Get current academic year
 $current_year_query = "SELECT id, year_range FROM academic_years WHERE is_current = TRUE LIMIT 1";
-$current_year_result = mysqli_query($conn, $current_year_query);
-$current_year = mysqli_fetch_assoc($current_year_result);
+try {
+    $stmt = $pdo->query($current_year_query);
+    $current_year = $stmt->fetch(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    error_log("Error fetching current academic year: " . $e->getMessage());
+    $_SESSION['error'] = "Database error occurred.";
+    header('Location: dashboard.php');
+    exit();
+}
 
 // Function to get the correct batch for a given academic year and year of study
-function getBatchForAcademicYear($conn, $academic_year_id, $year_of_study) {
+function getBatchForAcademicYear($pdo, $academic_year_id, $year_of_study) {
     // Get the academic year details
-    $year_query = "SELECT year_range FROM academic_years WHERE id = ?";
-    $stmt = mysqli_prepare($conn, $year_query);
-    mysqli_stmt_bind_param($stmt, "i", $academic_year_id);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    $academic_year = mysqli_fetch_assoc($result);
-    
-    if (!$academic_year) {
+    $year_query = "SELECT year_range FROM academic_years WHERE id = :academic_year_id";
+    try {
+        $stmt = $pdo->prepare($year_query);
+        $stmt->bindParam(':academic_year_id', $academic_year_id, PDO::PARAM_INT);
+        $stmt->execute();
+        $academic_year = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$academic_year) {
+            return null;
+        }
+        
+        // Extract the start year from year_range (e.g., "2023-24" -> 2023)
+        $academic_start_year = intval(substr($academic_year['year_range'], 0, 4));
+        
+        // Calculate the admission year for the batch we're looking for
+        // If we're looking for 2nd year students in 2023-24, their admission year would be 2022
+        $admission_year = $academic_start_year - $year_of_study + 1;
+        
+        // Get the batch details
+        $batch_query = "SELECT * FROM batch_years WHERE admission_year = :admission_year";
+        $stmt = $pdo->prepare($batch_query);
+        $stmt->bindParam(':admission_year', $admission_year, PDO::PARAM_INT);
+        $stmt->execute();
+        
+        return $stmt->fetch(PDO::FETCH_ASSOC);
+    } catch (PDOException $e) {
+        error_log("Error in getBatchForAcademicYear: " . $e->getMessage());
         return null;
     }
-    
-    // Extract the start year from year_range (e.g., "2023-24" -> 2023)
-    $academic_start_year = intval(substr($academic_year['year_range'], 0, 4));
-    
-    // Calculate the admission year for the batch we're looking for
-    // If we're looking for 2nd year students in 2023-24, their admission year would be 2022
-    $admission_year = $academic_start_year - $year_of_study + 1;
-    
-    // Get the batch details
-    $batch_query = "SELECT * FROM batch_years WHERE admission_year = ?";
-    $stmt = mysqli_prepare($conn, $batch_query);
-    mysqli_stmt_bind_param($stmt, "i", $admission_year);
-    mysqli_stmt_execute($stmt);
-    $result = mysqli_stmt_get_result($stmt);
-    
-    return mysqli_fetch_assoc($result);
 }
 
 // If form is submitted
@@ -53,7 +63,7 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
     $export_format = $_GET['export_format'];
     
     // Get the correct batch for this academic year and year of study
-    $batch = getBatchForAcademicYear($conn, $academic_year_id, $year_of_study);
+    $batch = getBatchForAcademicYear($pdo, $academic_year_id, $year_of_study);
     
     if (!$batch) {
         $_SESSION['error'] = "No matching batch found for the selected criteria.";
@@ -96,9 +106,12 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
         :root {
             --primary-color: #3498db;
             --secondary-color: #2ecc71;
-            --bg-color: #f0f2f5;
+            --bg-color: #e0e5ec;
             --text-color: #2c3e50;
-            --shadow: 0 2px 10px rgba(0,0,0,0.1);
+            --shadow-light: 9px 9px 16px rgba(163, 177, 198, 0.6);
+            --shadow-dark: -9px -9px 16px rgba(255, 255, 255, 0.5);
+            --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1), 
+                           inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
         }
 
         * {
@@ -112,115 +125,162 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
             background: var(--bg-color);
             color: var(--text-color);
             line-height: 1.6;
+            min-height: 100vh;
         }
 
         .container {
             max-width: 1000px;
-            margin: 2rem auto;
-            padding: 0 1rem;
+            margin: 3rem auto;
+            padding: 0 1.5rem;
         }
 
         .card {
-            background: white;
-            border-radius: 10px;
-            padding: 2rem;
-            box-shadow: var(--shadow);
+            background: var(--bg-color);
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: var(--shadow-light), var(--shadow-dark);
             margin-bottom: 2rem;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
         }
 
         .page-header {
             text-align: center;
-            margin-bottom: 2rem;
+            margin-bottom: 2.5rem;
         }
 
         .page-title {
-            font-size: 1.8rem;
+            font-size: 2rem;
             color: var(--text-color);
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.8rem;
+            font-weight: 600;
         }
 
         .page-subtitle {
             color: #666;
-            font-size: 1rem;
+            font-size: 1.1rem;
+            opacity: 0.8;
         }
 
         .form-group {
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.8rem;
             font-weight: 500;
             color: var(--text-color);
+            font-size: 1.05rem;
         }
 
         .form-control {
             width: 100%;
-            padding: 0.8rem 1rem;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            padding: 1rem 1.5rem;
+            border: none;
+            border-radius: 12px;
             font-size: 1rem;
-            transition: border-color 0.3s ease;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            color: var(--text-color);
+            transition: all 0.3s ease;
         }
 
         .form-control:focus {
             outline: none;
-            border-color: var(--primary-color);
+            box-shadow: var(--shadow-light), var(--shadow-dark);
+        }
+
+        select.form-control {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='%232c3e50' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 1rem center;
+            background-size: 1em;
+            padding-right: 2.5rem;
+            cursor: pointer;
         }
 
         .btn {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 0.8rem 1.5rem;
+            padding: 1rem 2rem;
             border: none;
-            border-radius: 5px;
+            border-radius: 12px;
             font-size: 1rem;
             font-weight: 500;
             cursor: pointer;
             transition: all 0.3s ease;
-            gap: 0.5rem;
+            gap: 0.8rem;
+            background: var(--bg-color);
+            color: var(--text-color);
+            box-shadow: var(--shadow-light), var(--shadow-dark);
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 12px 12px 20px rgba(163, 177, 198, 0.7),
+                      -12px -12px 20px rgba(255, 255, 255, 0.7);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+            box-shadow: var(--inner-shadow);
         }
 
         .btn-primary {
-            background: var(--primary-color);
             color: white;
+            background: var(--primary-color);
         }
 
         .btn-primary:hover {
-            background: #2980b9;
+            background: linear-gradient(145deg, #3498db, #2980b9);
         }
 
         .btn-secondary {
-            background: var(--secondary-color);
             color: white;
+            background: var(--secondary-color);
         }
 
         .btn-secondary:hover {
-            background: #27ae60;
+            background: linear-gradient(145deg, #2ecc71, #27ae60);
         }
 
         .actions {
             display: flex;
-            gap: 1rem;
+            gap: 1.5rem;
             justify-content: flex-end;
-            margin-top: 2rem;
+            margin-top: 2.5rem;
         }
 
         .form-row {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
+            gap: 2rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            color: #e74c3c;
+            font-weight: 500;
         }
 
         @media (max-width: 768px) {
             .container {
                 padding: 1rem;
+                margin: 1.5rem auto;
             }
 
             .card {
-                padding: 1.5rem;
+                padding: 1.8rem;
             }
 
             .actions {
@@ -229,6 +289,11 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
 
             .btn {
                 width: 100%;
+            }
+            
+            .form-row {
+                grid-template-columns: 1fr;
+                gap: 1.2rem;
             }
         }
     </style>
@@ -241,7 +306,9 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
             <?php
             // Display error message if any
             if (isset($_SESSION['error'])) {
-                echo '<div class="alert alert-danger">' . $_SESSION['error'] . '</div>';
+                echo '<div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i> ' . $_SESSION['error'] . '
+                </div>';
                 unset($_SESSION['error']);
             }
             ?>
@@ -253,22 +320,26 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
             <form id="reportForm" method="get">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Academic Year</label>
-                        <select name="academic_year" class="form-control" required>
+                        <label for="academic_year"><i class="fas fa-calendar-alt"></i> Academic Year</label>
+                        <select name="academic_year" id="academic_year" class="form-control" required>
                             <?php
-                            $year_query = "SELECT id, year_range FROM academic_years ORDER BY year_range DESC";
-                            $year_result = mysqli_query($conn, $year_query);
-                            while ($year = mysqli_fetch_assoc($year_result)) {
-                                $selected = ($year['id'] == $current_year['id']) ? 'selected' : '';
-                                echo "<option value='" . $year['id'] . "' $selected>" . $year['year_range'] . "</option>";
+                            try {
+                                $year_query = "SELECT id, year_range FROM academic_years ORDER BY year_range DESC";
+                                $stmt = $pdo->query($year_query);
+                                while ($year = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                                    $selected = ($year['id'] == $current_year['id']) ? 'selected' : '';
+                                    echo "<option value='" . $year['id'] . "' $selected>" . $year['year_range'] . "</option>";
+                                }
+                            } catch (PDOException $e) {
+                                error_log("Error fetching academic years: " . $e->getMessage());
                             }
                             ?>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label>Year of Study</label>
-                        <select name="year" class="form-control" required onchange="updateSemesters(this.value)">
+                        <label for="year"><i class="fas fa-graduation-cap"></i> Year of Study</label>
+                        <select name="year" id="year" class="form-control" required onchange="updateSemesters(this.value)">
                             <option value="">Select Year</option>
                             <option value="1">I Year</option>
                             <option value="2">II Year</option>
@@ -280,16 +351,16 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Semester</label>
-                        <select name="semester" class="form-control" required>
+                        <label for="semester"><i class="fas fa-book-open"></i> Semester</label>
+                        <select name="semester" id="semester" class="form-control" required>
                             <option value="">Select Semester</option>
                             <option value="0">All Semesters</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label>Section</label>
-                        <select name="section" class="form-control" required>
+                        <label for="section"><i class="fas fa-users"></i> Section</label>
+                        <select name="section" id="section" class="form-control" required>
                             <option value="">Select Section</option>
                             <?php
                             $sections = range('A', 'K');
@@ -303,8 +374,8 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
 
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Export Format</label>
-                        <select name="export_format" class="form-control" required>
+                        <label for="export_format"><i class="fas fa-file-export"></i> Export Format</label>
+                        <select name="export_format" id="export_format" class="form-control" required>
                             <option value="pdf">PDF Document</option>
                             <option value="excel">Excel Spreadsheet</option>
                         </select>
@@ -315,7 +386,10 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
                     <a href="dashboard.php" class="btn btn-secondary">
                         <i class="fas fa-arrow-left"></i> Back to Dashboard
                     </a>
-                    <button type="submit" class="btn btn-primary">
+                    <a href="class_committee_reports.php" class="btn btn-secondary">
+                        <i class="fas fa-chart-bar"></i> Class Committee Reports
+                    </a>
+                    <button type="submit" class="btn btn-primary" id="generate-btn">
                         <i class="fas fa-file-export"></i> Generate Report
                     </button>
                 </div>
@@ -338,12 +412,35 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
                     option.textContent = `Semester ${i}`;
                     semesterSelect.appendChild(option);
                 }
+
+                // Add animation effect
+                semesterSelect.classList.add('animate-update');
+                setTimeout(() => {
+                    semesterSelect.classList.remove('animate-update');
+                }, 500);
             }
         }
+
+        // Add active effect on form controls
+        document.querySelectorAll('.form-control').forEach(control => {
+            control.addEventListener('focus', function() {
+                this.classList.add('active');
+            });
+            control.addEventListener('blur', function() {
+                this.classList.remove('active');
+            });
+        });
 
         // Handle form submission
         document.getElementById('reportForm').addEventListener('submit', function(e) {
             e.preventDefault();
+            
+            // Show loading effect on button
+            const generateBtn = document.getElementById('generate-btn');
+            const originalBtnText = generateBtn.innerHTML;
+            generateBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating...';
+            generateBtn.disabled = true;
+            
             const format = document.querySelector('select[name="export_format"]').value;
             const form = this;
             
@@ -353,8 +450,39 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
                 form.action = 'generate_section_excel.php';
             }
             
-            form.submit();
+            // Add slight delay to show the loading effect
+            setTimeout(() => {
+                form.submit();
+            }, 300);
         });
     </script>
+
+    <style>
+        /* Additional styles */
+        .form-control.active {
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-light), var(--shadow-dark);
+        }
+        
+        .animate-update {
+            animation: pulse 0.5s ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        /* Loading spinner */
+        .fa-spin {
+            animation: fa-spin 1s infinite linear;
+        }
+        
+        @keyframes fa-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </body>
 </html> 
