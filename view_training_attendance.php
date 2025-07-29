@@ -29,6 +29,26 @@ $date_from = isset($_GET['date_from']) ? $_GET['date_from'] : date('Y-m-d', strt
 $date_to = isset($_GET['date_to']) ? $_GET['date_to'] : date('Y-m-d');
 $status_filter = isset($_GET['status']) ? $_GET['status'] : '';
 
+// Add sort parameters
+$sessions_sort_column = isset($_GET['sessions_sort']) ? $_GET['sessions_sort'] : 'session_date';
+$sessions_sort_direction = isset($_GET['sessions_dir']) ? $_GET['sessions_dir'] : 'DESC';
+$students_sort_column = isset($_GET['students_sort']) ? $_GET['students_sort'] : 'roll_number';
+$students_sort_direction = isset($_GET['students_dir']) ? $_GET['students_dir'] : 'ASC';
+
+// Validate sort parameters
+$allowed_sessions_columns = ['session_date', 'start_time', 'topic', 'venue_name', 'attendance_count'];
+$allowed_students_columns = ['roll_number', 'student_name', 'status', 'marked_at', 'marked_by_name'];
+
+if (!in_array($sessions_sort_column, $allowed_sessions_columns)) {
+    $sessions_sort_column = 'session_date';
+}
+if (!in_array($students_sort_column, $allowed_students_columns)) {
+    $students_sort_column = 'roll_number';
+}
+
+$sessions_sort_direction = ($sessions_sort_direction === 'ASC') ? 'ASC' : 'DESC';
+$students_sort_direction = ($students_sort_direction === 'DESC') ? 'DESC' : 'ASC';
+
 // Get training batches for faculty's department
 $batches_query = "SELECT 
                     tb.id,
@@ -102,7 +122,7 @@ if ($selected_batch_id > 0) {
     
     // If batch exists and belongs to faculty's department
     if ($batch_details) {
-        // Get training sessions for this batch within date range
+        // Get training sessions for this batch within date range with custom sorting
         $sessions_query = "SELECT 
                             tss.id,
                             tss.session_date,
@@ -130,7 +150,9 @@ if ($selected_batch_id > 0) {
                           GROUP BY 
                             tss.id
                           ORDER BY 
-                            tss.session_date DESC, tss.start_time DESC";
+                            $sessions_sort_column $sessions_sort_direction,
+                            tss.session_date DESC,
+                            tss.start_time DESC";
         
         $stmt = mysqli_prepare($conn, $sessions_query);
         mysqli_stmt_bind_param($stmt, "iss", $selected_batch_id, $date_from, $date_to);
@@ -226,7 +248,7 @@ if ($selected_batch_id > 0) {
                     $offset = 0;
                 }
                 
-                // Get student attendance for this session with pagination
+                // Get student attendance for this session with pagination and custom sorting
                 $students_query = "SELECT 
                                     s.id AS student_id,
                                     s.roll_number,
@@ -253,7 +275,7 @@ if ($selected_batch_id > 0) {
                 }
                 
                 // Add ORDER BY and LIMIT for pagination
-                $students_query .= " ORDER BY s.roll_number LIMIT ?, ?";
+                $students_query .= " ORDER BY $students_sort_column $students_sort_direction LIMIT ?, ?";
                 
                 if (!empty($status_filter)) {
                     $stmt = mysqli_prepare($conn, $students_query);
@@ -285,15 +307,14 @@ if ($selected_batch_id > 0) {
 
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>View Training Attendance - Panimalar Engineering College</title>
-    <link rel="icon" href="college_logo.png" type="image/png">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
+<?php
+// Set page title before including header
+$pageTitle = "View Training Attendance";
+include 'header.php';
+// Add Chart.js - required for this page
+?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    
     <style>
         :root {
             --primary-color: #3498db;
@@ -320,16 +341,17 @@ if ($selected_batch_id > 0) {
         }
 
         body {
-            background: var(--bg-color);
             min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 0.5rem;
+            padding-left: 0.5rem;
+            padding-right: 0.5rem;
+            padding-bottom: 0.5rem;
             font-size: 16px;
         }
 
-        .header {
+        .custom-header {
             width: 100%;
             padding: 1rem;
             background: var(--bg-color);
@@ -340,14 +362,14 @@ if ($selected_batch_id > 0) {
             max-width: 1200px;
         }
 
-        .college-info h1 {
+        .custom-header h1 {
             font-size: clamp(1.2rem, 4vw, 1.8rem);
             color: var(--text-color);
             margin-bottom: 0.5rem;
             font-weight: 600;
         }
 
-        .college-info p {
+        .custom-header p {
             color: var(--text-light);
             line-height: 1.4;
             font-size: clamp(0.85rem, 3vw, 1rem);
@@ -779,6 +801,77 @@ if ($selected_batch_id > 0) {
             background-color: #3498db;
         }
 
+        /* Chart containers */
+        .chart-container {
+            width: 100%;
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background-color: white;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            position: relative;
+            height: 300px;
+            overflow: hidden;
+        }
+        
+        .chart-loader {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255,255,255,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1;
+        }
+
+        .chart-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-col {
+            flex: 1 1 300px;
+            min-width: 300px;
+        }
+
+        .chart-title {
+            text-align: center;
+            margin-bottom: 1rem;
+            font-size: 1.1rem;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        .chart-filters {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .chart-filter-btn {
+            background: var(--bg-color);
+            border: none;
+            border-radius: 20px;
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.2s;
+        }
+
+        .chart-filter-btn:hover,
+        .chart-filter-btn.active {
+            background: var(--primary-color);
+            color: white;
+        }
+
         @media (max-width: 768px) {
             .filters {
                 flex-direction: column;
@@ -792,6 +885,10 @@ if ($selected_batch_id > 0) {
             .stats-container {
                 grid-template-columns: 1fr 1fr;
             }
+
+            .chart-container {
+                height: 250px;
+            }
         }
 
         @media (max-width: 480px) {
@@ -803,19 +900,57 @@ if ($selected_batch_id > 0) {
                 flex-direction: column;
                 gap: 0.25rem;
             }
+
+            .chart-container {
+                height: 200px;
+            }
+
+            .chart-row {
+                flex-direction: column;
+            }
+        }
+
+        /* Hide charts when printing */
+        @media print {
+            .chart-container, .chart-row {
+                display: none;
+            }
+        }
+
+        /* Add sorting styles */
+        .sortable {
+            cursor: pointer;
+            position: relative;
+            padding-right: 18px !important;
+        }
+        
+        .sortable:hover {
+            background-color: rgba(52, 152, 219, 0.2);
+        }
+        
+        .sortable::after {
+            content: "↕";
+            position: absolute;
+            right: 5px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        .sortable.asc::after {
+            content: "↓";
+            color: var(--primary-color);
+        }
+        
+        .sortable.desc::after {
+            content: "↑";
+            color: var(--primary-color);
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="nav-user">
-            <i class="fas fa-user-circle"></i>
-            Welcome, <?php echo htmlspecialchars($faculty_name); ?>
-        </div>
-        <div class="college-info">
-            <h1>Training Attendance Records</h1>
-            <p>Panimalar Engineering College</p>
-        </div>
+    <div class="custom-header">
+        <h1>Training Attendance Records</h1>
+        <p>Welcome, <?php echo htmlspecialchars($faculty_name); ?></p>
     </div>
 
     <div class="container">
@@ -957,7 +1092,181 @@ if ($selected_batch_id > 0) {
                         <div class="stat-label">Late</div>
                     </div>
                 </div>
+
+                <!-- Attendance Visualization Dashboard -->
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title">Attendance Analytics</h3>
+                        <div class="chart-filters">
+                            <button class="chart-filter-btn active" data-period="all">All Time</button>
+                            <button class="chart-filter-btn" data-period="month">Last 30 Days</button>
+                            <button class="chart-filter-btn" data-period="week">Last 7 Days</button>
+                        </div>
+                    </div>
+                    
+                    <!-- First row of charts -->
+                    <div class="chart-row">
+                        <!-- Attendance Trend Chart -->
+                        <div class="chart-col">
+                            <div class="chart-container">
+                                <div class="chart-title">Attendance Trend</div>
+                                <div class="chart-loader">Loading...</div>
+                                <canvas id="attendanceTrendChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Second row of charts -->
+                    <div class="chart-row">
+                        <!-- Top Absentees -->
+                        <div class="chart-col">
+                            <div class="chart-container">
+                                <div class="chart-title">Top 10 Absentees</div>
+                                <canvas id="topAbsenteesChart"></canvas>
+                            </div>
+                        </div>
+                        
+                        <!-- Day of Week Analysis -->
+                        <div class="chart-col">
+                            <div class="chart-container">
+                                <div class="chart-title">Day of Week Analysis</div>
+                                <canvas id="dayOfWeekChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <?php
+                    // Prepare data for charts
+                    // Query to get date-wise attendance data
+                    $date_wise_query = "SELECT 
+                                        tss.session_date,
+                                        COUNT(DISTINCT tar.id) AS total_records,
+                                        SUM(CASE WHEN tar.status = 'present' THEN 1 ELSE 0 END) AS present_count,
+                                        SUM(CASE WHEN tar.status = 'absent' OR tar.status IS NULL THEN 1 ELSE 0 END) AS absent_count,
+                                        SUM(CASE WHEN tar.status = 'late' THEN 1 ELSE 0 END) AS late_count,
+                                        SUM(CASE WHEN tar.status = 'excused' THEN 1 ELSE 0 END) AS excused_count
+                                    FROM 
+                                        training_session_schedule tss
+                                    JOIN 
+                                        student_training_batch stb ON tss.training_batch_id = stb.training_batch_id
+                                    LEFT JOIN 
+                                        training_attendance_records tar ON tss.id = tar.session_id AND stb.student_id = tar.student_id
+                                    WHERE 
+                                        tss.training_batch_id = ?
+                                        AND tss.session_date BETWEEN ? AND ?
+                                        AND tss.is_cancelled = FALSE
+                                    GROUP BY 
+                                        tss.session_date
+                                    ORDER BY 
+                                        tss.session_date";
+                    
+                    $stmt = mysqli_prepare($conn, $date_wise_query);
+                    mysqli_stmt_bind_param($stmt, "iss", $selected_batch_id, $date_from, $date_to);
+                    mysqli_stmt_execute($stmt);
+                    $date_wise_result = mysqli_stmt_get_result($stmt);
+                    
+                    $dates = [];
+                    $present_counts = [];
+                    $absent_counts = [];
+                    $late_counts = [];
+                    $attendance_rates = [];
+                    
+                    while ($row = mysqli_fetch_assoc($date_wise_result)) {
+                        $dates[] = date('d M', strtotime($row['session_date']));
+                        $present_counts[] = $row['present_count'];
+                        $absent_counts[] = $row['absent_count'];
+                        $late_counts[] = $row['late_count'];
+                        
+                        $total = $row['present_count'] + $row['absent_count'] + $row['late_count'] + $row['excused_count'];
+                        $attendance_rates[] = $total > 0 ? round(($row['present_count'] + $row['late_count'] + $row['excused_count']) * 100 / $total, 1) : 0;
+                    }
+                    
+
+                    
+                    // Query to get day-of-week attendance data
+                    $day_of_week_query = "SELECT 
+                                        DAYNAME(tss.session_date) AS day_name,
+                                        COUNT(DISTINCT tar.id) AS total_records,
+                                        ROUND((SUM(CASE WHEN tar.status IN ('present', 'late', 'excused') THEN 1 ELSE 0 END) / 
+                                              COUNT(DISTINCT tar.id)) * 100, 1) AS attendance_rate
+                                    FROM 
+                                        training_session_schedule tss
+                                    JOIN 
+                                        student_training_batch stb ON tss.training_batch_id = stb.training_batch_id
+                                    LEFT JOIN 
+                                        training_attendance_records tar ON tss.id = tar.session_id AND stb.student_id = tar.student_id
+                                    WHERE 
+                                        tss.training_batch_id = ?
+                                        AND tss.session_date BETWEEN ? AND ?
+                                        AND tss.is_cancelled = FALSE
+                                    GROUP BY 
+                                        day_name
+                                    ORDER BY 
+                                        DAYOFWEEK(tss.session_date)";
+                    
+                    $stmt = mysqli_prepare($conn, $day_of_week_query);
+                    mysqli_stmt_bind_param($stmt, "iss", $selected_batch_id, $date_from, $date_to);
+                    mysqli_stmt_execute($stmt);
+                    $day_of_week_result = mysqli_stmt_get_result($stmt);
+                    
+                    $days = [];
+                    $day_attendance_rates = [];
+                    
+                    while ($row = mysqli_fetch_assoc($day_of_week_result)) {
+                        $days[] = $row['day_name'];
+                        $day_attendance_rates[] = $row['attendance_rate'];
+                    }
+                    
+                    // Query to get top absentees
+                    $absentees_query = "SELECT 
+                                        s.roll_number,
+                                        s.name AS student_name,
+                                        COUNT(DISTINCT tss.id) AS total_sessions,
+                                        SUM(CASE WHEN tar.status = 'absent' OR tar.status IS NULL THEN 1 ELSE 0 END) AS absent_count,
+                                        ROUND((SUM(CASE WHEN tar.status = 'absent' OR tar.status IS NULL THEN 1 ELSE 0 END) / 
+                                              COUNT(DISTINCT tss.id)) * 100, 1) AS absent_rate
+                                    FROM 
+                                        students s
+                                    JOIN 
+                                        student_training_batch stb ON s.id = stb.student_id
+                                    JOIN 
+                                        training_session_schedule tss ON stb.training_batch_id = tss.training_batch_id
+                                    LEFT JOIN 
+                                        training_attendance_records tar ON s.id = tar.student_id AND tss.id = tar.session_id
+                                    WHERE 
+                                        stb.training_batch_id = ?
+                                        AND tss.session_date BETWEEN ? AND ?
+                                        AND tss.is_cancelled = FALSE
+                                    GROUP BY 
+                                        s.id, s.roll_number, s.name
+                                    HAVING 
+                                        absent_count > 0
+                                    ORDER BY 
+                                        absent_rate DESC
+                                    LIMIT 10";
+                    
+                    $stmt = mysqli_prepare($conn, $absentees_query);
+                    mysqli_stmt_bind_param($stmt, "iss", $selected_batch_id, $date_from, $date_to);
+                    mysqli_stmt_execute($stmt);
+                    $absentees_result = mysqli_stmt_get_result($stmt);
+                    
+                    $absentees = [];
+                    $absent_rates = [];
+                    
+                    while ($row = mysqli_fetch_assoc($absentees_result)) {
+                        $absentees[] = $row['roll_number'] . ' - ' . substr($row['student_name'], 0, 15) . (strlen($row['student_name']) > 15 ? '...' : '');
+                        $absent_rates[] = $row['absent_rate'];
+                    }
+                    ?>
+                </div>
                 <?php endif; ?>
+                
+                <!-- Department-wide export button -->
+                <div style="margin-bottom: 1.5rem; display: flex; justify-content: flex-end;">
+                    <button class="btn btn-success export-department-btn">  
+                        <i class="fas fa-file-excel"></i> Export Department-Wide Attendance Report
+                    </button>
+                </div>
                 
                 <!-- Sessions List -->
                 <?php if (count($sessions) > 0): ?>
@@ -966,11 +1275,16 @@ if ($selected_batch_id > 0) {
                     <table class="table">
                         <thead>
                             <tr>
-                                <th>Date</th>
-                                <th>Time</th>
-                                <th>Topic</th>
-                                <th>Venue</th>
-                                <th>Attendance</th>
+                                <th class="sortable <?php echo ($sessions_sort_column == 'session_date') ? strtolower($sessions_sort_direction) : ''; ?>"
+                                    data-column="session_date" data-table="sessions">Date</th>
+                                <th class="sortable <?php echo ($sessions_sort_column == 'start_time') ? strtolower($sessions_sort_direction) : ''; ?>"
+                                    data-column="start_time" data-table="sessions">Time</th>
+                                <th class="sortable <?php echo ($sessions_sort_column == 'topic') ? strtolower($sessions_sort_direction) : ''; ?>"
+                                    data-column="topic" data-table="sessions">Topic</th>
+                                <th class="sortable <?php echo ($sessions_sort_column == 'venue_name') ? strtolower($sessions_sort_direction) : ''; ?>"
+                                    data-column="venue_name" data-table="sessions">Venue</th>
+                                <th class="sortable <?php echo ($sessions_sort_column == 'attendance_count') ? strtolower($sessions_sort_direction) : ''; ?>"
+                                    data-column="attendance_count" data-table="sessions">Attendance</th>
                                 <th>Actions</th>
                             </tr>
                         </thead>
@@ -1100,8 +1414,72 @@ if ($selected_batch_id > 0) {
                     </form>
                     
                     <!-- Student Attendance List -->
-                    <?php if (count($students) > 0): ?>
+                                            <?php if (count($students) > 0): ?>
                         <h3 style="margin: 1rem 0;">Student Attendance</h3>
+                        
+                        <!-- Visualization for individual session attendance -->
+                        <div class="chart-row">
+                            <div class="chart-col">
+                                <div class="chart-container">
+                                    <div class="chart-title">Session Attendance Distribution</div>
+                                    <canvas id="sessionAttendanceChart"></canvas>
+                                </div>
+                            </div>
+                            <div class="chart-col">
+                                <div class="chart-container">
+                                    <div class="chart-title">Attendance Timing Analysis</div>
+                                    <canvas id="attendanceTimingChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <?php
+                        // Calculate attendance statistics for this session
+                        $present_count = 0;
+                        $absent_count = 0;
+                        $late_count = 0;
+                        $excused_count = 0;
+                        
+                        // Calculate hourly attendance marking distribution
+                        $hourly_distribution = [];
+                        
+                        foreach ($students as $student) {
+                            switch($student['status']) {
+                                case 'present':
+                                    $present_count++;
+                                    break;
+                                case 'absent':
+                                    $absent_count++;
+                                    break;
+                                case 'late':
+                                    $late_count++;
+                                    break;
+                                case 'excused':
+                                    $excused_count++;
+                                    break;
+                            }
+                            
+                            // Get hour when attendance was marked (for timing analysis)
+                            if ($student['marked_at']) {
+                                $hour = date('H', strtotime($student['marked_at']));
+                                if (!isset($hourly_distribution[$hour])) {
+                                    $hourly_distribution[$hour] = 0;
+                                }
+                                $hourly_distribution[$hour]++;
+                            }
+                        }
+                        
+                        // Sort hours and prepare for chart
+                        ksort($hourly_distribution);
+                        $hours = [];
+                        $attendance_counts = [];
+                        
+                        foreach ($hourly_distribution as $hour => $count) {
+                            $formatted_hour = sprintf('%02d:00', $hour);
+                            $hours[] = $formatted_hour;
+                            $attendance_counts[] = $count;
+                        }
+                        ?>
                         
                         <!-- Search Box -->
                         <div class="search-box" style="margin-bottom: 1rem;">
@@ -1113,11 +1491,16 @@ if ($selected_batch_id > 0) {
                             <table class="table" id="studentTable">
                                 <thead>
                                     <tr>
-                                        <th>Roll Number</th>
-                                        <th>Name</th>
-                                        <th>Status</th>
-                                        <th>Marked By</th>
-                                        <th>Marked At</th>
+                                        <th class="sortable <?php echo ($students_sort_column == 'roll_number') ? strtolower($students_sort_direction) : ''; ?>"
+                                            data-column="roll_number" data-table="students">Roll Number</th>
+                                        <th class="sortable <?php echo ($students_sort_column == 'student_name') ? strtolower($students_sort_direction) : ''; ?>"
+                                            data-column="student_name" data-table="students">Name</th>
+                                        <th class="sortable <?php echo ($students_sort_column == 'status') ? strtolower($students_sort_direction) : ''; ?>"
+                                            data-column="status" data-table="students">Status</th>
+                                        <th class="sortable <?php echo ($students_sort_column == 'marked_by_name') ? strtolower($students_sort_direction) : ''; ?>"
+                                            data-column="marked_by_name" data-table="students">Marked By</th>
+                                        <th class="sortable <?php echo ($students_sort_column == 'marked_at') ? strtolower($students_sort_direction) : ''; ?>"
+                                            data-column="marked_at" data-table="students">Marked At</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1225,7 +1608,7 @@ if ($selected_batch_id > 0) {
                         </div>
                         
 
-                        <!-- Pagination controls -->
+                        <!-- Pagination controls with sort parameters -->
                         <?php if (isset($total_pages) && $total_pages > 1): ?>
                         <div class="pagination-container" style="margin: 1.5rem 0; text-align: center;">
                             <div class="pagination-info" style="margin-bottom: 0.5rem; color: var(--text-light); font-size: 0.9rem;">
@@ -1247,7 +1630,7 @@ if ($selected_batch_id > 0) {
                             <div class="pagination" style="display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 0.25rem; margin-top: 1rem;">
                                 <!-- Previous page button -->
                                 <?php if ($current_page > 1): ?>
-                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $current_page - 1; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>" 
+                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $current_page - 1; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>&students_sort=<?php echo $students_sort_column; ?>&students_dir=<?php echo $students_sort_direction; ?>" 
                                        class="btn btn-sm" style="min-width: 40px; height: 40px; padding: 0;">
                                         <i class="fas fa-chevron-left"></i>
                                     </a>
@@ -1266,7 +1649,7 @@ if ($selected_batch_id > 0) {
                                 }
                                 
                                 if ($start_page > 1): ?>
-                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=1<?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>" 
+                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=1<?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>&students_sort=<?php echo $students_sort_column; ?>&students_dir=<?php echo $students_sort_direction; ?>" 
                                        class="btn btn-sm" style="min-width: 40px; height: 40px; padding: 0;">1</a>
                                     <?php if ($start_page > 2): ?>
                                         <span style="display: inline-flex; align-items: center; justify-content: center; padding: 0 0.5rem; height: 40px;">...</span>
@@ -1274,7 +1657,7 @@ if ($selected_batch_id > 0) {
                                 <?php endif; ?>
                                 
                                 <?php for ($i = $start_page; $i <= $end_page; $i++): ?>
-                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $i; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>" 
+                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $i; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>&students_sort=<?php echo $students_sort_column; ?>&students_dir=<?php echo $students_sort_direction; ?>" 
                                        class="btn btn-sm <?php echo $i == $current_page ? 'btn-info' : ''; ?>"
                                        style="min-width: 40px; height: 40px; padding: 0;">
                                         <?php echo $i; ?>
@@ -1285,7 +1668,7 @@ if ($selected_batch_id > 0) {
                                     <?php if ($end_page < $total_pages - 1): ?>
                                         <span style="display: inline-flex; align-items: center; justify-content: center; padding: 0 0.5rem; height: 40px;">...</span>
                                     <?php endif; ?>
-                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $total_pages; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>" 
+                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $total_pages; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>&students_sort=<?php echo $students_sort_column; ?>&students_dir=<?php echo $students_sort_direction; ?>" 
                                        class="btn btn-sm" style="min-width: 40px; height: 40px; padding: 0;">
                                         <?php echo $total_pages; ?>
                                     </a>
@@ -1293,7 +1676,7 @@ if ($selected_batch_id > 0) {
                                 
                                 <!-- Next page button -->
                                 <?php if ($current_page < $total_pages): ?>
-                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $current_page + 1; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>" 
+                                    <a href="view_training_attendance.php?batch_id=<?php echo $selected_batch_id; ?>&session_id=<?php echo $selected_session_id; ?>&page=<?php echo $current_page + 1; ?><?php echo !empty($status_filter) ? '&status=' . $status_filter : ''; ?><?php echo isset($_GET['date_from']) ? '&date_from=' . $_GET['date_from'] : ''; ?><?php echo isset($_GET['date_to']) ? '&date_to=' . $_GET['date_to'] : ''; ?>&students_sort=<?php echo $students_sort_column; ?>&students_dir=<?php echo $students_sort_direction; ?>" 
                                        class="btn btn-sm" style="min-width: 40px; height: 40px; padding: 0;">
                                         <i class="fas fa-chevron-right"></i>
                                     </a>
@@ -1322,6 +1705,9 @@ if ($selected_batch_id > 0) {
                             </a>
                             <button class="btn btn-info" onclick="printAttendance()">
                                 <i class="fas fa-print"></i> Print
+                            </button>
+                            <button class="btn btn-success export-department-btn">
+                                <i class="fas fa-file-excel"></i> Export Department Batches
                             </button>
                         </div>
 
@@ -1565,6 +1951,14 @@ if ($selected_batch_id > 0) {
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Hide all chart loaders after charts are ready
+            const hideLoaders = function() {
+                document.querySelectorAll('.chart-loader').forEach(loader => {
+                    loader.style.display = 'none';
+                });
+            };
+            // Set a timeout to ensure charts are properly displayed
+            setTimeout(hideLoaders, 1000);
             // Batch search functionality
             const batchSearch = document.getElementById('batchSearch');
             if (batchSearch) {
@@ -1606,6 +2000,315 @@ if ($selected_batch_id > 0) {
                     });
                 });
             }
+
+            // Sorting functionality for tables
+            document.querySelectorAll('th.sortable').forEach(header => {
+                header.addEventListener('click', function() {
+                    const column = this.getAttribute('data-column');
+                    const tableType = this.getAttribute('data-table');
+                    const currentDirection = this.classList.contains('asc') ? 'ASC' : 
+                                           (this.classList.contains('desc') ? 'DESC' : '');
+                    
+                    // Toggle sort direction or default to ASC
+                    let newDirection = 'ASC';
+                    if (currentDirection === 'ASC') {
+                        newDirection = 'DESC';
+                    } else if (currentDirection === 'DESC') {
+                        newDirection = 'ASC';
+                    }
+                    
+                    // Build the URL with appropriate sort parameters
+                    const url = new URL(window.location.href);
+                    
+                    if (tableType === 'sessions') {
+                        url.searchParams.set('sessions_sort', column);
+                        url.searchParams.set('sessions_dir', newDirection);
+                    } else if (tableType === 'students') {
+                        url.searchParams.set('students_sort', column);
+                        url.searchParams.set('students_dir', newDirection);
+                    }
+                    
+                    // Redirect to the new URL with sort parameters
+                    window.location.href = url.toString();
+                });
+            });
+            
+            // Chart rendering
+            <?php if (isset($attendance_stats) && $selected_batch_id > 0): ?>
+            // Chart.js configuration with better responsiveness
+            Chart.defaults.font.family = "'Poppins', sans-serif";
+            Chart.defaults.responsive = true;
+            Chart.defaults.maintainAspectRatio = true;
+            
+            // Attendance Trend Chart
+            const trendCtx = document.getElementById('attendanceTrendChart').getContext('2d');
+            const attendanceTrendChart = new Chart(trendCtx, {
+                type: 'line',
+                data: {
+                    labels: <?php echo json_encode($dates); ?>,
+                    datasets: [{
+                        label: 'Attendance Rate (%)',
+                        data: <?php echo json_encode($attendance_rates); ?>,
+                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                        borderColor: 'rgba(52, 152, 219, 1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Attendance: ${context.raw}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 5. Top Absentees Chart
+            const absenteesCtx = document.getElementById('topAbsenteesChart').getContext('2d');
+            const topAbsenteesChart = new Chart(absenteesCtx, {
+                type: 'bar',
+                data: {
+                    labels: <?php echo json_encode($absentees); ?>,
+                    datasets: [{
+                        label: 'Absence Rate (%)',
+                        data: <?php echo json_encode($absent_rates); ?>,
+                        backgroundColor: function(context) {
+                            const value = context.raw;
+                            if (value > 50) return 'rgba(231, 76, 60, 0.9)';
+                            if (value > 30) return 'rgba(243, 156, 18, 0.9)';
+                            return 'rgba(230, 126, 34, 0.7)';
+                        },
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    scales: {
+                        x: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Absence Rate: ${context.raw}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // 6. Day of Week Chart
+            const dayCtx = document.getElementById('dayOfWeekChart').getContext('2d');
+            const dayOfWeekChart = new Chart(dayCtx, {
+                type: 'radar',
+                data: {
+                    labels: <?php echo json_encode($days); ?>,
+                    datasets: [{
+                        label: 'Attendance Rate (%)',
+                        data: <?php echo json_encode($day_attendance_rates); ?>,
+                        backgroundColor: 'rgba(46, 204, 113, 0.2)',
+                        borderColor: 'rgba(46, 204, 113, 1)',
+                        borderWidth: 2,
+                        pointBackgroundColor: 'rgba(46, 204, 113, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        r: {
+                            beginAtZero: true,
+                            max: 100,
+                            ticks: {
+                                stepSize: 20
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Attendance: ${context.raw}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Chart filter functionality
+            const filterButtons = document.querySelectorAll('.chart-filter-btn');
+            filterButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    const period = this.getAttribute('data-period');
+                    const url = new URL(window.location.href);
+                    
+                    // Set appropriate date range
+                    const today = new Date();
+                    let fromDate = new Date();
+                    
+                    if (period === 'week') {
+                        fromDate.setDate(today.getDate() - 7);
+                    } else if (period === 'month') {
+                        fromDate.setDate(today.getDate() - 30);
+                    } else {
+                        // For 'all', set date to 6 months ago or beginning of year
+                        fromDate.setMonth(today.getMonth() - 6);
+                    }
+                    
+                    // Format dates as YYYY-MM-DD
+                    const formatDate = (date) => {
+                        const year = date.getFullYear();
+                        const month = String(date.getMonth() + 1).padStart(2, '0');
+                        const day = String(date.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    };
+                    
+                    // Update URL and reload page
+                    url.searchParams.set('date_from', formatDate(fromDate));
+                    url.searchParams.set('date_to', formatDate(today));
+                    window.location.href = url.toString();
+                });
+            });
+            <?php endif; ?>
+
+            // Session-specific charts if session is selected
+            <?php if ($selected_session_id > 0 && isset($session_details)): ?>
+            // Session Attendance Distribution Chart
+            const sessionDistributionCtx = document.getElementById('sessionAttendanceChart').getContext('2d');
+            const sessionAttendanceChart = new Chart(sessionDistributionCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Present', 'Absent', 'Late', 'Excused'],
+                    datasets: [{
+                        data: [
+                            <?php echo $present_count; ?>,
+                            <?php echo $absent_count; ?>,
+                            <?php echo $late_count; ?>,
+                            <?php echo $excused_count; ?>
+                        ],
+                        backgroundColor: [
+                            'rgba(46, 204, 113, 0.8)',
+                            'rgba(231, 76, 60, 0.8)',
+                            'rgba(243, 156, 18, 0.8)',
+                            'rgba(52, 152, 219, 0.8)'
+                        ],
+                        borderColor: [
+                            'rgba(46, 204, 113, 1)',
+                            'rgba(231, 76, 60, 1)',
+                            'rgba(243, 156, 18, 1)',
+                            'rgba(52, 152, 219, 1)'
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            position: 'right'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value * 100) / total);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+
+            // Attendance Timing Analysis Chart
+            const timingCtx = document.getElementById('attendanceTimingChart').getContext('2d');
+            const attendanceTimingChart = new Chart(timingCtx, {
+                type: 'line',
+                data: {
+                    labels: <?php echo json_encode($hours); ?>,
+                    datasets: [{
+                        label: 'Students Marked',
+                        data: <?php echo json_encode($attendance_counts); ?>,
+                        backgroundColor: 'rgba(52, 152, 219, 0.2)',
+                        borderColor: 'rgba(52, 152, 219, 1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        fill: true,
+                        pointRadius: 5,
+                        pointBackgroundColor: 'rgba(52, 152, 219, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1,
+                                precision: 0
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: function(context) {
+                                    return `Time: ${context[0].label}`;
+                                },
+                                label: function(context) {
+                                    return `Students: ${context.raw}`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            <?php endif; ?>
         });
         
         // Function to print attendance
@@ -1613,5 +2316,96 @@ if ($selected_batch_id > 0) {
             window.print();
         }
     </script>
-</body>
-</html> 
+
+    <!-- Export Department Report Modal -->
+    <div class="modal" id="exportDepartmentModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4);">
+        <div class="modal-content" style="background-color: var(--bg-color); margin: 15% auto; padding: 20px; border-radius: 15px; box-shadow: var(--shadow); max-width: 500px;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 10px; margin-bottom: 20px;">
+                <h2 style="margin: 0; font-size: 1.5rem; color: var(--text-color);">Export Department Attendance</h2>
+                <span class="close" id="closeExportModal" style="cursor: pointer; font-size: 1.8rem; color: var(--text-light);">&times;</span>
+            </div>
+            <form id="exportForm" action="export_department_attendance.php" method="get">
+                <input type="hidden" name="department_id" value="<?php echo $department_id; ?>">
+                <input type="hidden" name="academic_year_id" value="<?php echo $academic_year_id; ?>">
+                
+                <div class="form-group">
+                    <label for="selected_batch_id">Select Student Batch:</label>
+                    <select name="selected_batch_id" id="selected_batch_id" class="form-control">
+                        <option value="all">All Batches</option>
+                        <?php
+                        // Get all active batch years
+                        $batch_query = "SELECT DISTINCT batch_years.id, batch_years.batch_name
+                                       FROM batch_years
+                                       JOIN students s ON s.batch_id = batch_years.id
+                                       WHERE s.department_id = ?
+                                       ORDER BY batch_years.admission_year DESC";
+                        
+                        $stmt = mysqli_prepare($conn, $batch_query);
+                        mysqli_stmt_bind_param($stmt, "i", $department_id);
+                        mysqli_stmt_execute($stmt);
+                        $batch_result = mysqli_stmt_get_result($stmt);
+                        
+                        while ($batch = mysqli_fetch_assoc($batch_result)) {
+                            echo "<option value=\"{$batch['id']}\">{$batch['batch_name']}</option>";
+                        }
+                        ?>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="date_from">From Date:</label>
+                    <input type="date" id="date_from" name="date_from" class="form-control" 
+                           value="<?php echo $date_from; ?>">
+                </div>
+                
+                <div class="form-group">
+                    <label for="date_to">To Date:</label>
+                    <input type="date" id="date_to" name="date_to" class="form-control" 
+                           value="<?php echo $date_to; ?>">
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+                    <button type="button" id="cancelExport" class="btn btn-outline">Cancel</button>
+                    <button type="submit" class="btn">Generate Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+    // Add to the existing DOMContentLoaded event or create a new one
+    document.addEventListener('DOMContentLoaded', function() {
+        // Previous script code remains...
+
+        // Export Department Modal functionality
+        const exportModal = document.getElementById('exportDepartmentModal');
+        const exportButtons = document.querySelectorAll('.export-department-btn');
+        const closeExportModal = document.getElementById('closeExportModal');
+        const cancelExport = document.getElementById('cancelExport');
+        
+        exportButtons.forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                exportModal.style.display = 'block';
+            });
+        });
+        
+        closeExportModal.addEventListener('click', function() {
+            exportModal.style.display = 'none';
+        });
+        
+        cancelExport.addEventListener('click', function() {
+            exportModal.style.display = 'none';
+        });
+        
+        // Close modal if clicked outside
+        window.addEventListener('click', function(e) {
+            if (e.target === exportModal) {
+                exportModal.style.display = 'none';
+            }
+        });
+    });
+    </script>
+<?php
+// Don't include closing body and html tags as they are in header.php
+?>
