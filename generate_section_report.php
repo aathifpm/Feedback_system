@@ -403,12 +403,12 @@ $overview_query = "SELECT
     COUNT(DISTINCT sa.id) as total_subjects,
     COUNT(DISTINCT f.id) as total_feedback,
     COUNT(DISTINCT st.id) as total_students,
-    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(f.cumulative_avg), 2) as overall_rating,
+    ROUND(AVG(f.course_effectiveness_avg) * 2, 2) as course_effectiveness,
+    ROUND(AVG(f.teaching_effectiveness_avg) * 2, 2) as teaching_effectiveness,
+    ROUND(AVG(f.resources_admin_avg) * 2, 2) as resources_admin,
+    ROUND(AVG(f.assessment_learning_avg) * 2, 2) as assessment_learning,
+    ROUND(AVG(f.course_outcomes_avg) * 2, 2) as course_outcomes,
+    ROUND(AVG(f.cumulative_avg) * 2, 2) as overall_rating,
     COUNT(DISTINCT CASE WHEN f.comments IS NOT NULL AND f.comments != '' THEN f.id END) as total_comments
 FROM subject_assignments sa
 JOIN subjects s ON sa.subject_id = s.id
@@ -457,12 +457,12 @@ $subject_query = "SELECT
     f.name as faculty_name,
     sa.semester,
     COUNT(DISTINCT fb.id) as feedback_count,
-    ROUND(AVG(fb.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(fb.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(fb.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(fb.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(fb.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(fb.cumulative_avg), 2) as overall_rating,
+    ROUND(AVG(fb.course_effectiveness_avg) * 2, 2) as course_effectiveness,
+    ROUND(AVG(fb.teaching_effectiveness_avg) * 2, 2) as teaching_effectiveness,
+    ROUND(AVG(fb.resources_admin_avg) * 2, 2) as resources_admin,
+    ROUND(AVG(fb.assessment_learning_avg) * 2, 2) as assessment_learning,
+    ROUND(AVG(fb.course_outcomes_avg) * 2, 2) as course_outcomes,
+    ROUND(AVG(fb.cumulative_avg) * 2, 2) as overall_rating,
     COUNT(DISTINCT CASE WHEN fb.comments IS NOT NULL AND fb.comments != '' THEN fb.id END) as total_comments
 FROM subject_assignments sa
 JOIN subjects s ON sa.subject_id = s.id
@@ -513,7 +513,7 @@ $student_query = "SELECT
     st.name as student_name,
     COUNT(DISTINCT sa.id) as total_subjects,
     COUNT(DISTINCT f.id) as submitted_feedback,
-    ROUND(AVG(f.cumulative_avg), 2) as average_rating,
+    ROUND(AVG(f.cumulative_avg) * 2, 2) as average_rating,
     COUNT(DISTINCT CASE WHEN f.comments IS NOT NULL AND f.comments != '' THEN f.id END) as total_comments
 FROM students st
 JOIN batch_years by2 ON st.batch_id = by2.id
@@ -565,7 +565,7 @@ $pdf->SectionTitle('Feedback Analysis by Category');
 $category_query = "SELECT 
     fs.section as category,
     COUNT(fr.id) as total_ratings,
-    ROUND(AVG(fr.rating), 2) as average_rating,
+    ROUND(AVG(fr.rating) * 2, 2) as average_rating,
     COUNT(DISTINCT CASE WHEN f.comments IS NOT NULL AND f.comments != '' THEN f.id END) as total_comments
 FROM feedback_ratings fr
 JOIN feedback_statements fs ON fr.statement_id = fs.id
@@ -687,9 +687,9 @@ $pdf->Output($filename, 'D');
 ob_end_flush();
 
 function getRatingStatus($rating) {
-    if ($rating >= 4.5) return 'Excellent';
-    if ($rating >= 4.0) return 'Very Good';
-    if ($rating >= 3.5) return 'Good';
-    if ($rating >= 3.0) return 'Satisfactory';
+    if ($rating >= 9.0) return 'Excellent';
+    if ($rating >= 8.0) return 'Very Good';
+    if ($rating >= 7.0) return 'Good';
+    if ($rating >= 6.0) return 'Satisfactory';
     return 'Needs Improvement';
 } 
