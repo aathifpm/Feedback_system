@@ -24,6 +24,17 @@ $selected_batch = null;
 $attendance_list = [];
 $schedule_type = '';
 
+// Add sort parameters
+$sort_column = isset($_POST['sort_column']) ? $_POST['sort_column'] : 'roll_number';
+$sort_direction = isset($_POST['sort_direction']) ? $_POST['sort_direction'] : 'ASC';
+
+// Validate sort parameters
+$allowed_columns = ['roll_number', 'name', 'department_name', 'status'];
+if (!in_array($sort_column, $allowed_columns)) {
+    $sort_column = 'roll_number';
+}
+$sort_direction = ($sort_direction === 'DESC') ? 'DESC' : 'ASC';
+
 // Get current academic year
 $query = "SELECT id FROM academic_years WHERE is_current = TRUE LIMIT 1";
 $result = mysqli_query($conn, $query);
@@ -118,6 +129,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['select_class'])) {
     $schedule_id = $_POST['schedule_id'];
     $schedule_type = $_POST['schedule_type'];
     
+    // Get sort parameters from form if available
+    if (isset($_POST['sort_column'])) {
+        $sort_column = $_POST['sort_column'];
+        if (!in_array($sort_column, $allowed_columns)) {
+            $sort_column = 'roll_number';
+        }
+    }
+    
+    if (isset($_POST['sort_direction'])) {
+        $sort_direction = $_POST['sort_direction'];
+        $sort_direction = ($sort_direction === 'DESC') ? 'DESC' : 'ASC';
+    }
+    
     // Set pagination variables
     $students_per_page = 20; // Number of students per page
     $current_page = isset($_POST['page']) ? intval($_POST['page']) : 1;
@@ -184,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['select_class'])) {
                 $offset = 0;
             }
             
-            // Get students for this academic class with pagination
+            // Get students for this academic class with pagination and sorting
             $query = "SELECT 
                         s.id, 
                         s.roll_number, 
@@ -206,7 +230,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['select_class'])) {
                         AND s.section = ? 
                         AND s.department_id = ?
                       ORDER BY 
-                        s.roll_number
+                        $sort_column $sort_direction
                       LIMIT ?, ?";
             
             $stmt = mysqli_prepare($conn, $query);
@@ -269,7 +293,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['select_class'])) {
             $offset = 0;
         }
         
-        // Get students for this training batch with pagination
+        // Get students for this training batch with pagination and sorting
         $query = "SELECT 
                     s.id, 
                     s.roll_number, 
@@ -290,7 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['select_class'])) {
                     stb.training_batch_id = ? 
                     AND stb.is_active = TRUE
                   ORDER BY 
-                    s.roll_number
+                    $sort_column $sort_direction
                   LIMIT ?, ?";
         
         $stmt = mysqli_prepare($conn, $query);
@@ -311,6 +335,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_attendance'])) {
     $roll_number = $_POST['roll_number'];
     $status = $_POST['status'];
     
+    // Debugging output
+    error_log("Checking roll number: " . $roll_number);
+    
     // Find student by roll number
     $query = "SELECT id FROM students WHERE roll_number = ?";
     $stmt = mysqli_prepare($conn, $query);
@@ -318,11 +345,99 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_attendance'])) {
     mysqli_stmt_execute($stmt);
     $result = mysqli_stmt_get_result($stmt);
     
-    if ($student = mysqli_fetch_assoc($result)) {
+    if (mysqli_num_rows($result) === 0) {
+        $error = "ERROR: Student with Roll Number $roll_number not found in database.";
+        error_log($error);
+    } else {
+        $student = mysqli_fetch_assoc($result);
         $student_id = $student['id'];
+        $student_belongs_to_class = false;
         
+        error_log("Found student ID: " . $student_id);
+        
+        // Validate student belongs to class based on schedule type
         if ($schedule_type == 'academic') {
-            // Check if academic attendance already recorded
+            // Get class details
+            $query = "SELECT sa.year, sa.section, sa.department_id 
+                      FROM academic_class_schedule acs 
+                      JOIN subject_assignments sa ON acs.assignment_id = sa.id 
+                      WHERE acs.id = ?";
+            $stmt = mysqli_prepare($conn, $query);
+            mysqli_stmt_bind_param($stmt, "i", $schedule_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            
+            if (mysqli_num_rows($result) === 0) {
+                $error = "ERROR: Could not find class details for validation.";
+                error_log($error);
+            } else {
+                $class_details = mysqli_fetch_assoc($result);
+                error_log("Class details - Year: " . $class_details['year'] . ", Section: " . $class_details['section']);
+                
+                // Check if student belongs to this class
+                $query = "SELECT s.id 
+                          FROM students s 
+                          JOIN batch_years by ON s.batch_id = by.id 
+                          WHERE s.id = ? 
+                          AND by.current_year_of_study = ? 
+                          AND s.section = ? 
+                          AND s.department_id = ?";
+                $stmt = mysqli_prepare($conn, $query);
+                mysqli_stmt_bind_param($stmt, "iisi", $student_id, $class_details['year'], 
+                                      $class_details['section'], $class_details['department_id']);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                
+                if (mysqli_num_rows($result) > 0) {
+                    $student_belongs_to_class = true;
+                    error_log("Student belongs to academic class: YES");
+                } else {
+                    $error = "ERROR: Student with Roll Number $roll_number does not belong to this class (Year: " . 
+                            $class_details['year'] . ", Section: " . $class_details['section'] . ").";
+                    error_log($error);
+                }
+            }
+        } else {
+            // Get training batch details
+            $query = "SELECT training_batch_id FROM training_session_schedule WHERE id = ?";
+            $stmt = mysqli_prepare($conn, $query);
+            mysqli_stmt_bind_param($stmt, "i", $schedule_id);
+            mysqli_stmt_execute($stmt);
+            $result = mysqli_stmt_get_result($stmt);
+            
+            if (mysqli_num_rows($result) === 0) {
+                $error = "ERROR: Could not find training batch details for validation.";
+                error_log($error);
+            } else {
+                $batch_details = mysqli_fetch_assoc($result);
+                error_log("Training batch ID: " . $batch_details['training_batch_id']);
+                
+                // Check if student belongs to this batch
+                $query = "SELECT id FROM student_training_batch 
+                          WHERE student_id = ? 
+                          AND training_batch_id = ? 
+                          AND is_active = TRUE";
+                $stmt = mysqli_prepare($conn, $query);
+                mysqli_stmt_bind_param($stmt, "ii", $student_id, $batch_details['training_batch_id']);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                
+                if (mysqli_num_rows($result) > 0) {
+                    $student_belongs_to_class = true;
+                    error_log("Student belongs to training batch: YES");
+                } else {
+                    $error = "ERROR: Student with Roll Number $roll_number is not enrolled in this training batch.";
+                    error_log($error);
+                }
+            }
+        }
+        
+        // Mark attendance only if validation passed
+        if ($student_belongs_to_class) {
+            error_log("Proceeding with attendance marking for student ID: " . $student_id);
+            
+            if ($schedule_type == 'academic') {
+                // Check if attendance already recorded
             $query = "SELECT id FROM academic_attendance_records WHERE student_id = ? AND schedule_id = ?";
             $stmt = mysqli_prepare($conn, $query);
             mysqli_stmt_bind_param($stmt, "ii", $student_id, $schedule_id);
@@ -330,21 +445,23 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_attendance'])) {
             $result = mysqli_stmt_get_result($stmt);
             
             if ($record = mysqli_fetch_assoc($result)) {
-                // Update existing academic record
+                    // Update existing record
                 $query = "UPDATE academic_attendance_records 
                           SET status = ?, marked_by = ?, updated_at = CURRENT_TIMESTAMP
                           WHERE id = ?";
                 $stmt = mysqli_prepare($conn, $query);
                 mysqli_stmt_bind_param($stmt, "sii", $status, $faculty_id, $record['id']);
+                    error_log("Updating existing academic attendance record ID: " . $record['id']);
             } else {
-                // Insert new academic record
+                    // Insert new record
                 $query = "INSERT INTO academic_attendance_records (student_id, schedule_id, status, marked_by)
                           VALUES (?, ?, ?, ?)";
                 $stmt = mysqli_prepare($conn, $query);
                 mysqli_stmt_bind_param($stmt, "iisi", $student_id, $schedule_id, $status, $faculty_id);
+                    error_log("Creating new academic attendance record");
             }
         } else {
-            // Check if training attendance already recorded
+                // Check if attendance already recorded
             $query = "SELECT id FROM training_attendance_records WHERE student_id = ? AND session_id = ?";
             $stmt = mysqli_prepare($conn, $query);
             mysqli_stmt_bind_param($stmt, "ii", $student_id, $schedule_id);
@@ -352,32 +469,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_attendance'])) {
             $result = mysqli_stmt_get_result($stmt);
             
             if ($record = mysqli_fetch_assoc($result)) {
-                // Update existing training record
+                    // Update existing record
                 $query = "UPDATE training_attendance_records 
                           SET status = ?, marked_by = ?, updated_at = CURRENT_TIMESTAMP
                           WHERE id = ?";
                 $stmt = mysqli_prepare($conn, $query);
                 mysqli_stmt_bind_param($stmt, "sii", $status, $faculty_id, $record['id']);
+                    error_log("Updating existing training attendance record ID: " . $record['id']);
             } else {
-                // Insert new training record
+                    // Insert new record
                 $query = "INSERT INTO training_attendance_records (student_id, session_id, status, marked_by)
                           VALUES (?, ?, ?, ?)";
                 $stmt = mysqli_prepare($conn, $query);
                 mysqli_stmt_bind_param($stmt, "iisi", $student_id, $schedule_id, $status, $faculty_id);
+                    error_log("Creating new training attendance record");
             }
         }
         
         if (mysqli_stmt_execute($stmt)) {
             $success = "Attendance marked for Roll Number: $roll_number";
+                error_log("SUCCESS: " . $success);
+                
             // Reload student list
             $_POST['select_class'] = true;
             $_POST['schedule_id'] = $schedule_id;
             $_POST['schedule_type'] = $schedule_type;
         } else {
             $error = "Failed to mark attendance: " . mysqli_error($conn);
+                error_log("ERROR: " . $error);
         }
-    } else {
-        $error = "Student with Roll Number $roll_number not found.";
+        }
     }
 }
 
@@ -407,6 +528,84 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['bulk_mark'])) {
         $_POST['schedule_type'] = $schedule_type;
     } else {
         $error = "Failed to mark bulk attendance: " . mysqli_error($conn);
+    }
+}
+
+// Process mark unmarked as absent
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['mark_unmarked'])) {
+    $schedule_id = $_POST['schedule_id'];
+    $schedule_type = $_POST['schedule_type'];
+    
+    if ($schedule_type == 'academic') {
+        // Mark all students without attendance records as absent for this class
+        $query = "INSERT INTO academic_attendance_records (student_id, schedule_id, status, marked_by)
+                 SELECT 
+                     s.id,
+                     ?,
+                     'absent',
+                     ?
+                 FROM 
+                     academic_class_schedule acs
+                 JOIN 
+                     subject_assignments sa ON acs.assignment_id = sa.id
+                 JOIN 
+                     students s ON s.department_id = sa.department_id AND s.section = sa.section
+                 JOIN
+                     batch_years by ON s.batch_id = by.id
+                 WHERE 
+                     acs.id = ?
+                     AND by.current_year_of_study = sa.year
+                     AND NOT EXISTS (
+                         SELECT 1 
+                         FROM academic_attendance_records aar 
+                         WHERE aar.student_id = s.id AND aar.schedule_id = ?
+                     )";
+        
+        $stmt = mysqli_prepare($conn, $query);
+        mysqli_stmt_bind_param($stmt, "iiii", $schedule_id, $faculty_id, $schedule_id, $schedule_id);
+    } else {
+        // Mark all students without attendance records as absent for this training session
+        $query = "INSERT INTO training_attendance_records (student_id, session_id, status, marked_by)
+                 SELECT 
+                     s.id,
+                     ?,
+                     'absent',
+                     ?
+                 FROM 
+                     training_session_schedule tss
+                 JOIN 
+                     training_batches tb ON tss.training_batch_id = tb.id
+                 JOIN 
+                     student_training_batch stb ON tb.id = stb.training_batch_id
+                 JOIN 
+                     students s ON stb.student_id = s.id
+                 WHERE 
+                     tss.id = ?
+                     AND stb.is_active = TRUE
+                     AND NOT EXISTS (
+                         SELECT 1 
+                         FROM training_attendance_records tar 
+                         WHERE tar.student_id = s.id AND tar.session_id = ?
+                     )";
+        
+        $stmt = mysqli_prepare($conn, $query);
+        mysqli_stmt_bind_param($stmt, "iiii", $schedule_id, $faculty_id, $schedule_id, $schedule_id);
+    }
+    
+    if (mysqli_stmt_execute($stmt)) {
+        $affected_rows = mysqli_stmt_affected_rows($stmt);
+        if ($affected_rows > 0) {
+            $success = "Marked " . $affected_rows . " unmarked students as absent.";
+        } else {
+            $success = "All students already have attendance records.";
+        }
+        
+        // Reload student list
+        $_POST['select_class'] = true;
+        $_POST['schedule_id'] = $schedule_id;
+        $_POST['schedule_type'] = $schedule_type;
+    } else {
+        $error = "Failed to mark unmarked students: " . mysqli_error($conn);
     }
 }
 
@@ -609,17 +808,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Attendance Marking - Panimalar Engineering College</title>
-    <link rel="icon" href="college_logo.png" type="image/png">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css">
-    <!-- Add html5-qrcode library -->
-    <script src="https://unpkg.com/html5-qrcode"></script>
+<?php
+// Set page title before including header
+$pageTitle = "Attendance Marking";
+include 'header.php';
+// Add html5-qrcode library which is specific to this page
+?>
+<script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root {
             --primary-color: #3498db;
@@ -651,10 +846,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
             flex-direction: column;
             align-items: center;
             padding: 0.5rem;
+            padding-top: 70px; /* Add space for fixed header */
             font-size: 16px;
         }
 
-        .header {
+        .custom-header {
             width: 100%;
             padding: 1rem;
             background: var(--bg-color);
@@ -665,14 +861,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
             max-width: 1200px;
         }
 
-        .college-info h1 {
+        .custom-header h1 {
             font-size: clamp(1.2rem, 4vw, 1.8rem);
             color: var(--text-color);
             margin-bottom: 0.5rem;
             font-weight: 600;
         }
 
-        .college-info p {
+        .custom-header p {
             color: var(--text-light);
             line-height: 1.4;
             font-size: clamp(0.85rem, 3vw, 1rem);
@@ -1247,18 +1443,41 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                 height: 36px;
             }
         }
+        
+        /* Add sorting styles */
+        .sortable {
+            cursor: pointer;
+            position: relative;
+            padding-right: 18px !important;
+        }
+        
+        .sortable:hover {
+            background-color: rgba(52, 152, 219, 0.2);
+        }
+        
+        .sortable::after {
+            content: "↕";
+            position: absolute;
+            right: 5px;
+            color: #7f8c8d;
+            font-size: 14px;
+        }
+        
+        .sortable.asc::after {
+            content: "↓";
+            color: var(--primary-color);
+        }
+        
+        .sortable.desc::after {
+            content: "↑";
+            color: var(--primary-color);
+        }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="nav-user">
-            <i class="fas fa-user-circle"></i>
-            Welcome, <?php echo htmlspecialchars($faculty_name); ?>
-        </div>
-        <div class="college-info">
-            <h1>Attendance Marking System</h1>
-            <p>Panimalar Engineering College - <?php echo date('d M, Y'); ?></p>
-        </div>
+    <div class="custom-header">
+        <h1>Attendance Marking System</h1>
+        <p>Welcome, <?php echo htmlspecialchars($faculty_name); ?> - <?php echo date('d M, Y'); ?></p>
     </div>
 
     <div class="container">
@@ -1431,6 +1650,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                             <i class="fas fa-user-slash"></i> Mark All Absent
                         </button>
                     </form>
+                    <form method="post" action="" style="display: inline-block;">
+                        <input type="hidden" name="schedule_id" value="<?php echo $selected_class['id']; ?>">
+                        <input type="hidden" name="schedule_type" value="<?php echo $selected_class['schedule_type']; ?>">
+                        <button type="submit" name="mark_unmarked" class="btn btn-warning">
+                            <i class="fas fa-user-check"></i> Mark Unmarked as Absent
+                        </button>
+                    </form>
                 </div>
                 
                 <!-- Student List -->
@@ -1438,20 +1664,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                     <h3 style="margin-bottom: 1rem;">Student List</h3>
                     
                     <!-- Main attendance form -->
-                    <form method="post" action="">
+                    <form method="post" action="" id="attendanceForm">
                         <input type="hidden" name="schedule_id" value="<?php echo $selected_class['id']; ?>">
                         <input type="hidden" name="schedule_type" value="<?php echo $selected_class['schedule_type']; ?>">
                         <input type="hidden" name="update_all_pages" value="1">
+                        <input type="hidden" name="sort_column" id="sort_column" value="<?php echo htmlspecialchars($sort_column); ?>">
+                        <input type="hidden" name="sort_direction" id="sort_direction" value="<?php echo htmlspecialchars($sort_direction); ?>">
+                        <input type="hidden" name="select_class" value="1">
                         <div class="table-container">
                             <table class="table">
                                 <thead>
                                     <tr>
-                                        <th>Roll Number</th>
-                                        <th>Name</th>
+                                        <th class="sortable <?php echo ($sort_column == 'roll_number') ? strtolower($sort_direction) : ''; ?>" 
+                                            data-column="roll_number">Roll Number</th>
+                                        <th class="sortable <?php echo ($sort_column == 'name') ? strtolower($sort_direction) : ''; ?>" 
+                                            data-column="name">Name</th>
                                         <?php if (isset($students[0]['department_name'])): ?>
-                                            <th>Department</th>
+                                            <th class="sortable <?php echo ($sort_column == 'department_name') ? strtolower($sort_direction) : ''; ?>" 
+                                                data-column="department_name">Department</th>
                                         <?php endif; ?>
-                                        <th>Status</th>
+                                        <th class="sortable <?php echo ($sort_column == 'status') ? strtolower($sort_direction) : ''; ?>" 
+                                           data-column="status">Status</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1481,7 +1714,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                         </button>
                     </form>
                     
-                    <!-- Pagination controls (outside of main form but after the table) -->
+                    <!-- Pagination controls with sort parameters -->
                     <?php if (isset($total_pages) && $total_pages > 1): ?>
                     <div class="pagination-container">
                         <div class="pagination-info">
@@ -1493,6 +1726,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                             <input type="hidden" name="schedule_id" value="<?php echo $selected_class['id']; ?>">
                             <input type="hidden" name="schedule_type" value="<?php echo $selected_class['schedule_type']; ?>">
                             <input type="hidden" name="select_class" value="1">
+                            <input type="hidden" name="sort_column" value="<?php echo htmlspecialchars($sort_column); ?>">
+                            <input type="hidden" name="sort_direction" value="<?php echo htmlspecialchars($sort_direction); ?>">
                             
                             <div class="pagination">
                                 <!-- Previous page button -->
@@ -1562,7 +1797,192 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
         <i class="fas fa-arrow-left"></i>
     </a>
 
+    <!-- Add this modal HTML structure at the end of the body, before the footer include -->
+    <!-- Error Modal -->
+    <div id="errorModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="modal-close">&times;</span>
+            <div class="modal-header">
+                <h3><i class="fas fa-exclamation-triangle"></i> Error</h3>
+            </div>
+            <div class="modal-body" id="errorModalContent">
+                Error message will appear here
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger modal-close-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            opacity: 0;
+            visibility: hidden;
+            transform: scale(1.1);
+            transition: visibility 0s linear 0.25s, opacity 0.25s 0s, transform 0.25s;
+            z-index: 1200;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: var(--bg-color);
+            max-width: 90%;
+            width: 500px;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .modal-header {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: var(--error-color);
+            font-size: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .modal-body {
+            padding: 1.5rem;
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .modal-footer {
+            padding: 1rem;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            text-align: right;
+        }
+
+        .modal-close {
+            position: absolute;
+            right: 15px;
+            top: 10px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--text-light);
+            cursor: pointer;
+        }
+
+        .modal-close:hover {
+            color: var(--error-color);
+        }
+
+        .modal.show {
+            opacity: 1;
+            visibility: visible;
+            transform: scale(1.0);
+            transition: visibility 0s linear 0s, opacity 0.25s 0s, transform 0.25s;
+        }
+        
+        @media (max-width: 576px) {
+            .modal-content {
+                width: 95%;
+            }
+        }
+    </style>
+
+    <!-- The footer is included in header.php -->
+
     <script>
+        // Check for vibration support with better detection
+        const hasVibrationSupport = () => {
+            return 'vibrate' in navigator && 
+                   typeof navigator.vibrate === 'function' && 
+                   navigator.vibrate(0) !== false; // Test that it doesn't return false
+        };
+        
+        // Modal handling functions
+        function showErrorModal(message) {
+            const modal = document.getElementById('errorModal');
+            const content = document.getElementById('errorModalContent');
+            
+            // Set the error message
+            content.innerHTML = message;
+            
+            // Show the modal
+            modal.classList.add('show');
+            modal.style.display = 'flex';
+            
+            // Error haptic feedback 
+            try {
+                // Try to vibrate with a strong pattern
+                if (hasVibrationSupport()) {
+                    console.log('Triggering error vibration');
+                    window.navigator.vibrate([300, 100, 300]);
+                } else {
+                    console.log('Vibration not supported on this device');
+                }
+            } catch (e) {
+                console.error('Error triggering vibration:', e);
+            }
+            
+            // Visual flash fallback for devices without vibration
+            document.body.style.backgroundColor = '#ffcccc'; // Light red
+            setTimeout(() => {
+                document.body.style.backgroundColor = ''; // Reset
+            }, 300);
+        }
+        
+        // Success haptic feedback function
+        function triggerSuccessFeedback() {
+            try {
+                // Try to vibrate with a gentle pattern
+                if (hasVibrationSupport()) {
+                    console.log('Triggering success vibration');
+                    window.navigator.vibrate([100, 50, 100]);
+                } else {
+                    console.log('Vibration not supported on this device');
+                }
+            } catch (e) {
+                console.error('Error triggering vibration:', e);
+            }
+            
+            // Visual flash fallback for devices without vibration
+            document.body.style.backgroundColor = '#ccffcc'; // Light green
+            setTimeout(() => {
+                document.body.style.backgroundColor = ''; // Reset
+            }, 300);
+        }
+        
+        // Close modal when clicking the X, close button or outside the modal
+        document.querySelectorAll('.modal-close, .modal-close-btn').forEach(el => {
+            el.addEventListener('click', function() {
+                const modal = document.getElementById('errorModal');
+                modal.classList.remove('show');
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 250);
+            });
+        });
+        
+        // Close modal when clicking outside
+        window.addEventListener('click', function(event) {
+            const modal = document.getElementById('errorModal');
+            if (event.target === modal) {
+                modal.classList.remove('show');
+                setTimeout(() => {
+                    modal.style.display = 'none';
+                }, 250);
+            }
+        });
+        
         // Focus on scanner input when available
         document.addEventListener('DOMContentLoaded', function() {
             const scannerInput = document.getElementById('scanner');
@@ -1652,7 +2072,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                 startScannerButton.addEventListener('click', function() {
                     // First check if the camera is available
                     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                        alert("Your browser doesn't support camera access. Please try using Chrome or Firefox.");
+                        showErrorModal("Your browser doesn't support camera access. Please try using Chrome or Firefox.");
                         return;
                     }
                     
@@ -1737,7 +2157,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                             }
                         ).catch(err => {
                             console.error("Error starting scanner:", err);
-                            alert("Error starting scanner: " + err.message + "\n\nPlease ensure you've granted camera permissions and try again.");
+                            showErrorModal("Error starting scanner: " + err.message + "<br><br>Please ensure you've granted camera permissions and try again.");
                             stopScannerButton.style.display = 'none';
                             startScannerButton.style.display = 'inline-block';
                             qrReader.innerHTML = '<div style="text-align: center; padding: 20px; color: red;">Camera error. Please try again.</div>';
@@ -1747,7 +2167,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                     .catch(function(err) {
                         // Camera permission denied or error
                         console.error("Camera access error:", err);
-                        alert("Could not access camera: " + err.message + "\n\nPlease ensure you've granted camera permissions and try again.");
+                        showErrorModal("Could not access camera: " + err.message + "<br><br>Please ensure you've granted camera permissions and try again.");
                         stopScannerButton.style.display = 'none';
                         startScannerButton.style.display = 'inline-block';
                         qrReader.innerHTML = '<div style="text-align: center; padding: 20px; color: red;">Camera permission denied. Please allow camera access.</div>';
@@ -1767,7 +2187,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                             qrReader.classList.remove('active'); // Hide the reader
                         }).catch(err => {
                             console.error("Error stopping scanner:", err);
-                            alert("Error stopping scanner: " + err.message);
+                            showErrorModal("Error stopping scanner: " + err.message);
                         });
                     }
                 });
@@ -1781,7 +2201,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                     stream.getTracks().forEach(track => track.stop());
                 })
                 .catch(function(err) {
-                    alert("Camera test failed: " + err.message);
+                    showErrorModal("Camera test failed: " + err.message);
                 });
             };
         });
@@ -1806,7 +2226,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
             const status = document.getElementById('status').value;
             
             if (!rollNumber.trim()) {
-                alert("Please enter a roll number");
+                showErrorModal("Please enter a roll number");
                 return;
             }
             
@@ -1837,15 +2257,45 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
             })
             .then(response => response.text())
             .then(html => {
-                // Show success message
-                feedbackDiv.className = 'alert alert-success mt-2';
-                feedbackDiv.innerHTML = `<i class="fas fa-check-circle"></i> Marked ${rollNumber} as ${status}`;
-                
-                // Find and update just the specific student row
+                // Parse the HTML response to check for error or success messages
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(html, 'text/html');
                 
-                // Find the student row in the parsed response
+                // Check if there's an error message in the response
+                const errorElement = doc.querySelector('.error-message');
+                if (errorElement) {
+                    // Remove the processing feedback
+                    feedbackDiv.remove();
+                    
+                    // Show error in modal instead of inline
+                    showErrorModal(errorElement.textContent.trim());
+                    
+                    console.error("Attendance marking error:", errorElement.textContent.trim());
+                    
+                    // Re-enable the submit button
+                    if (submitButton) {
+                        submitButton.disabled = false;
+                        submitButton.innerHTML = '<i class="fas fa-check"></i> Mark Attendance';
+                    }
+                    
+                    return; // Stop processing
+                }
+                
+                // Check for success message
+                const successElement = doc.querySelector('.success-message');
+                if (successElement) {
+                    feedbackDiv.className = 'alert alert-success mt-2';
+                    feedbackDiv.innerHTML = `<i class="fas fa-check-circle"></i> ${successElement.textContent.trim()}`;
+                } else {
+                    // Default success message if none found in response
+                feedbackDiv.className = 'alert alert-success mt-2';
+                feedbackDiv.innerHTML = `<i class="fas fa-check-circle"></i> Marked ${rollNumber} as ${status}`;
+                }
+                
+                // Trigger success haptic feedback
+                triggerSuccessFeedback();
+                
+                // Find and update just the specific student row
                 const rows = doc.querySelectorAll('.table tbody tr');
                 let updatedRow = null;
                 
@@ -1899,23 +2349,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
                     
                     // Remove feedback message
                     feedbackDiv.remove();
-                }, 1000);
+                }, 2000);
             })
             .catch(error => {
                 console.error('Error:', error);
-                feedbackDiv.className = 'alert alert-danger mt-2';
-                feedbackDiv.innerHTML = `<i class="fas fa-exclamation-circle"></i> Error processing ${rollNumber}`;
+                
+                // Remove the processing feedback
+                feedbackDiv.remove();
+                
+                // Show error in modal
+                showErrorModal(`Network error while processing ${rollNumber}. Please try again.`);
                 
                 // Re-enable the submit button
                 if (submitButton) {
                     submitButton.disabled = false;
                     submitButton.innerHTML = '<i class="fas fa-check"></i> Mark Attendance';
                 }
-                
-                // Remove feedback after 3 seconds
-                setTimeout(() => {
-                    feedbackDiv.remove();
-                }, 3000);
             });
         }
 
@@ -1947,9 +2396,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_attendance'])) 
             }
         }
 
-
+        // Add sorting functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const sortableHeaders = document.querySelectorAll('th.sortable');
+            const sortColumnInput = document.getElementById('sort_column');
+            const sortDirectionInput = document.getElementById('sort_direction');
+            const attendanceForm = document.getElementById('attendanceForm');
+            
+            if (sortableHeaders) {
+                sortableHeaders.forEach(header => {
+                    header.addEventListener('click', function() {
+                        const column = this.getAttribute('data-column');
+                        let direction = 'ASC';
+                        
+                        // Toggle sort direction if clicking on already sorted column
+                        if (column === sortColumnInput.value) {
+                            direction = sortDirectionInput.value === 'ASC' ? 'DESC' : 'ASC';
+                        }
+                        
+                        // Update hidden inputs
+                        sortColumnInput.value = column;
+                        sortDirectionInput.value = direction;
+                        
+                        // Submit the form to refresh with new sorting
+                        if (attendanceForm) {
+                            attendanceForm.submit();
+                        }
+                    });
+                });
+            }
+            
+            // ... existing JavaScript code ...
+        });
     </script>
 
-    <?php include 'footer.php'; ?>
-</body>
-</html> 
+<?php
+// Don't include closing body and html tags as they are in header.php
+?>
