@@ -45,16 +45,15 @@ $stats_query = "SELECT
     sa.semester,
     sa.section COLLATE utf8mb4_unicode_ci as section,
     COUNT(DISTINCT f.id) as feedback_count,
-    ROUND(AVG(COALESCE(JSON_EXTRACT(fro.ratings, '$.course_effectiveness_avg'), f.course_effectiveness_avg)), 2) as course_effectiveness,
-    ROUND(AVG(COALESCE(JSON_EXTRACT(fro.ratings, '$.teaching_effectiveness_avg'), f.teaching_effectiveness_avg)), 2) as teaching_effectiveness,
-    ROUND(AVG(COALESCE(JSON_EXTRACT(fro.ratings, '$.resources_admin_avg'), f.resources_admin_avg)), 2) as resources_admin,
-    ROUND(AVG(COALESCE(JSON_EXTRACT(fro.ratings, '$.assessment_learning_avg'), f.assessment_learning_avg)), 2) as assessment_learning,
-    ROUND(AVG(COALESCE(JSON_EXTRACT(fro.ratings, '$.course_outcomes_avg'), f.course_outcomes_avg)), 2) as course_outcomes,
-    ROUND(AVG(COALESCE(JSON_EXTRACT(fro.ratings, '$.cumulative_avg'), f.cumulative_avg)), 2) as overall_rating
+    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
+    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
+    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
+    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
+    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
+    ROUND(AVG(f.cumulative_avg), 2) as overall_rating
 FROM subjects s
 JOIN subject_assignments sa ON s.id = sa.subject_id
 LEFT JOIN feedback f ON sa.id = f.assignment_id
-LEFT JOIN feedback_ratings_optimized fro ON f.id = fro.feedback_id
 WHERE sa.faculty_id = ?
 AND sa.is_active = TRUE
 GROUP BY s.id, sa.id
@@ -128,7 +127,7 @@ $section_info = [
 
 // Get detailed feedback
 $feedback_query = "SELECT 
-    COALESCE(JSON_EXTRACT(fro.ratings, CONCAT('$.', fs.id)), f.course_effectiveness_avg) as rating, 
+    fr.rating, 
     f.comments, 
     s.code, 
     s.name AS subject_name,
@@ -138,19 +137,19 @@ $feedback_query = "SELECT
     fs.statement,
     fs.section as feedback_section,
     f.submitted_at,
-    COALESCE(JSON_EXTRACT(fro.ratings, '$.course_effectiveness_avg'), f.course_effectiveness_avg) as course_effectiveness_avg,
-    COALESCE(JSON_EXTRACT(fro.ratings, '$.teaching_effectiveness_avg'), f.teaching_effectiveness_avg) as teaching_effectiveness_avg,
-    COALESCE(JSON_EXTRACT(fro.ratings, '$.resources_admin_avg'), f.resources_admin_avg) as resources_admin_avg,
-    COALESCE(JSON_EXTRACT(fro.ratings, '$.assessment_learning_avg'), f.assessment_learning_avg) as assessment_learning_avg,
-    COALESCE(JSON_EXTRACT(fro.ratings, '$.course_outcomes_avg'), f.course_outcomes_avg) as course_outcomes_avg,
-    COALESCE(JSON_EXTRACT(fro.ratings, '$.cumulative_avg'), f.cumulative_avg) as cumulative_avg,
+    f.course_effectiveness_avg,
+    f.teaching_effectiveness_avg,
+    f.resources_admin_avg,
+    f.assessment_learning_avg,
+    f.course_outcomes_avg,
+    f.cumulative_avg,
     st.name as student_name,
     st.roll_number
 FROM feedback f
 JOIN subject_assignments sa ON f.assignment_id = sa.id
 JOIN subjects s ON sa.subject_id = s.id
-JOIN feedback_ratings_optimized fro ON f.id = fro.feedback_id
-JOIN feedback_statements fs ON JSON_CONTAINS_PATH(fro.ratings, 'one', CONCAT('$.', fs.id))
+JOIN feedback_ratings fr ON f.id = fr.feedback_id
+JOIN feedback_statements fs ON fr.statement_id = fs.id
 JOIN students st ON f.student_id = st.id
 WHERE sa.faculty_id = ? 
 AND sa.is_active = TRUE
@@ -173,35 +172,6 @@ $feedback_by_section = [
 while ($row = mysqli_fetch_assoc($feedback_result)) {
     $feedback_section = $row['feedback_section'];
     if (isset($feedback_by_section[$feedback_section])) {
-        // Process JSON values - handle numeric values with quotes
-        if (is_string($row['rating'])) {
-            // Handle JSON string values (they come with quotes)
-            if (substr($row['rating'], 0, 1) === '"' && substr($row['rating'], -1) === '"') {
-                $row['rating'] = substr($row['rating'], 1, -1);
-            }
-            // Convert to numeric if it's a number
-            if (is_numeric($row['rating'])) {
-                $row['rating'] = (float)$row['rating'];
-            }
-        }
-        
-        // Process other JSON-extracted values
-        $json_fields = ['course_effectiveness_avg', 'teaching_effectiveness_avg', 'resources_admin_avg', 
-                      'assessment_learning_avg', 'course_outcomes_avg', 'cumulative_avg'];
-        
-        foreach ($json_fields as $field) {
-            if (isset($row[$field]) && is_string($row[$field])) {
-                // Remove quotes if present
-                if (substr($row[$field], 0, 1) === '"' && substr($row[$field], -1) === '"') {
-                    $row[$field] = substr($row[$field], 1, -1);
-                }
-                // Convert to float if numeric
-                if (is_numeric($row[$field])) {
-                    $row[$field] = (float)$row[$field];
-                }
-            }
-        }
-        
         $feedback_by_section[$feedback_section][] = $row;
     }
 }
@@ -1229,16 +1199,9 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                                 $sum_ratings = 0;
 
                                 foreach ($statement_ratings as $rating) {
-                                    // Ensure rating is a valid number (with JSON extraction it could be a string or have quotes)
-                                    $rating_value = $rating['rating'];
-                                    if (is_numeric($rating_value)) {
-                                        $rating_value = (int)$rating_value;
-                                        if ($rating_value >= 1 && $rating_value <= 5) {
-                                            $rating_counts[$rating_value]++;
-                                            $total_ratings++;
-                                            $sum_ratings += $rating_value;
-                                        }
-                                    }
+                                    $rating_counts[$rating['rating']]++;
+                                    $total_ratings++;
+                                    $sum_ratings += $rating['rating'];
                                 }
 
                                 $avg_rating = $total_ratings > 0 ? $sum_ratings / $total_ratings : 0;
@@ -1250,10 +1213,7 @@ $comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSO
                                 $variance = 0;
                                 if ($total_ratings > 0) {
                                     foreach ($statement_ratings as $rating) {
-                                        $rating_value = is_numeric($rating['rating']) ? (int)$rating['rating'] : 0;
-                                        if ($rating_value >= 1 && $rating_value <= 5) {
-                                            $variance += pow($rating_value - $avg_rating, 2);
-                                        }
+                                        $variance += pow($rating['rating'] - $avg_rating, 2);
                                     }
                                     $std_dev = sqrt($variance / $total_ratings);
                                 }

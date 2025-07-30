@@ -450,10 +450,39 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
                 form.action = 'generate_section_excel.php';
             }
             
+            // Reset button state after a timeout (in case user stays on page)
+            const resetButton = () => {
+                generateBtn.innerHTML = originalBtnText;
+                generateBtn.disabled = false;
+            };
+            
+            // Reset button after 5 seconds as fallback
+            setTimeout(resetButton, 5000);
+            
             // Add slight delay to show the loading effect
             setTimeout(() => {
                 form.submit();
             }, 300);
+        });
+
+        // Reset button state when page loads (in case user navigated back)
+        window.addEventListener('load', function() {
+            const generateBtn = document.getElementById('generate-btn');
+            if (generateBtn) {
+                generateBtn.innerHTML = '<i class="fas fa-file-export"></i> Generate Report';
+                generateBtn.disabled = false;
+            }
+        });
+
+        // Reset button state when page becomes visible (browser back/forward)
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                const generateBtn = document.getElementById('generate-btn');
+                if (generateBtn) {
+                    generateBtn.innerHTML = '<i class="fas fa-file-export"></i> Generate Report';
+                    generateBtn.disabled = false;
+                }
+            }
         });
     </script>
 

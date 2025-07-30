@@ -90,12 +90,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <style>
         :root {
             --primary-color: #9b59b6;  /* Purple theme for HOD */
+            --primary-dark: #8e44ad;
             --text-color: #2c3e50;
+            --text-light: #7f8c8d;
             --bg-color: #e0e5ec;
             --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
                      -9px -9px 16px rgba(255,255,255, 0.5);
             --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
                            inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --success-color: #2ecc71;
+            --error-color: #e74c3c;
+            --warning-color: #f39c12;
+            --transition: all 0.3s ease;
         }
 
         * {
@@ -111,6 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             display: flex;
             flex-direction: column;
             align-items: center;
+            padding: 2rem 1rem;
         }
 
         .header {
@@ -120,64 +127,98 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             box-shadow: var(--shadow);
             text-align: center;
             margin-bottom: 2rem;
+            border-radius: 20px;
+            max-width: 800px;
+            transition: var(--transition);
+        }
+
+        .header:hover {
+            transform: translateY(-5px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
         .logo {
             max-width: 120px;
             height: auto;
             margin-bottom: 1rem;
+            filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
         }
 
         .college-info h1 {
             font-size: 1.8rem;
             color: var(--text-color);
             margin-bottom: 0.5rem;
+            font-weight: 600;
         }
 
         .college-info p {
-            color: #666;
+            color: var(--text-light);
             line-height: 1.4;
         }
 
         .login-container {
             background: var(--bg-color);
-            padding: 2rem;
+            padding: 2.5rem;
             border-radius: 20px;
             box-shadow: var(--shadow);
             width: 90%;
-            max-width: 400px;
+            max-width: 450px;
             margin: 2rem auto;
+            transition: var(--transition);
+        }
+
+        .login-container:hover {
+            transform: translateY(-5px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
         .login-title {
             text-align: center;
             color: var(--text-color);
             margin-bottom: 2rem;
-            font-size: 1.5rem;
+            font-size: 1.8rem;
             font-weight: 600;
+            position: relative;
+            padding-bottom: 0.5rem;
+        }
+
+        .login-title::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 50px;
+            height: 3px;
+            background: var(--primary-color);
+            border-radius: 3px;
         }
 
         .form-group {
-            margin-bottom: 1.5rem;
+            margin-bottom: 1.8rem;
+            position: relative;
         }
 
         .form-group label {
             display: block;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.7rem;
             color: var(--text-color);
             font-weight: 500;
+            font-size: 0.95rem;
         }
 
         .input-field {
             width: 100%;
-            padding: 0.8rem 1rem;
+            padding: 1rem 1.2rem;
             border: none;
             border-radius: 50px;
             background: var(--bg-color);
             box-shadow: var(--inner-shadow);
             font-size: 1rem;
             color: var(--text-color);
-            transition: all 0.3s ease;
+            transition: var(--transition);
         }
 
         .input-field:focus {
@@ -185,76 +226,173 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             box-shadow: var(--shadow);
         }
 
+        .input-field::placeholder {
+            color: var(--text-light);
+            opacity: 0.7;
+        }
+
         .btn-login {
             width: 100%;
-            padding: 0.8rem;
+            padding: 1rem;
             border: none;
             border-radius: 50px;
             background: var(--primary-color);
             color: white;
-            font-size: 1rem;
+            font-size: 1.1rem;
             font-weight: 500;
             cursor: pointer;
             box-shadow: var(--shadow);
-            transition: all 0.3s ease;
+            transition: var(--transition);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 0.5rem;
+            gap: 10px;
         }
 
         .btn-login:hover {
-            transform: translateY(-2px);
+            transform: translateY(-3px);
+            background: var(--primary-dark);
             box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
                        -12px -12px 20px rgba(255,255,255, 0.6);
         }
 
+        .btn-login:active {
+            transform: scale(0.98);
+        }
+
         .error-message {
-            background: #fee;
-            color: #e74c3c;
+            background: rgba(231, 76, 60, 0.1);
+            color: var(--error-color);
             padding: 1rem;
             border-radius: 10px;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
             box-shadow: var(--inner-shadow);
             display: flex;
             align-items: center;
-            gap: 0.5rem;
+            gap: 10px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
         }
 
         .links {
-            margin-top: 1.5rem;
+            margin-top: 2rem;
             text-align: center;
+            padding: 1.2rem 0;
+            border-top: 1px solid rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: center;
+            gap: 15px;
         }
 
-        .links a {
+        .link-item {
             color: var(--primary-color);
             text-decoration: none;
-            font-size: 0.9rem;
-            transition: color 0.3s ease;
+            font-size: 0.95rem;
+            transition: var(--transition);
+            padding: 0.6rem 1.2rem;
+            border-radius: 20px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
         }
 
-        .links a:hover {
-            color: #8e44ad;
+        .link-item:hover {
+            background: rgba(155, 89, 182, 0.1);
+            color: var(--primary-dark);
+            transform: translateY(-2px);
         }
 
-        .divider {
-            margin: 0 1rem;
-            color: #666;
+        .link-item i {
+            font-size: 1rem;
         }
 
-        .role-icon {
-            font-size: 2rem;
+        .password-wrapper {
+            position: relative;
+        }
+
+        .toggle-password {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            cursor: pointer;
+            color: var(--text-light);
+            transition: var(--transition);
+        }
+
+        .toggle-password:hover {
             color: var(--primary-color);
-            margin-bottom: 1rem;
+        }
+
+        .loading {
+            display: none;
+            margin-left: 8px;
+        }
+
+        .success-message {
+            background: rgba(46, 204, 113, 0.1);
+            color: var(--success-color);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--inner-shadow);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+        }
+
+        .input-with-icon {
+            padding-left: 3rem;
+        }
+
+        .role-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(155, 89, 182, 0.1);
+            color: var(--primary-color);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+            margin-bottom: 1.5rem;
+        }
+
+        .footer {
+            margin-top: auto;
             text-align: center;
+            padding: 1.5rem;
+            color: var(--text-light);
+            font-size: 0.9rem;
         }
 
         @media (max-width: 480px) {
             .login-container {
-                width: 95%;
-                padding: 1.5rem;
+                padding: 2rem 1.5rem;
             }
-
+            
+            .links {
+                flex-direction: column;
+                gap: 10px;
+            }
+            
+            .link-item {
+                justify-content: center;
+            }
+            
             .college-info h1 {
                 font-size: 1.5rem;
             }
@@ -272,11 +410,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     </div>
 
     <div class="login-container">
-        <div class="role-icon">
-            <i class="fas fa-user-tie"></i>
-        </div>
-        <h2 class="login-title">HOD Login</h2>
         
+        <h2 class="login-title"><i class="fas fa-shield-alt"></i> HOD Login Portal</h2>
         <?php if ($error): ?>
             <div class="error-message">
                 <i class="fas fa-exclamation-circle"></i>
@@ -284,47 +419,92 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             </div>
         <?php endif; ?>
 
-        <form method="post" action="">
+        <?php if ($success): ?>
+            <div class="success-message">
+                <i class="fas fa-check-circle"></i>
+                <?php echo htmlspecialchars($success); ?>
+            </div>
+        <?php endif; ?>
+
+        <form method="post" action="" id="loginForm">
             <div class="form-group">
-                <label for="email">Email</label>
-                <input type="email" id="email" name="email" class="input-field" 
-                       placeholder="Enter your email" required>
+                <label for="email">Email Address</label>
+                <div class="password-wrapper">
+                    <i class="fas fa-envelope input-icon"></i>
+                    <input type="email" id="email" name="email" class="input-field input-with-icon" 
+                           placeholder="Enter your email" required autocomplete="email">
+                </div>
             </div>
 
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" class="input-field" 
-                       placeholder="Enter your password" required>
+                <div class="password-wrapper">
+                    <i class="fas fa-lock input-icon"></i>
+                    <input type="password" id="password" name="password" 
+                           class="input-field input-with-icon" placeholder="Enter your password" required>
+                    <i class="fas fa-eye toggle-password" 
+                       onclick="togglePassword()"></i>
+                </div>
             </div>
 
             <button type="submit" class="btn-login">
-                <i class="fas fa-sign-in-alt"></i>
-                Login as HOD
+                <i class="fas fa-sign-in-alt"></i> Login as HOD
+                <span class="loading">
+                    <i class="fas fa-spinner fa-spin"></i>
+                </span>
             </button>
 
             <div class="links">
-                <a href="forget_password.php">
-                    <i class="fas fa-key"></i> Forgot Password?
+                <a href="forget_password.php" class="link-item">
+                    <i class="fas fa-key"></i> Forgot Password
                 </a>
-                <span class="divider">|</span>
-                <a href="index.php">
-                    <i class="fas fa-home"></i> Back to Home
+                <a href="index.php" class="link-item">
+                    <i class="fas fa-home"></i> Home
                 </a>
             </div>
         </form>
     </div>
 
     <script>
-        // Add some basic form validation
-        document.querySelector('form').addEventListener('submit', function(e) {
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleIcon = document.querySelector('.toggle-password');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleIcon.classList.remove('fa-eye');
+                toggleIcon.classList.add('fa-eye-slash');
+            } else {
+                passwordInput.type = 'password';
+                toggleIcon.classList.remove('fa-eye-slash');
+                toggleIcon.classList.add('fa-eye');
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', function(e) {
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
 
             if (!email || !password) {
                 e.preventDefault();
                 alert('Please fill in all fields');
+                return;
             }
+
+            // Email validation
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                e.preventDefault();
+                alert('Please enter a valid email address');
+                return;
+            }
+
+            // Show loading spinner
+            document.querySelector('.loading').style.display = 'inline-block';
+            document.querySelector('.btn-login').disabled = true;
         });
     </script>
+
+    <?php include 'footer.php'; ?>
 </body>
 </html>
