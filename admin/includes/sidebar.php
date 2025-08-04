@@ -192,6 +192,10 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
             <i class="fas fa-map-marker-alt"></i> Venues
         </a>
         
+        <a href="manage_holidays.php" class="nav-link">
+            <i class="fas fa-calendar-times"></i> Holidays
+        </a>
+        
         <a href="manage_attendance_records.php" class="nav-link">
             <i class="fas fa-clipboard-list"></i> Attendance
         </a>
@@ -212,9 +216,32 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
             <i class="fas fa-comments"></i> Course Feedback
         </a>
         
+        <a href="class_committee_reports.php" class="nav-link">
+            <i class="fas fa-clipboard-list"></i> Class Committee Reports
+        </a>
+        
         <a href="reports.php" class="nav-link">
             <i class="fas fa-chart-bar"></i> Reports
         </a>
+        
+        <!-- Email Management -->
+        <div class="nav-item">
+            <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#emailSubmenu">
+                <i class="fas fa-envelope"></i>
+                <span>Email Management</span>
+            </a>
+            <div id="emailSubmenu" class="collapse">
+                <div class="bg-white py-2 collapse-inner rounded">
+                    <a href="../admin/email_sender.php" class="collapse-item">
+                        <i class="fas fa-paper-plane"></i> Send Emails
+                    </a>
+                    <a href="../admin/email/manage_mailboxes.php" class="collapse-item">
+                        <i class="fas fa-mail-bulk"></i> Manage Mailboxes
+                    </a>
+                </div>
+            </div>
+        </div>
+        
         <?php if ($is_super_admin): ?>
         <a href="settings.php" class="nav-link">
             <i class="fas fa-cog"></i> Settings
