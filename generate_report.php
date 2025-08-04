@@ -99,12 +99,12 @@ $metrics_query = "SELECT
     sa.semester,
     sa.section,
     COUNT(DISTINCT f.id) as total_feedback,
-    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(f.cumulative_avg), 2) as overall_avg
+    ROUND(AVG(f.course_effectiveness_avg) * 2, 2) as course_effectiveness,
+    ROUND(AVG(f.teaching_effectiveness_avg) * 2, 2) as teaching_effectiveness,
+    ROUND(AVG(f.resources_admin_avg) * 2, 2) as resources_admin,
+    ROUND(AVG(f.assessment_learning_avg) * 2, 2) as assessment_learning,
+    ROUND(AVG(f.course_outcomes_avg) * 2, 2) as course_outcomes,
+    ROUND(AVG(f.cumulative_avg) * 2, 2) as overall_avg
 FROM subjects s
 JOIN subject_assignments sa ON s.id = sa.subject_id
 LEFT JOIN feedback f ON sa.id = f.assignment_id
@@ -145,9 +145,15 @@ class PDF extends FPDF {
     protected $col = 0;
     protected $y0;
     protected $departmentName = '';
+    protected $chartSpacing = 2; // Added chart spacing control
 
     function setDepartmentName($name) {
         $this->departmentName = $name;
+    }
+    
+    // Added chart spacing control
+    function setChartSpacing($spacing) {
+        $this->chartSpacing = $spacing;
     }
 
     function Header() {
@@ -289,54 +295,68 @@ class PDF extends FPDF {
     }
 
     function AddChart($title, $data, $labels) {
-        $this->SetFont('Helvetica', 'B', 12);
-        $this->Cell(0, 8, $title, 0, 1, 'C');
+        // Add some spacing before the chart
+        $this->Ln(2);
+        $this->SetFont('Helvetica', 'B', 11);
+        $this->Cell(0, 6, $title, 0, 1, 'C');
         
         // More compact chart dimensions
-        $chartHeight = 60;
-        $chartWidth = 170;
-        $barWidth = min(20, $chartWidth / count($data));
+        $chartHeight = 40; // Reduced height
+        $chartWidth = 160; // Slightly reduced width
+        $barWidth = min(15, $chartWidth / count($data)); // Thinner bars
         $startX = 25;
         $startY = $this->GetY() + $chartHeight;
         
-        // Draw Y-axis with scale markers (0 to 5)
-        $this->SetFont('Helvetica', '', 8);
+        // Draw Y-axis with scale markers (0 to 10)
+        $this->SetFont('Helvetica', '', 7); // Smaller font for scale
         $this->SetDrawColor(189, 195, 199);
-        for($i = 0; $i <= 5; $i++) {
-            $y = $startY - ($i * $chartHeight/5);
-            $this->Line($startX-2, $y, $startX+$chartWidth, $y);
-            $this->SetXY($startX-10, $y-2);
-            $this->Cell(8, 4, $i, 0, 0, 'R');
+
+        // Draw axis lines
+        $this->Line($startX, $startY, $startX, $startY - $chartHeight);
+        $this->Line($startX, $startY, $startX + $chartWidth, $startY);
+        
+        // Draw scale with 10-point scale values
+        for($i = 0; $i <= 10; $i += 2) {
+            $y = $startY - ($i * $chartHeight / 10);
+            $this->Line($startX, $y, $startX - 2, $y);
+            $this->SetXY($startX - 8, $y - 1);
+            $this->Cell(6, 2, $i, 0, 0, 'R');
         }
         
-        // Draw bars with improved styling
-        $x = $startX + 10;
+        // Draw bars
+        $x = $startX + 5;
         foreach($data as $i => $value) {
-            $barHeight = ($value * $chartHeight/5);
+            $barHeight = $value * ($chartHeight / 10);
             
-            // Color gradient based on rating
-            if ($value >= 4.5) $this->SetFillColor(46, 204, 113);
-            elseif ($value >= 4.0) $this->SetFillColor(52, 152, 219);
-            elseif ($value >= 3.5) $this->SetFillColor(241, 196, 15);
-            elseif ($value >= 3.0) $this->SetFillColor(230, 126, 34);
-            else $this->SetFillColor(231, 76, 60);
+            // Set bar color based on value
+            if($value >= 9.0) {
+                $this->SetFillColor(46, 204, 113); // Green
+            } elseif($value >= 8.0) {
+                $this->SetFillColor(52, 152, 219); // Blue
+            } elseif($value >= 7.0) {
+                $this->SetFillColor(241, 196, 15); // Yellow
+            } else {
+                $this->SetFillColor(230, 126, 34); // Orange
+            }
             
-            $this->RoundedRect($x, $startY - $barHeight, $barWidth-4, $barHeight, 2, 'F');
+            // Draw bar
+            $this->Rect($x, $startY - $barHeight, $barWidth - 2, $barHeight, 'F');
             
-            $this->SetFont('Helvetica', 'B', 8);
-            $this->SetTextColor(44, 62, 80);
-            $this->SetXY($x, $startY - $barHeight - 5);
-            $this->Cell($barWidth-4, 5, number_format($value, 1), 0, 0, 'C');
+            // Draw label
+            $this->SetFont('Helvetica', '', 6);
+            $label = $this->truncateText($labels[$i], $barWidth);
+            $this->SetXY($x, $startY + 1);
+            $this->Cell($barWidth - 2, 3, $label, 0, 0, 'C');
             
-            $this->SetFont('Helvetica', '', 8);
-            $this->SetXY($x, $startY + 2);
-            $label = $this->truncateText($labels[$i], $barWidth-4);
-            $this->Cell($barWidth-4, 5, $label, 0, 0, 'C');
+            // Draw value on top of bar
+            $this->SetXY($x, $startY - $barHeight - 3);
+            $this->Cell($barWidth - 2, 3, number_format($value, 1), 0, 0, 'C');
             
             $x += $barWidth;
         }
         
-        $this->Ln($chartHeight + 15);
+        // Add spacing after chart
+        $this->Ln($chartHeight + 8);
     }
 
     // Helper function to truncate long labels
@@ -663,10 +683,11 @@ if (mysqli_num_rows($comments_result) > 0) {
 
 // Helper function to get rating status
 function getRatingStatus($rating) {
-    if ($rating >= 4.5) return 'Excellent';
-    if ($rating >= 4.0) return 'Very Good';
-    if ($rating >= 3.5) return 'Good';
-    if ($rating >= 3.0) return 'Satisfactory';
+    $rating = $rating * 2; // Convert to 10-point scale
+    if ($rating >= 9.0) return 'Excellent';
+    if ($rating >= 8.0) return 'Very Good';
+    if ($rating >= 7.0) return 'Good';
+    if ($rating >= 6.0) return 'Satisfactory';
     return 'Needs Improvement';
 }
 

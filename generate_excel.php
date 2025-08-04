@@ -180,7 +180,7 @@ $sheet->setCellValue('B9', $faculty['designation']);
 // Fetch overall statistics
 $feedback_query = "SELECT 
     COUNT(DISTINCT f.id) as total_responses,
-    ROUND(AVG(f.cumulative_avg), 2) as overall_rating,
+    ROUND(AVG(f.cumulative_avg) * 2, 2) as overall_rating,
     COUNT(DISTINCT s.id) as total_subjects,
     COUNT(DISTINCT CONCAT(sa.semester, sa.section)) as total_classes
 FROM subject_assignments sa
@@ -217,12 +217,12 @@ $subject_query = "SELECT
     sa.semester,
     sa.section,
     COUNT(DISTINCT f.id) as feedback_count,
-    ROUND(AVG(f.course_effectiveness_avg), 2) as course_effectiveness,
-    ROUND(AVG(f.teaching_effectiveness_avg), 2) as teaching_effectiveness,
-    ROUND(AVG(f.resources_admin_avg), 2) as resources_admin,
-    ROUND(AVG(f.assessment_learning_avg), 2) as assessment_learning,
-    ROUND(AVG(f.course_outcomes_avg), 2) as course_outcomes,
-    ROUND(AVG(f.cumulative_avg), 2) as overall_rating
+    ROUND(AVG(f.course_effectiveness_avg) * 2, 2) as course_effectiveness,
+    ROUND(AVG(f.teaching_effectiveness_avg) * 2, 2) as teaching_effectiveness,
+    ROUND(AVG(f.resources_admin_avg) * 2, 2) as resources_admin,
+    ROUND(AVG(f.assessment_learning_avg) * 2, 2) as assessment_learning,
+    ROUND(AVG(f.course_outcomes_avg) * 2, 2) as course_outcomes,
+    ROUND(AVG(f.cumulative_avg) * 2, 2) as overall_rating
 FROM subjects s
 JOIN subject_assignments sa ON s.id = sa.subject_id
 LEFT JOIN feedback f ON sa.id = f.assignment_id
@@ -298,10 +298,10 @@ $row++;
     foreach ($section_statements as $statement) {
         $ratings_query = "SELECT 
             COUNT(fr.rating) as total_responses,
-            ROUND(AVG(fr.rating), 2) as avg_rating,
-            SUM(CASE WHEN fr.rating >= 4.5 THEN 1 ELSE 0 END) as excellent,
-            SUM(CASE WHEN fr.rating >= 3.5 AND fr.rating < 4.5 THEN 1 ELSE 0 END) as good,
-            SUM(CASE WHEN fr.rating < 3.5 THEN 1 ELSE 0 END) as needs_improvement
+            ROUND(AVG(fr.rating) * 2, 2) as avg_rating,
+            SUM(CASE WHEN fr.rating * 2 >= 9.0 THEN 1 ELSE 0 END) as excellent,
+            SUM(CASE WHEN fr.rating * 2 >= 7.0 AND fr.rating * 2 < 9.0 THEN 1 ELSE 0 END) as good,
+            SUM(CASE WHEN fr.rating * 2 < 7.0 THEN 1 ELSE 0 END) as needs_improvement
         FROM feedback_ratings fr
         JOIN feedback f ON fr.feedback_id = f.id
         JOIN subject_assignments sa ON f.assignment_id = sa.id
@@ -381,18 +381,20 @@ $writer->save('php://output');
 exit(); 
 
 function getRatingStatus($rating) {
-    if ($rating >= 4.5) return 'Excellent';
-    if ($rating >= 4.0) return 'Very Good';
-    if ($rating >= 3.5) return 'Good';
-    if ($rating >= 3.0) return 'Satisfactory';
+    $rating = $rating * 2; // Convert to 10-point scale
+    if ($rating >= 9.0) return 'Excellent';
+    if ($rating >= 8.0) return 'Very Good';
+    if ($rating >= 7.0) return 'Good';
+    if ($rating >= 6.0) return 'Satisfactory';
     return 'Needs Improvement';
 }
 
 function getRatingColor($rating) {
-    if ($rating >= 4.5) return '27AE60'; // Green
-    if ($rating >= 4.0) return '2ECC71'; // Light Green
-    if ($rating >= 3.5) return 'F1C40F'; // Yellow
-    if ($rating >= 3.0) return 'E67E22'; // Orange
+    $rating = $rating * 2; // Convert to 10-point scale
+    if ($rating >= 9.0) return '27AE60'; // Green
+    if ($rating >= 8.0) return '2ECC71'; // Light Green
+    if ($rating >= 7.0) return 'F1C40F'; // Yellow
+    if ($rating >= 6.0) return 'E67E22'; // Orange
     return 'E74C3C'; // Red
 }
 
