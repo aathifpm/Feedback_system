@@ -197,196 +197,453 @@ $training_batches = fetchTrainingBatches($conn);
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Manage Training Batches - Admin Dashboard</title>
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.datatables.net/1.10.22/css/dataTables.bootstrap4.min.css">
     <style>
+        :root {
+            --primary-color: #3498db;  /* Blue theme for Training */
+            --text-color: #2c3e50;
+            --bg-color: #e0e5ec;
+            --shadow: 9px 9px 16px rgb(163,177,198,0.6), 
+                     -9px -9px 16px rgba(255,255,255, 0.5);
+            --inner-shadow: inset 6px 6px 10px 0 rgba(0, 0, 0, 0.1),
+                           inset -6px -6px 10px 0 rgba(255, 255, 255, 0.8);
+            --header-height: 90px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
+        }
+
+        body {
+            background: var(--bg-color);
+            min-height: 100vh;
+            padding-top: var(--header-height);
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 2rem;
+            background: var(--bg-color);
+            margin-left: 280px; /* Add margin for fixed sidebar */
+            transition: margin-left 0.3s ease;
+        }
+
+        @media (max-width: 992px) {
+            .main-content {
+                margin-left: 0; /* Remove margin on mobile */
+                padding: 1rem;
+            }
+            
+            .dashboard-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+            
+            .dashboard-header button {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        .dashboard-header {
+            background: var(--bg-color);
+            padding: 1.5rem;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dashboard-header h1 {
+            color: var(--text-color);
+            font-size: 1.8rem;
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard-header h1 {
+                font-size: 1.4rem;
+            }
+        }
+
         .card {
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 15px;
+            box-shadow: var(--shadow);
             margin-bottom: 20px;
+            background: var(--bg-color);
+            border: none;
         }
+        
         .card-header {
-            background-color: #f8f9fa;
-            border-bottom: 1px solid #e3e6f0;
+            background-color: var(--bg-color);
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+            padding: 1.5rem;
+            border-radius: 15px 15px 0 0;
         }
+        
+        .card-body {
+            padding: 1.5rem;
+        }
+        
+        @media (max-width: 768px) {
+            .card-body {
+                padding: 1rem;
+                overflow-x: auto;
+            }
+        }
+
+        .btn {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 10px;
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        @media (max-width: 576px) {
+            .btn {
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+            }
+            
+            .action-buttons {
+                display: flex;
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .action-buttons .btn {
+                width: 100%;
+                justify-content: center;
+                margin: 0 !important;
+            }
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 12px 12px 20px rgb(163,177,198,0.7), 
+                       -12px -12px 20px rgba(255,255,255, 0.6);
+        }
+
         .btn-primary {
-            background-color: #4e73df;
-            border-color: #4e73df;
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+            color: white;
         }
         .btn-primary:hover {
-            background-color: #2e59d9;
-            border-color: #2e59d9;
+            background-color: #2980b9;
+            border-color: #2980b9;
         }
         .btn-success {
-            background-color: #1cc88a;
-            border-color: #1cc88a;
+            background-color: #27ae60;
+            border-color: #27ae60;
+            color: white;
         }
         .btn-success:hover {
-            background-color: #17a673;
-            border-color: #17a673;
+            background-color: #219653;
+            border-color: #219653;
         }
         .btn-info {
-            background-color: #36b9cc;
-            border-color: #36b9cc;
+            background-color: #00b8d4;
+            border-color: #00b8d4;
+            color: white;
         }
         .btn-info:hover {
-            background-color: #2c9faf;
-            border-color: #2c9faf;
+            background-color: #0099b3;
+            border-color: #0099b3;
         }
         .btn-danger {
-            background-color: #e74a3b;
-            border-color: #e74a3b;
+            background-color: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
         }
         .btn-danger:hover {
-            background-color: #be2617;
-            border-color: #be2617;
+            background-color: #c0392b;
+            border-color: #c0392b;
+        }
+        .btn-secondary {
+            background-color: #95a5a6;
+            border-color: #95a5a6;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #7f8c8d;
+            border-color: #7f8c8d;
+        }
+
+        .badge {
+            padding: 0.5rem 1rem;
+            border-radius: 30px;
+            font-weight: 500;
+            font-size: 0.85rem;
         }
         .badge-success {
-            background-color: #1cc88a;
+            background-color: #d4edda;
+            color: #155724;
         }
         .badge-danger {
-            background-color: #e74a3b;
+            background-color: #f8d7da;
+            color: #721c24;
         }
         .badge-warning {
-            background-color: #f6c23e;
+            background-color: #fff3cd;
+            color: #856404;
         }
         .badge-primary {
-            background-color: #4e73df;
+            background-color: #cce5ff;
+            color: #004085;
         }
+
         .table-responsive {
-            border-radius: 8px;
+            border-radius: 10px;
             overflow: hidden;
+            box-shadow: var(--shadow);
         }
+        
+        .table {
+            margin-bottom: 0;
+            color: var(--text-color);
+            border-collapse: separate;
+            border-spacing: 0;
+        }
+        
+        .table th,
+        .table td {
+            padding: 1rem;
+            vertical-align: middle;
+            border-top: 1px solid rgba(0,0,0,0.05);
+        }
+        
+        @media (max-width: 768px) {
+            .table th,
+            .table td {
+                padding: 0.75rem;
+            }
+            
+            .table-responsive {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+        }
+        
+        .table thead th {
+            background-color: rgba(52, 152, 219, 0.1);
+            border-bottom: 2px solid rgba(52, 152, 219, 0.2);
+            color: var(--primary-color);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+        }
+
         .form-control {
-            border-radius: 5px;
+            width: 100%;
+            padding: 0.8rem 1rem;
+            border: none;
+            border-radius: 10px;
+            background: var(--bg-color);
+            box-shadow: var(--inner-shadow);
+            color: var(--text-color);
+            font-family: inherit;
+            transition: all 0.3s ease;
         }
+        
+        .form-control:focus {
+            outline: none;
+            box-shadow: var(--shadow);
+        }
+        
+        .modal-content {
+            background: var(--bg-color);
+            border-radius: 15px;
+            border: none;
+            box-shadow: var(--shadow);
+        }
+        
+        .modal-header, .modal-footer {
+            border-color: rgba(0,0,0,0.1);
+            background: var(--bg-color);
+        }
+        
         .current-year {
-            color: #1cc88a;
-            font-weight: bold;
+            color: #27ae60;
+            font-weight: 600;
+        }
+
+        .custom-control-input:checked ~ .custom-control-label::before {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+            box-shadow: var(--shadow);
+        }
+        
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* Mobile-specific styles */
+        @media (max-width: 576px) {
+            .dataTables_length, 
+            .dataTables_filter {
+                width: 100%;
+                text-align: left;
+                margin-bottom: 0.5rem;
+            }
+            
+            .dataTables_filter input {
+                width: 100%;
+                margin-left: 0 !important;
+            }
+            
+            .dataTables_info,
+            .dataTables_paginate {
+                width: 100%;
+                text-align: center;
+                margin-top: 0.5rem;
+            }
+            
+            .paginate_button {
+                padding: 0.3rem 0.5rem !important;
+            }
         }
     </style>
 </head>
 <body>
     <?php include 'includes/header.php'; ?>
     
-    <div class="container-fluid mt-4">
-        <div class="row">
-            <div class="col-lg-12">
-                <?php if ($success): ?>
-                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                    <?php echo $success; ?>
-                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <?php endif; ?>
-                
-                <?php if ($error): ?>
-                <div class="alert alert-danger alert-dismissible fade show" role="alert">
-                    <?php echo $error; ?>
-                    <button type="button" class="close" data-dismiss="alert" aria-label="Close">
-                        <span aria-hidden="true">&times;</span>
-                    </button>
-                </div>
-                <?php endif; ?>
-                
-                <div class="card">
-                    <div class="card-header">
-                        <div class="row align-items-center">
-                            <div class="col">
-                                <h5 class="m-0 font-weight-bold text-primary">
-                                    <i class="fas fa-users mr-2"></i>Manage Placement Training Batches
-                                </h5>
-                            </div>
-                            <div class="col text-right">
-                                <button class="btn btn-primary" data-toggle="modal" data-target="#addBatchModal">
-                                    <i class="fas fa-plus-circle mr-2"></i>Add New Training Batch
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div class="table-responsive">
-                            <table class="table table-bordered" id="batchesTable" width="100%" cellspacing="0">
-                                <thead class="thead-light">
-                                    <tr>
-                                        <th>Batch Name</th>
-                                        <th>Department</th>
-                                        <th>Academic Year</th>
-                                        <th>Description</th>
-                                        <th>Students</th>
-                                        <th>Classes</th>
-                                        <th>Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php foreach ($training_batches as $batch): ?>
-                                    <tr>
-                                        <td><?php echo htmlspecialchars($batch['batch_name']); ?></td>
-                                        <td><?php echo htmlspecialchars($batch['department_name']); ?></td>
-                                        <td>
-                                            <?php if ($batch['academic_year_id'] == $current_year_id): ?>
-                                                <span class="current-year"><?php echo htmlspecialchars($batch['year_range']); ?> (Current)</span>
-                                            <?php else: ?>
-                                                <?php echo htmlspecialchars($batch['year_range']); ?>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td><?php echo htmlspecialchars($batch['description']); ?></td>
-                                        <td>
-                                            <?php echo $batch['student_count']; ?>
-                                            <?php if ($batch['student_count'] > 0): ?>
-                                                <a href="view_batch_students.php?batch_id=<?php echo $batch['id']; ?>" class="ml-2 btn btn-sm btn-info">
-                                                    <i class="fas fa-eye"></i>
-                                                </a>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?php echo $batch['class_count']; ?>
-                                            <?php if ($batch['class_count'] > 0): ?>
-                                                <a href="view_batch_classes.php?batch_id=<?php echo $batch['id']; ?>" class="ml-2 btn btn-sm btn-info">
-                                                    <i class="fas fa-calendar"></i>
-                                                </a>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <?php if ($batch['is_active']): ?>
-                                            <span class="badge badge-success">Active</span>
-                                            <?php else: ?>
-                                            <span class="badge badge-danger">Inactive</span>
-                                            <?php endif; ?>
-                                        </td>
-                                        <td>
-                                            <a href="manage_batch_students.php?batch_id=<?php echo $batch['id']; ?>" class="btn btn-primary btn-sm">
-                                                <i class="fas fa-user-plus"></i> Manage Students
-                                            </a>
-                                            <button class="btn btn-info btn-sm edit-batch" 
-                                                    data-id="<?php echo $batch['id']; ?>"
-                                                    data-name="<?php echo htmlspecialchars($batch['batch_name']); ?>"
-                                                    data-description="<?php echo htmlspecialchars($batch['description']); ?>"
-                                                    data-academic-year="<?php echo $batch['academic_year_id']; ?>"
-                                                    data-department="<?php echo $batch['department_id']; ?>"
-                                                    data-active="<?php echo $batch['is_active']; ?>"
-                                                    data-toggle="modal" data-target="#editBatchModal">
-                                                <i class="fas fa-edit"></i> Edit
-                                            </button>
-                                            
-                                            <?php if ($batch['student_count'] == 0 && $batch['class_count'] == 0): ?>
-                                            <button class="btn btn-danger btn-sm delete-batch" 
-                                                    data-id="<?php echo $batch['id']; ?>"
-                                                    data-name="<?php echo htmlspecialchars($batch['batch_name']); ?>"
-                                                    data-toggle="modal" data-target="#deleteBatchModal">
-                                                <i class="fas fa-trash"></i> Delete
-                                            </button>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
+    
+    <div class="main-content">
+        <div class="dashboard-header">
+            <h1><i class="fas fa-users mr-2"></i>Manage Placement Training Batches</h1>
+            <button class="btn btn-primary" data-toggle="modal" data-target="#addBatchModal">
+                <i class="fas fa-plus-circle mr-2"></i>Add New Training Batch
+            </button>
+        </div>
+        
+        <?php if ($success): ?>
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            <?php echo $success; ?>
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+        <?php endif; ?>
+        
+        <?php if ($error): ?>
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+            <?php echo $error; ?>
+            <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+                <span aria-hidden="true">&times;</span>
+            </button>
+        </div>
+        <?php endif; ?>
+        
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-bordered" id="batchesTable" width="100%" cellspacing="0">
+                        <thead class="thead-light">
+                            <tr>
+                                <th>Batch Name</th>
+                                <th>Department</th>
+                                <th>Academic Year</th>
+                                <th>Description</th>
+                                <th>Students</th>
+                                <th>Classes</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($training_batches as $batch): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($batch['batch_name']); ?></td>
+                                <td><?php echo htmlspecialchars($batch['department_name']); ?></td>
+                                <td>
+                                    <?php if ($batch['academic_year_id'] == $current_year_id): ?>
+                                        <span class="current-year"><?php echo htmlspecialchars($batch['year_range']); ?> (Current)</span>
+                                    <?php else: ?>
+                                        <?php echo htmlspecialchars($batch['year_range']); ?>
+                                    <?php endif; ?>
+                                </td>
+                                <td><?php echo htmlspecialchars($batch['description']); ?></td>
+                                <td>
+                                    <?php echo $batch['student_count']; ?>
+                                    <?php if ($batch['student_count'] > 0): ?>
+                                        <a href="view_batch_students.php?batch_id=<?php echo $batch['id']; ?>" class="ml-2 btn btn-sm btn-info">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php echo $batch['class_count']; ?>
+                                    <?php if ($batch['class_count'] > 0): ?>
+                                        <a href="view_batch_classes.php?batch_id=<?php echo $batch['id']; ?>" class="ml-2 btn btn-sm btn-info">
+                                            <i class="fas fa-calendar"></i>
+                                        </a>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <?php if ($batch['is_active']): ?>
+                                    <span class="badge badge-success">Active</span>
+                                    <?php else: ?>
+                                    <span class="badge badge-danger">Inactive</span>
+                                    <?php endif; ?>
+                                </td>
+                                <td>
+                                    <div class="action-buttons">
+                                        <a href="manage_batch_students.php?batch_id=<?php echo $batch['id']; ?>" class="btn btn-primary btn-sm mb-1">
+                                            <i class="fas fa-user-plus"></i> Manage Students
+                                        </a>
+                                        <button class="btn btn-info btn-sm mb-1 edit-batch" 
+                                                data-id="<?php echo $batch['id']; ?>"
+                                                data-name="<?php echo htmlspecialchars($batch['batch_name']); ?>"
+                                                data-description="<?php echo htmlspecialchars($batch['description']); ?>"
+                                                data-academic-year="<?php echo $batch['academic_year_id']; ?>"
+                                                data-department="<?php echo $batch['department_id']; ?>"
+                                                data-active="<?php echo $batch['is_active']; ?>"
+                                                data-toggle="modal" data-target="#editBatchModal">
+                                            <i class="fas fa-edit"></i> Edit
+                                        </button>
+                                        
+                                        <?php if ($batch['student_count'] == 0 && $batch['class_count'] == 0): ?>
+                                        <button class="btn btn-danger btn-sm mb-1 delete-batch" 
+                                                data-id="<?php echo $batch['id']; ?>"
+                                                data-name="<?php echo htmlspecialchars($batch['batch_name']); ?>"
+                                                data-toggle="modal" data-target="#deleteBatchModal">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                        <?php endif; ?>
+                                    </div>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -549,7 +806,9 @@ $training_batches = fetchTrainingBatches($conn);
                     "info": "Showing _START_ to _END_ of _TOTAL_ training batches",
                     "infoEmpty": "Showing 0 to 0 of 0 training batches",
                     "infoFiltered": "(filtered from _MAX_ total training batches)"
-                }
+                },
+                responsive: true,
+                autoWidth: false
             });
             
             // Edit batch modal
@@ -567,9 +826,27 @@ $training_batches = fetchTrainingBatches($conn);
                 $('#delete_batch_id').val($(this).data('id'));
                 $('#delete_batch_name').text($(this).data('name'));
             });
+            
+            // Check if we're on a mobile device and adjust table display
+            function checkMobileView() {
+                if (window.innerWidth < 768) {
+                    // Add scrolling hint if needed
+                    if (!$('.table-scroll-hint').length) {
+                        $('.table-responsive').before('<div class="alert alert-info table-scroll-hint mb-2" role="alert"><small><i class="fas fa-info-circle"></i> Swipe horizontally to see more data</small></div>');
+                    }
+                } else {
+                    $('.table-scroll-hint').remove();
+                }
+            }
+            
+            // Run on page load
+            checkMobileView();
+            
+            // Run when window is resized
+            $(window).resize(function() {
+                checkMobileView();
+            });
         });
     </script>
-
-    <?php include 'includes/footer.php'; ?>
 </body>
 </html> 

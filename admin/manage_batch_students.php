@@ -81,7 +81,7 @@ function fetchBatchStudents($conn, $batch_id) {
 }
 
 // Get available students (students not in this batch)
-function fetchAvailableStudents($conn, $batch_id, $page = 1, $per_page = 50, $filter_department = null, $filter_batch = null) {
+function fetchAvailableStudents($conn, $batch_id, $page = 1, $per_page = 50, $filter_department = null, $filter_batch = null, $search = null) {
     // Calculate offset
     $offset = ($page - 1) * $per_page;
     
@@ -128,6 +128,16 @@ function fetchAvailableStudents($conn, $batch_id, $page = 1, $per_page = 50, $fi
         $types .= "i";
     }
     
+    // Add search filter if provided
+    if ($search) {
+        $search = '%' . $search . '%';
+        $query .= " AND (s.name LIKE ? OR s.roll_number LIKE ? OR s.register_number LIKE ?)";
+        $params[] = $search;
+        $params[] = $search;
+        $params[] = $search;
+        $types .= "sss";
+    }
+    
     $query .= " ORDER BY d.name, s.roll_number LIMIT ? OFFSET ?";
     $params[] = $per_page;
     $params[] = $offset;
@@ -146,7 +156,7 @@ function fetchAvailableStudents($conn, $batch_id, $page = 1, $per_page = 50, $fi
     return $students;
 }
 
-function countAvailableStudents($conn, $batch_id, $filter_department = null, $filter_batch = null) {
+function countAvailableStudents($conn, $batch_id, $filter_department = null, $filter_batch = null, $search = null) {
     $query = "SELECT COUNT(*) as total
               FROM students s
               JOIN departments d ON s.department_id = d.id
@@ -181,6 +191,16 @@ function countAvailableStudents($conn, $batch_id, $filter_department = null, $fi
         $query .= " AND b.id = ?";
         $params[] = $filter_batch;
         $types .= "i";
+    }
+    
+    // Add search filter if provided
+    if ($search) {
+        $search = '%' . $search . '%';
+        $query .= " AND (s.name LIKE ? OR s.roll_number LIKE ? OR s.register_number LIKE ?)";
+        $params[] = $search;
+        $params[] = $search;
+        $params[] = $search;
+        $types .= "sss";
     }
     
     $stmt = mysqli_prepare($conn, $query);
@@ -627,6 +647,7 @@ $current_page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
 $per_page = 50; // Number of students per page
 $filter_department = isset($_GET['filter_dept']) ? (int)$_GET['filter_dept'] : null;
 $filter_batch = isset($_GET['filter_batch']) ? (int)$_GET['filter_batch'] : null;
+$search_term = isset($_GET['search']) ? $_GET['search'] : null; // Get search term from URL
 
 // For department admins, force department filter to their department
 if (!is_super_admin() && isset($_SESSION['department_id'])) {
@@ -635,8 +656,8 @@ if (!is_super_admin() && isset($_SESSION['department_id'])) {
 
 // Fetch students after any operations
 $batch_students = fetchBatchStudents($conn, $batch_id);
-$available_students = fetchAvailableStudents($conn, $batch_id, $current_page, $per_page, $filter_department, $filter_batch);
-$total_available = countAvailableStudents($conn, $batch_id, $filter_department, $filter_batch);
+$available_students = fetchAvailableStudents($conn, $batch_id, $current_page, $per_page, $filter_department, $filter_batch, $search_term);
+$total_available = countAvailableStudents($conn, $batch_id, $filter_department, $filter_batch, $search_term);
 $total_pages = ceil($total_available / $per_page);
 ?>
 
@@ -1226,12 +1247,27 @@ $total_pages = ceil($total_available / $per_page);
                     </div>
                     <div class="card-body">
                 <div class="filter-section">
-                            <form method="get" action="">
-                                <input type="hidden" name="batch_id" value="<?php echo $batch_id; ?>">
+                            <form id="studentFiltersForm" class="mb-3">
                                 <div class="row">
-                                    <?php if (is_super_admin()): ?>
                                     <div class="col-md-4">
-                                        <div class="form-group">
+                                        <div class="form-group mb-0">
+                                            <label for="availableStudentsSearch">Search Students</label>
+                                            <div class="input-group">
+                                                <input type="text" class="form-control" id="availableStudentsSearch" 
+                                                       placeholder="Search by name, roll or register number">
+                                                <div class="input-group-append">
+                                                    <button class="btn btn-primary" type="button" id="searchButton">
+                                                        <i class="fas fa-search"></i>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <small class="form-text text-muted">Type at least 2 characters to search</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="col-md-<?php echo is_super_admin() ? '3' : '4'; ?>">
+                                        <div class="form-group mb-0">
+                                            <?php if (is_super_admin()): ?>
                                             <label for="filter_dept">Filter by Department</label>
                                             <select class="form-control" id="filter_dept" name="filter_dept">
                                                 <option value="">All Departments</option>
@@ -1243,13 +1279,14 @@ $total_pages = ceil($total_available / $per_page);
                                                     </option>
                                                 <?php endwhile; ?>
                                             </select>
+                                            <?php else: ?>
+                                            <input type="hidden" id="filter_dept" name="filter_dept" value="<?php echo $_SESSION['department_id']; ?>">
+                                            <?php endif; ?>
                                         </div>
                                     </div>
-                                    <?php else: ?>
-                                    <input type="hidden" name="filter_dept" value="<?php echo $_SESSION['department_id']; ?>">
-                                    <?php endif; ?>
-                                    <div class="col-md-<?php echo is_super_admin() ? '4' : '6'; ?>">
-                                        <div class="form-group">
+                                    
+                                    <div class="col-md-<?php echo is_super_admin() ? '3' : '4'; ?>">
+                                        <div class="form-group mb-0">
                                             <label for="filter_batch">Filter by Academic Batch</label>
                                             <select class="form-control" id="filter_batch" name="filter_batch">
                                                 <option value="">All Batches</option>
@@ -1261,12 +1298,18 @@ $total_pages = ceil($total_available / $per_page);
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="col-md-<?php echo is_super_admin() ? '4' : '6'; ?>">
-                                        <div class="form-group">
+                                    
+                                    <div class="col-md-<?php echo is_super_admin() ? '2' : '4'; ?>">
+                                        <div class="form-group mb-0">
                                             <label>&nbsp;</label>
-                                            <button type="submit" class="btn btn-primary btn-block">
-                                                <i class="fas fa-filter"></i> Apply Filters
-                                            </button>
+                                            <div class="d-flex">
+                                                <button type="submit" class="btn btn-primary flex-fill mr-2">
+                                                    <i class="fas fa-filter"></i> Apply
+                                                </button>
+                                                <button type="button" id="clearFiltersBtn" class="btn btn-secondary flex-fill">
+                                                    <i class="fas fa-redo"></i> Clear
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -1274,123 +1317,18 @@ $total_pages = ceil($total_available / $per_page);
                         </div>
                         
                         <div class="d-flex justify-content-between align-items-center mb-3">
-                                <span class="text-muted">Showing <?php echo count($available_students); ?> of <?php echo $total_available; ?> available students</span>
+                            <span class="text-muted" id="studentCountInfo">Loading students...</span>
+                            <span id="searchSpinner" class="spinner-border spinner-border-sm text-primary" role="status" style="display:none;"></span>
+                            <div id="searchStatus" style="display:none;"></div>
                         </div>
                         
-                        <?php if (count($available_students) > 0): ?>
-                            <form id="addStudentsForm" method="post" action="">
-                                <div class="table-responsive">
-                            <table class="table" id="availableStudentsTable" width="100%" cellspacing="0">
-                                <thead>
-                                            <tr>
-                                                <th>
-                                                    <div class="custom-control custom-checkbox">
-                                                        <input type="checkbox" class="custom-control-input" id="selectAllAvailable">
-                                                        <label class="custom-control-label" for="selectAllAvailable"></label>
-                                                    </div>
-                                                </th>
-                                                <th>Roll Number</th>
-                                                <th>Register Number</th>
-                                                <th>Name</th>
-                                                <th>Department</th>
-                                                <th>Academic Batch</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($available_students as $student): ?>
-                                            <tr>
-                                                <td>
-                                                    <div class="custom-control custom-checkbox">
-                                                        <input type="checkbox" class="custom-control-input available-student-cb" 
-                                                               id="available_<?php echo $student['id']; ?>" 
-                                                               name="add_student_ids[]" 
-                                                               value="<?php echo $student['id']; ?>">
-                                                        <label class="custom-control-label" for="available_<?php echo $student['id']; ?>"></label>
-                                                    </div>
-                                                </td>
-                                                <td><?php echo htmlspecialchars($student['roll_number']); ?></td>
-                                                <td><?php echo htmlspecialchars($student['register_number']); ?></td>
-                                                <td>
-                                                    <?php echo htmlspecialchars($student['name']); ?>
-                                                    <?php if (!empty($student['other_batches'])): ?>
-                                                <span class="badge badge-warning" data-toggle="tooltip" 
-                                                              title="Already in: <?php echo htmlspecialchars($student['other_batches']); ?>">
-                                                            <i class="fas fa-exclamation-triangle"></i> In other batch
-                                                        </span>
-                                                    <?php endif; ?>
-                                                </td>
-                                                <td><?php echo htmlspecialchars($student['department_name']); ?></td>
-                                                <td><?php echo htmlspecialchars($student['batch_name']); ?></td>
-                                            </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                                
-                                <!-- Pagination Controls -->
-                                <?php if ($total_pages > 1): ?>
-                                <div class="d-flex justify-content-center mt-4">
-                                    <nav aria-label="Page navigation">
-                                <ul class="pagination pagination-circle">
-                                            <?php if ($current_page > 1): ?>
-                                                <li class="page-item">
-                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=1<?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="First">
-                                                <span aria-hidden="true"><i class="fas fa-angle-double-left"></i></span>
-                                                    </a>
-                                                </li>
-                                                <li class="page-item">
-                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $current_page-1; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Previous">
-                                                <span aria-hidden="true"><i class="fas fa-angle-left"></i></span>
-                                                    </a>
-                                                </li>
-                                            <?php endif; ?>
-                                            
-                                            <?php
-                                            $start_page = max(1, $current_page - 2);
-                                            $end_page = min($total_pages, $current_page + 2);
-                                            
-                                            if ($start_page > 1) {
-                                        echo '<li class="page-item disabled"><span class="page-link shadow-sm">...</span></li>';
-                                            }
-                                            
-                                            for ($i = $start_page; $i <= $end_page; $i++) {
-                                                echo '<li class="page-item '.($i == $current_page ? 'active' : '').'">
-                                            <a class="page-link shadow-sm" href="?batch_id='.$batch_id.'&page='.$i.
-                                                    ($filter_department ? '&filter_dept='.$filter_department : '').
-                                                    ($filter_batch ? '&filter_batch='.$filter_batch : '').
-                                                    '">'.$i.'</a>
-                                                </li>';
-                                            }
-                                            
-                                            if ($end_page < $total_pages) {
-                                        echo '<li class="page-item disabled"><span class="page-link shadow-sm">...</span></li>';
-                                            }
-                                            ?>
-                                            
-                                            <?php if ($current_page < $total_pages): ?>
-                                                <li class="page-item">
-                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $current_page+1; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Next">
-                                                <span aria-hidden="true"><i class="fas fa-angle-right"></i></span>
-                                                    </a>
-                                                </li>
-                                                <li class="page-item">
-                                            <a class="page-link shadow-sm" href="?batch_id=<?php echo $batch_id; ?>&page=<?php echo $total_pages; ?><?php echo $filter_department ? '&filter_dept='.$filter_department : ''; ?><?php echo $filter_batch ? '&filter_batch='.$filter_batch : ''; ?>" aria-label="Last">
-                                                <span aria-hidden="true"><i class="fas fa-angle-double-right"></i></span>
-                                                    </a>
-                                                </li>
-                                            <?php endif; ?>
-                                        </ul>
-                                    </nav>
-                                </div>
-                                <?php endif; ?>
-                                
-                                <input type="hidden" name="add_students" value="1">
-                            </form>
-                        <?php else: ?>
-                            <div class="alert alert-info">
-                        <i class="fas fa-info-circle"></i> No more students available to add to this batch.
+                        <!-- AJAX Search Results Container -->
+                        <div id="searchResults">
+                            <div class="text-center py-4">
+                                <div class="spinner-border text-primary" role="status"></div>
+                                <p class="mt-2">Loading available students...</p>
                             </div>
-                        <?php endif; ?>
+                        </div>
                     </div>
                 </div>
                 
@@ -1590,20 +1528,6 @@ student_id
                 }
             });
             
-            // Available Students DataTable - with disabled pagination (using server-side)
-            var availableStudentsTable = $('#availableStudentsTable').DataTable({
-                "paging": false,  // Disable DataTables pagination
-                "order": [[3, "asc"]],
-                "language": {
-                    "search": "Search in current page:",
-                    "info": "Filtered _TOTAL_ entries from current page",
-                    "infoEmpty": "No matching records found",
-                    "infoFiltered": "",
-                    "zeroRecords": "No matching records found",
-                    "emptyTable": "No data available in table"
-                }
-            });
-            
             // Initialize tooltips
             $('[data-toggle="tooltip"]').tooltip();
             
@@ -1690,6 +1614,285 @@ student_id
                     }
                 });
             });
+            
+            // AJAX Search Implementation
+            var searchTimer;
+            var searchSpinner = $('<div class="spinner-border spinner-border-sm text-primary ml-2" role="status"><span class="sr-only">Loading...</span></div>');
+            
+            // Add search input and button
+            $('#availableStudentsSearch').on('keyup', function(e) {
+                clearTimeout(searchTimer);
+                var searchTerm = $(this).val();
+                
+                // If Enter key was pressed, search immediately
+                if (e.keyCode === 13) {
+                    searchAvailableStudents(searchTerm);
+                    return;
+                }
+                
+                // Only schedule a search if term is at least 2 characters or empty (to clear)
+                if (searchTerm.length >= 2 || searchTerm.length === 0) {
+                    searchTimer = setTimeout(function() {
+                        searchAvailableStudents(searchTerm);
+                    }, 500); // 500ms delay
+                }
+            });
+            
+            // Handle search button click
+            $('#searchButton').on('click', function() {
+                var term = $('#availableStudentsSearch').val();
+                searchAvailableStudents(term);
+            });
+            
+            // Global variables to store current filters and pagination state
+            var currentFilters = {
+                department: '<?php echo $filter_department ?? ""; ?>',
+                batch: '<?php echo $filter_batch ?? ""; ?>'
+            };
+            
+            var paginationState = {
+                currentPage: 1,
+                perPage: 20,
+                totalPages: 1
+            };
+            
+            // Function to search available students via AJAX
+            function searchAvailableStudents(searchTerm, page = 1) {
+                // Show loading spinner
+                $('#searchSpinner').show();
+                $('#searchResults').html('<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Loading students...</p></div>');
+                
+                $.ajax({
+                    url: 'ajax/get_available_students.php',
+                    type: 'GET',
+                    data: {
+                        batch_id: <?php echo $batch_id; ?>,
+                        filter_dept: currentFilters.department,
+                        filter_batch: currentFilters.batch,
+                        search: searchTerm,
+                        page: page,
+                        per_page: paginationState.perPage
+                    },
+                    dataType: 'json',
+                    success: function(response) {
+                        $('#searchSpinner').hide();
+                        
+                        // Update pagination state
+                        paginationState.currentPage = response.pagination.current_page;
+                        paginationState.totalPages = response.pagination.total_pages;
+                        
+                        // Update count info
+                        $('#studentCountInfo').text('Showing ' + response.filtered_count + ' of ' + response.total + ' available students');
+                        
+                        // Display search status if search term exists
+                        if (searchTerm && searchTerm.length > 0) {
+                            $('#searchStatus').html(
+                                '<div class="search-status">' +
+                                '<span class="badge badge-primary p-2">' +
+                                '<i class="fas fa-search mr-1"></i>' +
+                                'Searching: "' + searchTerm + '"' +
+                                '</span>' +
+                                '<button id="clearSearchBtn" class="btn btn-sm btn-light ml-2">' +
+                                '<i class="fas fa-times"></i> Clear' +
+                                '</button>' +
+                                '</div>'
+                            ).show();
+                            
+                            $('#clearSearchBtn').on('click', function() {
+                                $('#availableStudentsSearch').val('');
+                                searchAvailableStudents('', 1);
+                            });
+                        } else {
+                            $('#searchStatus').html('').hide();
+                        }
+                        
+                        // Generate table HTML
+                        if (response.students && response.students.length > 0) {
+                            var tableHTML = '<form id="addStudentsForm" method="post" action="">' +
+                                '<div class="table-responsive">' +
+                                '<table class="table" id="dynamicAvailableTable" width="100%" cellspacing="0">' +
+                                '<thead>' +
+                                '<tr>' +
+                                '<th>' +
+                                '<div class="custom-control custom-checkbox">' +
+                                '<input type="checkbox" class="custom-control-input" id="selectAllDynamic">' +
+                                '<label class="custom-control-label" for="selectAllDynamic"></label>' +
+                                '</div>' +
+                                '</th>' +
+                                '<th>Roll Number</th>' +
+                                '<th>Register Number</th>' +
+                                '<th>Name</th>' +
+                                '<th>Department</th>' +
+                                '<th>Academic Batch</th>' +
+                                '</tr>' +
+                                '</thead>' +
+                                '<tbody>';
+                                
+                            $.each(response.students, function(index, student) {
+                                tableHTML += '<tr>' +
+                                    '<td>' +
+                                    '<div class="custom-control custom-checkbox">' +
+                                    '<input type="checkbox" class="custom-control-input available-student-cb" ' +
+                                    'id="dynamic_' + student.id + '" ' +
+                                    'name="add_student_ids[]" ' +
+                                    'value="' + student.id + '">' +
+                                    '<label class="custom-control-label" for="dynamic_' + student.id + '"></label>' +
+                                    '</div>' +
+                                    '</td>' +
+                                    '<td>' + student.roll_number + '</td>' +
+                                    '<td>' + student.register_number + '</td>' +
+                                    '<td>' + student.name;
+                                    
+                                if (student.other_batches) {
+                                    tableHTML += ' <span class="badge badge-warning" data-toggle="tooltip" ' +
+                                        'title="Already in: ' + student.other_batches + '">' +
+                                        '<i class="fas fa-exclamation-triangle"></i> In other batch' +
+                                        '</span>';
+                                }
+                                    
+                                tableHTML += '</td>' +
+                                    '<td>' + student.department_name + '</td>' +
+                                    '<td>' + student.batch_name + '</td>' +
+                                    '</tr>';
+                            });
+                            
+                            tableHTML += '</tbody></table></div>' +
+                                '<input type="hidden" name="add_students" value="1">';
+                                
+                            // Add pagination controls if there are multiple pages
+                            if (response.pagination.total_pages > 1) {
+                                tableHTML += generatePaginationControls(response.pagination);
+                            }
+                            
+                            tableHTML += '</form>';
+                            
+                            $('#searchResults').html(tableHTML);
+                            
+                            // Initialize tooltip for newly added elements
+                            $('[data-toggle="tooltip"]').tooltip();
+                            
+                            // Handle "select all" for dynamic table
+                            $('#selectAllDynamic').on('click', function() {
+                                var isChecked = $(this).prop('checked');
+                                $('.available-student-cb').prop('checked', isChecked);
+                                updateAddButtonState();
+                            });
+                            
+                            // Handle individual checkboxes
+                            $(document).on('change', '.available-student-cb', function() {
+                                updateAddButtonState();
+                                var allChecked = $('.available-student-cb:checked').length === $('.available-student-cb').length;
+                                $('#selectAllDynamic').prop('checked', allChecked);
+                            });
+                            
+                            // Handle pagination clicks
+                            $('.page-link').on('click', function(e) {
+                                e.preventDefault();
+                                var pageNum = $(this).data('page');
+                                searchAvailableStudents($('#availableStudentsSearch').val(), pageNum);
+                            });
+                            
+                            // Update "Add Selected Students" button state
+                            updateAddButtonState();
+                        } else {
+                            $('#searchResults').html('<div class="alert alert-info"><i class="fas fa-info-circle"></i> No students found matching your search criteria.</div>');
+                        }
+                    },
+                    error: function(xhr, status, error) {
+                        $('#searchSpinner').hide();
+                        $('#searchResults').html('<div class="alert alert-danger"><i class="fas fa-exclamation-circle"></i> Error loading students: ' + (xhr.responseJSON?.error || error) + '</div>');
+                    }
+                });
+            }
+            
+            // Function to generate pagination controls
+            function generatePaginationControls(pagination) {
+                var paginationHTML = '<div class="d-flex justify-content-center mt-4">' +
+                    '<nav aria-label="Page navigation">' +
+                    '<ul class="pagination pagination-circle">';
+                
+                // First page and previous page buttons
+                if (pagination.has_previous) {
+                    paginationHTML += 
+                        '<li class="page-item">' +
+                        '<a class="page-link shadow-sm" href="#" data-page="1" aria-label="First">' +
+                        '<span aria-hidden="true"><i class="fas fa-angle-double-left"></i></span>' +
+                        '</a>' +
+                        '</li>' +
+                        '<li class="page-item">' +
+                        '<a class="page-link shadow-sm" href="#" data-page="' + pagination.previous_page + '" aria-label="Previous">' +
+                        '<span aria-hidden="true"><i class="fas fa-angle-left"></i></span>' +
+                        '</a>' +
+                        '</li>';
+                }
+                
+                // Page numbers
+                var startPage = Math.max(1, pagination.current_page - 2);
+                var endPage = Math.min(pagination.total_pages, pagination.current_page + 2);
+                
+                // Add ellipsis if needed at the start
+                if (startPage > 1) {
+                    paginationHTML += '<li class="page-item disabled"><span class="page-link shadow-sm">...</span></li>';
+                }
+                
+                // Add page numbers
+                for (var i = startPage; i <= endPage; i++) {
+                    paginationHTML += '<li class="page-item ' + (i === pagination.current_page ? 'active' : '') + '">' +
+                        '<a class="page-link shadow-sm" href="#" data-page="' + i + '">' + i + '</a>' +
+                        '</li>';
+                }
+                
+                // Add ellipsis if needed at the end
+                if (endPage < pagination.total_pages) {
+                    paginationHTML += '<li class="page-item disabled"><span class="page-link shadow-sm">...</span></li>';
+                }
+                
+                // Next page and last page buttons
+                if (pagination.has_next) {
+                    paginationHTML += 
+                        '<li class="page-item">' +
+                        '<a class="page-link shadow-sm" href="#" data-page="' + pagination.next_page + '" aria-label="Next">' +
+                        '<span aria-hidden="true"><i class="fas fa-angle-right"></i></span>' +
+                        '</a>' +
+                        '</li>' +
+                        '<li class="page-item">' +
+                        '<a class="page-link shadow-sm" href="#" data-page="' + pagination.total_pages + '" aria-label="Last">' +
+                        '<span aria-hidden="true"><i class="fas fa-angle-double-right"></i></span>' +
+                        '</a>' +
+                        '</li>';
+                }
+                
+                paginationHTML += '</ul></nav></div>';
+                
+                return paginationHTML;
+            }
+            
+            // Handle filter form submission
+            $('#studentFiltersForm').on('submit', function(e) {
+                e.preventDefault();
+                var filterDept = $('#filter_dept').val();
+                var filterBatch = $('#filter_batch').val();
+                
+                // Update filter values and trigger search
+                currentFilters.department = filterDept;
+                currentFilters.batch = filterBatch;
+                searchAvailableStudents($('#availableStudentsSearch').val(), 1); // Reset to page 1 when filtering
+            });
+            
+            // Clear filters button
+            $('#clearFiltersBtn').on('click', function() {
+                $('#filter_dept').val('');
+                $('#filter_batch').val('');
+                $('#availableStudentsSearch').val('');
+                currentFilters = {
+                    department: '',
+                    batch: ''
+                };
+                searchAvailableStudents('', 1); // Reset to page 1 when clearing
+            });
+            
+            // Initial search load on page load
+            searchAvailableStudents('');
         });
         
         // Update Remove Students button state
