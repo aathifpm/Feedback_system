@@ -33,23 +33,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     if (mysqli_num_rows($result) > 0) {
                         $error_msg = "Department code already exists!";
+                        // Log the failed attempt
+                        log_admin_action(
+                            $conn,
+                            'Add department failed',
+                            ['department_name' => $name, 'department_code' => $code, 'reason' => 'Code already exists'],
+                            'failure'
+                        );
                     } else {
                         $query = "INSERT INTO departments (name, code) VALUES (?, ?)";
                         $stmt = mysqli_prepare($conn, $query);
                         mysqli_stmt_bind_param($stmt, "ss", $name, $code);
                         
                         if (mysqli_stmt_execute($stmt)) {
+                            $department_id = mysqli_insert_id($conn);
                             $success_msg = "Department added successfully!";
                             
-                            // Log the action
-                            $log_query = "INSERT INTO user_logs (user_id, role, action, details) 
-                                        VALUES (?, 'admin', 'add_department', ?)";
-                            $log_stmt = mysqli_prepare($conn, $log_query);
-                            $details = json_encode(['department_name' => $name, 'department_code' => $code]);
-                            mysqli_stmt_bind_param($log_stmt, "is", $_SESSION['user_id'], $details);
-                            mysqli_stmt_execute($log_stmt);
+                            // Log the action using the new function
+                            log_admin_action(
+                                $conn,
+                                'Added new department',
+                                [
+                                    'department_id' => $department_id,
+                                    'department_name' => $name,
+                                    'department_code' => $code
+                                ]
+                            );
                         } else {
                             $error_msg = "Error adding department!";
+                            
+                            // Log the failure
+                            log_admin_action(
+                                $conn,
+                                'Add department failed',
+                                [
+                                    'department_name' => $name, 
+                                    'department_code' => $code, 
+                                    'error' => mysqli_error($conn)
+                                ],
+                                'failure'
+                            );
                         }
                     }
                 }
@@ -70,7 +93,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     if (mysqli_num_rows($result) > 0) {
                         $error_msg = "Department code already exists!";
+                        // Log the failed attempt
+                        log_admin_action(
+                            $conn,
+                            'Edit department failed',
+                            [
+                                'department_id' => $id,
+                                'department_name' => $name, 
+                                'department_code' => $code, 
+                                'reason' => 'Code already exists'
+                            ],
+                            'failure'
+                        );
                     } else {
+                        // Get old department data for logging
+                        $old_data_query = "SELECT name, code FROM departments WHERE id = ?";
+                        $stmt = mysqli_prepare($conn, $old_data_query);
+                        mysqli_stmt_bind_param($stmt, "i", $id);
+                        mysqli_stmt_execute($stmt);
+                        $old_data = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
+                        
+                        // Update department
                         $query = "UPDATE departments SET name = ?, code = ? WHERE id = ?";
                         $stmt = mysqli_prepare($conn, $query);
                         mysqli_stmt_bind_param($stmt, "ssi", $name, $code, $id);
@@ -78,15 +121,33 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         if (mysqli_stmt_execute($stmt)) {
                             $success_msg = "Department updated successfully!";
                             
-                            // Log the action
-                            $log_query = "INSERT INTO user_logs (user_id, role, action, details) 
-                                        VALUES (?, 'admin', 'edit_department', ?)";
-                            $log_stmt = mysqli_prepare($conn, $log_query);
-                            $details = json_encode(['department_id' => $id, 'department_name' => $name]);
-                            mysqli_stmt_bind_param($log_stmt, "is", $_SESSION['user_id'], $details);
-                            mysqli_stmt_execute($log_stmt);
+                            // Log the action using the new function
+                            log_admin_action(
+                                $conn,
+                                'Updated department',
+                                [
+                                    'department_id' => $id,
+                                    'old_name' => $old_data['name'],
+                                    'old_code' => $old_data['code'],
+                                    'new_name' => $name,
+                                    'new_code' => $code
+                                ]
+                            );
                         } else {
                             $error_msg = "Error updating department!";
+                            
+                            // Log the failure
+                            log_admin_action(
+                                $conn,
+                                'Edit department failed',
+                                [
+                                    'department_id' => $id,
+                                    'department_name' => $name, 
+                                    'department_code' => $code, 
+                                    'error' => mysqli_error($conn)
+                                ],
+                                'failure'
+                            );
                         }
                     }
                 }
@@ -95,6 +156,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             case 'delete':
                 if (isset($_POST['id'])) {
                     $id = mysqli_real_escape_string($conn, $_POST['id']);
+                    
+                    // Get department info before deleting
+                    $dept_query = "SELECT name, code FROM departments WHERE id = ?";
+                    $stmt = mysqli_prepare($conn, $dept_query);
+                    mysqli_stmt_bind_param($stmt, "i", $id);
+                    mysqli_stmt_execute($stmt);
+                    $dept_info = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
                     
                     // Check if department has associated faculty or students
                     $check_query = "SELECT 
@@ -108,6 +176,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     
                     if ($counts['faculty_count'] > 0 || $counts['student_count'] > 0) {
                         $error_msg = "Cannot delete department with associated faculty or students!";
+                        
+                        // Log the failed deletion attempt
+                        log_admin_action(
+                            $conn,
+                            'Delete department failed',
+                            [
+                                'department_id' => $id,
+                                'department_name' => $dept_info['name'],
+                                'department_code' => $dept_info['code'],
+                                'faculty_count' => $counts['faculty_count'],
+                                'student_count' => $counts['student_count'],
+                                'reason' => 'Department has associated faculty or students'
+                            ],
+                            'failure'
+                        );
                     } else {
                         $query = "DELETE FROM departments WHERE id = ?";
                         $stmt = mysqli_prepare($conn, $query);
@@ -116,15 +199,31 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                         if (mysqli_stmt_execute($stmt)) {
                             $success_msg = "Department deleted successfully!";
                             
-                            // Log the action
-                            $log_query = "INSERT INTO user_logs (user_id, role, action, details) 
-                                        VALUES (?, 'admin', 'delete_department', ?)";
-                            $log_stmt = mysqli_prepare($conn, $log_query);
-                            $details = json_encode(['department_id' => $id]);
-                            mysqli_stmt_bind_param($log_stmt, "is", $_SESSION['user_id'], $details);
-                            mysqli_stmt_execute($log_stmt);
+                            // Log the action using the new function
+                            log_admin_action(
+                                $conn,
+                                'Deleted department',
+                                [
+                                    'department_id' => $id,
+                                    'department_name' => $dept_info['name'],
+                                    'department_code' => $dept_info['code']
+                                ]
+                            );
                         } else {
                             $error_msg = "Error deleting department!";
+                            
+                            // Log the failure
+                            log_admin_action(
+                                $conn,
+                                'Delete department failed',
+                                [
+                                    'department_id' => $id,
+                                    'department_name' => $dept_info['name'],
+                                    'department_code' => $dept_info['code'],
+                                    'error' => mysqli_error($conn)
+                                ],
+                                'failure'
+                            );
                         }
                     }
                 }

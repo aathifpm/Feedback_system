@@ -53,83 +53,6 @@ if (!is_super_admin()) {
     $faculty_result = mysqli_query($conn, $faculty_query);
 }
 
-// Add pagination parameters
-$items_per_page = 20;
-$page = isset($_GET['page']) ? max(1, intval($_GET['page'])) : 1;
-$offset = ($page - 1) * $items_per_page;
-
-// If AJAX request for pagination
-$is_ajax_request = isset($_GET['ajax']) && $_GET['ajax'] == 1;
-
-// Apply additional filters from AJAX request
-$additional_filters = "";
-$additional_params = [];
-
-// Filter by search term
-if (isset($_GET['search']) && !empty($_GET['search'])) {
-    $search_term = '%' . mysqli_real_escape_string($conn, $_GET['search']) . '%';
-    $additional_filters .= " AND (s.name LIKE ? OR s.code LIKE ?)";
-    $additional_params[] = $search_term;
-    $additional_params[] = $search_term;
-}
-
-// Filter by department
-if (isset($_GET['department_id']) && !empty($_GET['department_id'])) {
-    $dept_id = intval($_GET['department_id']);
-    // Don't add filter if already restricted by department admin
-    if (!isset($_SESSION['department_id']) || is_super_admin()) {
-        $additional_filters .= " AND s.department_id = ?";
-        $additional_params[] = $dept_id;
-    }
-}
-
-// Filter by faculty
-if (isset($_GET['faculty_id']) && !empty($_GET['faculty_id'])) {
-    $faculty_id = intval($_GET['faculty_id']);
-    $additional_filters .= " AND EXISTS (
-        SELECT 1 FROM subject_assignments sa 
-        WHERE sa.subject_id = s.id AND sa.faculty_id = ?
-    )";
-    $additional_params[] = $faculty_id;
-}
-
-// Filter by year
-if (isset($_GET['year']) && !empty($_GET['year'])) {
-    $year = intval($_GET['year']);
-    $additional_filters .= " AND EXISTS (
-        SELECT 1 FROM subject_assignments sa 
-        WHERE sa.subject_id = s.id AND sa.year = ?
-    )";
-    $additional_params[] = $year;
-}
-
-// Filter by semester
-if (isset($_GET['semester']) && !empty($_GET['semester'])) {
-    $semester = intval($_GET['semester']);
-    $additional_filters .= " AND EXISTS (
-        SELECT 1 FROM subject_assignments sa 
-        WHERE sa.subject_id = s.id AND sa.semester = ?
-    )";
-    $additional_params[] = $semester;
-}
-
-// Filter by section
-if (isset($_GET['section']) && !empty($_GET['section'])) {
-    $section = mysqli_real_escape_string($conn, $_GET['section']);
-    $additional_filters .= " AND EXISTS (
-        SELECT 1 FROM subject_assignments sa 
-        WHERE sa.subject_id = s.id AND sa.section = ?
-    )";
-    $additional_params[] = $section;
-}
-
-// Filter by status
-if (isset($_GET['status']) && $_GET['status'] !== '') {
-    $status = ($_GET['status'] == '1') ? 1 : 0;
-    $additional_filters .= " AND s.is_active = ?";
-    $additional_params[] = $status;
-}
-
 // Fetch subjects with department filtering
 $subjects_query = "SELECT 
     s.id,
@@ -148,51 +71,18 @@ FROM subjects s
 LEFT JOIN departments d ON s.department_id = d.id
 LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
 LEFT JOIN feedback fb ON fb.assignment_id = sa.id
-WHERE 1=1" . $department_filter . $additional_filters . "
+WHERE 1=1" . $department_filter . "
 GROUP BY s.id, s.code, s.name, s.department_id, s.credits, s.is_active, d.name
-ORDER BY s.code
-LIMIT ? OFFSET ?";
+ORDER BY s.code";
 
-// Combine all parameters for the query
-$all_params = array_merge($department_params, $additional_params, [$items_per_page, $offset]);
-$param_types = str_repeat("i", count($department_params)) . 
-               str_repeat("s", count($additional_params)) . 
-               "ii";
-
-if (!empty($all_params)) {
+if (!empty($department_params)) {
     $stmt = mysqli_prepare($conn, $subjects_query);
-    mysqli_stmt_bind_param($stmt, $param_types, ...$all_params);
+    mysqli_stmt_bind_param($stmt, str_repeat("i", count($department_params)), ...$department_params);
     mysqli_stmt_execute($stmt);
-    $subjects_result = mysqli_stmt_get_result($stmt);
+    $subjects = mysqli_stmt_get_result($stmt);
 } else {
-    $stmt = mysqli_prepare($conn, $subjects_query);
-    mysqli_stmt_bind_param($stmt, "ii", $items_per_page, $offset);
-    mysqli_stmt_execute($stmt);
-    $subjects_result = mysqli_stmt_get_result($stmt);
+    $subjects = mysqli_query($conn, $subjects_query);
 }
-
-// Get total number of subjects for pagination with the same filters
-$count_query = "SELECT COUNT(DISTINCT s.id) as total 
-                FROM subjects s 
-                LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
-                WHERE 1=1" . $department_filter . $additional_filters;
-
-// Combine parameters without limit/offset
-$count_params = array_merge($department_params, $additional_params);
-$count_param_types = str_repeat("i", count($department_params)) . 
-                    str_repeat("s", count($additional_params));
-
-if (!empty($count_params)) {
-    $stmt = mysqli_prepare($conn, $count_query);
-    mysqli_stmt_bind_param($stmt, $count_param_types, ...$count_params);
-    mysqli_stmt_execute($stmt);
-    $count_result = mysqli_stmt_get_result($stmt);
-} else {
-    $count_result = mysqli_query($conn, $count_query);
-}
-$total_row = mysqli_fetch_assoc($count_result);
-$total_subjects = $total_row['total'];
-$total_pages = ceil($total_subjects / $items_per_page);
 
 $success_msg = $error_msg = '';
 
@@ -716,12 +606,43 @@ $faculty_members = mysqli_query($conn, $faculty_query);
 $academic_year_query = "SELECT id, year_range FROM academic_years ORDER BY start_date DESC";
 $academic_years = mysqli_query($conn, $academic_year_query);
 
+// Fetch subjects with related information
+$subjects_query = "SELECT 
+    s.id,
+    s.code,
+    s.name,
+    s.department_id,
+    s.credits,
+    s.is_active,
+    d.name as department_name,
+    COUNT(DISTINCT sa.id) as assignment_count,
+    COUNT(DISTINCT fb.id) as feedback_count,
+    ROUND(AVG(fb.cumulative_avg), 2) as avg_rating,
+    GROUP_CONCAT(DISTINCT sa.year) as years,
+    GROUP_CONCAT(DISTINCT sa.semester) as semesters
+FROM subjects s
+LEFT JOIN departments d ON s.department_id = d.id
+LEFT JOIN subject_assignments sa ON s.id = sa.subject_id AND sa.is_active = TRUE
+LEFT JOIN feedback fb ON fb.assignment_id = sa.id
+WHERE 1=1" . $department_filter . "
+GROUP BY s.id, s.code, s.name, s.department_id, s.credits, s.is_active, d.name
+ORDER BY s.code";
+
+if (!empty($department_params)) {
+    $stmt = mysqli_prepare($conn, $subjects_query);
+    mysqli_stmt_bind_param($stmt, str_repeat("i", count($department_params)), ...$department_params);
+    mysqli_stmt_execute($stmt);
+    $subjects_result = mysqli_stmt_get_result($stmt);
+} else {
+$subjects_result = mysqli_query($conn, $subjects_query);
+}
 
 function getSubjectAssignments($conn, $subject_id) {
     $query = "SELECT 
         sa.*,
         f.name as faculty_name,
         ay.year_range as academic_year,
+        ay.is_current,
         (SELECT COUNT(*) FROM feedback fb WHERE fb.assignment_id = sa.id) as feedback_count
     FROM subject_assignments sa
     JOIN faculty f ON sa.faculty_id = f.id
@@ -734,60 +655,6 @@ function getSubjectAssignments($conn, $subject_id) {
     mysqli_stmt_execute($stmt);
     return mysqli_stmt_get_result($stmt);
 }
-
-// Return JSON for AJAX request
-if ($is_ajax_request) {
-    $subjects_data = [];
-    while ($subject = mysqli_fetch_assoc($subjects_result)) {
-        // Get sections data for this subject
-        $sections_query = "SELECT DISTINCT section FROM subject_assignments 
-                        WHERE subject_id = ? AND is_active = 1";
-        $stmt = mysqli_prepare($conn, $sections_query);
-        mysqli_stmt_bind_param($stmt, "i", $subject['id']);
-        mysqli_stmt_execute($stmt);
-        $sections_result = mysqli_stmt_get_result($stmt);
-        
-        $sections = [];
-        while ($section_row = mysqli_fetch_assoc($sections_result)) {
-            $sections[] = $section_row['section'];
-        }
-        $sections_string = implode(',', $sections);
-        
-        // Get faculty IDs for this subject
-        $faculty_query = "SELECT DISTINCT faculty_id FROM subject_assignments 
-                        WHERE subject_id = ? AND is_active = 1";
-        $stmt = mysqli_prepare($conn, $faculty_query);
-        mysqli_stmt_bind_param($stmt, "i", $subject['id']);
-        mysqli_stmt_execute($stmt);
-        $faculty_result = mysqli_stmt_get_result($stmt);
-        
-        $faculty_ids = [];
-        while ($faculty_row = mysqli_fetch_assoc($faculty_result)) {
-            $faculty_ids[] = $faculty_row['faculty_id'];
-        }
-        $faculty_string = implode(',', $faculty_ids);
-        
-        $subject['sections'] = $sections_string;
-        $subject['faculty_ids'] = $faculty_string;
-        $subjects_data[] = $subject;
-    }
-    
-    $response = [
-        'subjects' => $subjects_data,
-        'pagination' => [
-            'current_page' => $page,
-            'total_pages' => $total_pages,
-            'total_subjects' => $total_subjects
-        ]
-    ];
-    
-    header('Content-Type: application/json');
-    echo json_encode($response);
-    exit;
-}
-
-// If initial page load, limit the number of subjects displayed
-$subjects_displayed = 0;
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -1321,9 +1188,8 @@ $subjects_displayed = 0;
         
         /* Select2 custom styles */
         .select2-container {
-            width: 100% ;
+            width: 100% !important;
             margin-bottom: 10px;
-            max-width: 50%;
         }
         
         .select2-container .select2-selection--single {
@@ -1351,8 +1217,6 @@ $subjects_displayed = 0;
             line-height: 28px;
             color: var(--text-color);
             padding-left: 0;
-            white-space: normal; /* Allow text wrapping for small screens */
-            word-break: break-word;
         }
         
         .select2-container--default .select2-selection--single .select2-selection__arrow {
@@ -1375,8 +1239,6 @@ $subjects_displayed = 0;
             background-color: var(--bg-color);
             overflow: hidden;
             z-index: 9999;
-            width: auto !important;
-            min-width: 100%;
         }
         
         .select2-search--dropdown {
@@ -1390,7 +1252,6 @@ $subjects_displayed = 0;
             box-shadow: var(--inner-shadow);
             background-color: var(--bg-color);
             color: var(--text-color);
-            width: 100%;
         }
         
         .select2-results {
@@ -1402,8 +1263,6 @@ $subjects_displayed = 0;
             font-size: 0.9rem;
             border-bottom: 1px solid rgba(0,0,0,0.05);
             transition: all 0.2s ease;
-            white-space: normal; /* Allow text wrapping for small screens */
-            word-break: break-word;
         }
         
         .select2-results__option:last-child {
@@ -1416,44 +1275,13 @@ $subjects_displayed = 0;
             transform: translateX(5px);
         }
         
-        /* Make sure select2 appears above modal but not outside its bounds */
+        /* Make sure select2 appears above modal */
         .modal {
             z-index: 1050;
-            overflow-y: auto;
         }
         
         .select2-container--open {
             z-index: 1051;
-        }
-        
-        /* Media queries for smaller screens */
-        @media (max-width: 576px) {
-            .select2-container--default .select2-selection--single {
-                min-height: 40px;
-                padding: 5px 8px;
-                font-size: 0.9rem;
-            }
-            
-            .select2-container--default .select2-selection--single .select2-selection__rendered {
-                line-height: 24px;
-            }
-            
-            .select2-container--default .select2-selection--single .select2-selection__arrow {
-                height: 40px;
-            }
-            
-            .select2-results__option {
-                padding: 8px 10px;
-                font-size: 0.85rem;
-            }
-            
-            .faculty-name {
-                font-size: 0.9rem;
-            }
-            
-            .faculty-details {
-                font-size: 0.75rem;
-            }
         }
         
         /* Faculty option styles for dropdown */
@@ -1462,14 +1290,12 @@ $subjects_displayed = 0;
             display: flex;
             flex-direction: column;
             gap: 4px;
-            max-width: 100%;
         }
         
         .faculty-name {
             font-weight: 500;
             color: var(--text-color);
             font-size: 0.95rem;
-            word-break: break-word;
         }
         
         .faculty-details {
@@ -1501,158 +1327,6 @@ $subjects_displayed = 0;
         
         .select2-results__option--highlighted .faculty-dept {
             background: rgba(52, 152, 219, 0.2);
-        }
-
-        /* Update Select2 container and dropdown styles */
-        .faculty-select-container {
-            position: relative;
-            z-index: 10;
-            margin-bottom: 15px;
-            /* Debug styling */
-            padding: 8px;
-            border-radius: 8px;
-            border: 1px dashed #2ecc71;
-            background-color: rgba(46, 204, 113, 0.05);
-        }
-
-        .select2-container {
-            width: 100% !important;
-            margin-bottom: 10px;
-            max-width: 100%;
-            display: block !important;
-            position: relative;
-            z-index: 10;
-        }
-
-        /* Fixed dropdown positioning for modals */
-        .modal .select2-dropdown {
-            z-index: 9999 !important;
-            position: absolute !important;
-            width: auto !important;
-            min-width: 100%;
-            max-width: 100vw;
-            overflow: auto;
-        }
-
-        /* Ensure container is visible on mobile */
-        .select2-container--open {
-            z-index: 1060 !important;
-        }
-
-        /* Fix for mobile display - make the search box properly sized */
-        .select2-search--dropdown .select2-search__field {
-            width: 100% !important;
-            box-sizing: border-box;
-        }
-
-        /* Modify the function to attach select2 to the body instead of modal content */
-        function addNewAssignment() {
-            const container = document.querySelector('#editModal .assignments');
-            if (!container) {
-                console.error('Assignments container not found');
-                return;
-            }
-            
-            const assignmentRow = document.createElement('div');
-            assignmentRow.className = 'assignment-row';
-            assignmentRow.innerHTML = `
-                <button type="button" class="btn-action btn-remove-assignment" onclick="removeAssignmentRow(this)">
-                    <i class="fas fa-times"></i>
-                </button>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label>Year & Semester</label>
-                        <div class="input-group">
-                            <select name="years[]" class="form-control" required>
-                            <option value="">Select Year</option>
-                            ${[1,2,3,4].map(year => `<option value="${year}">Year ${year}</option>`).join('')}
-                        </select>
-                            <select name="semesters[]" class="form-control" required>
-                            <option value="">Select Semester</option>
-                            ${[1,2,3,4,5,6,7,8].map(sem => `<option value="${sem}">Semester ${sem}</option>`).join('')}
-                        </select>
-                    </div>
-                </div>
-                    <div class="form-group">
-                        <label>Section & Academic Year</label>
-                        <div class="input-group">
-                            <select name="sections[]" class="form-control" required>
-                            <option value="">Select Section</option>
-                            ${['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
-                            </select>
-                            <select name="academic_year_ids[]" class="form-control" required>
-                                <option value="">Select Academic Year</option>
-                                <?php 
-                                mysqli_data_seek($academic_years, 0);
-                                while ($year = mysqli_fetch_assoc($academic_years)): 
-                                ?>
-                                    <option value="<?php echo $year['id']; ?>">
-                                        <?php echo htmlspecialchars($year['year_range']); ?>
-                                    </option>
-                                <?php endwhile; ?>
-                        </select>
-                    </div>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group faculty-select-container">
-                        <label>Faculty</label>
-                        <select name="faculty_ids[]" class="form-control faculty-select" required>
-                            <option value="">Select Faculty</option>
-                            <?php 
-                            mysqli_data_seek($faculty_members, 0);
-                            while ($faculty = mysqli_fetch_assoc($faculty_members)): 
-                                $facultyDetails = "{$faculty['name']} ({$faculty['faculty_id']})";
-                                if (!empty($faculty['designation'])) {
-                                    $facultyDetails .= " - {$faculty['designation']}";
-                                }
-                                $facultyDetails .= " | {$faculty['department_name']}";
-                                if (!empty($faculty['experience'])) {
-                                    $facultyDetails .= " | {$faculty['experience']} years";
-                                }
-                            ?>
-                                <option value="<?php echo $faculty['id']; ?>"
-                                        data-name="<?php echo strtolower(htmlspecialchars($faculty['name'])); ?>"
-                                        data-id="<?php echo strtolower(htmlspecialchars($faculty['faculty_id'])); ?>"
-                                        data-dept="<?php echo strtolower(htmlspecialchars($faculty['department_name'])); ?>">
-                                    <?php echo htmlspecialchars($facultyDetails); ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
-                </div>
-            `;
-            container.appendChild(assignmentRow);
-            
-            // Initialize Select2 on the newly added faculty dropdown - use setTimeout for better rendering on mobile
-            const newSelect = assignmentRow.querySelector('.faculty-select');
-            if (newSelect) {
-                setTimeout(() => {
-                    try {
-                        $(newSelect).select2({
-                            placeholder: "Search for faculty by name, ID, or department...",
-                            allowClear: true,
-                            width: '100%',
-                            dropdownParent: $('body'), // Changed to attach to body instead of modal
-                            templateResult: formatFacultyOption,
-                            templateSelection: formatFacultySelection
-                        });
-                        
-                        // Add click handler to ensure dropdown opens
-                        $(newSelect).next('.select2-container').on('click', function() {
-                            setTimeout(() => {
-                                if (!$(newSelect).data('select2').isOpen()) {
-                                    $(newSelect).select2('open');
-                                }
-                            }, 0);
-                        });
-                        
-                        console.log('Select2 initialized for faculty dropdown');
-                    } catch (e) {
-                        console.error('Error initializing select2:', e);
-                    }
-                }, 100);
-            }
         }
     </style>
     
@@ -1847,54 +1521,6 @@ $subjects_displayed = 0;
                 </div>
             <?php endwhile; ?>
         </div>
-
-        <!-- Pagination -->
-        <div class="pagination-container">
-            <div class="pagination-info">
-                Showing <span id="showing-start"><?php echo min($total_subjects, $offset + 1); ?></span>-<span id="showing-end"><?php echo min($total_subjects, $offset + $items_per_page); ?></span> of <span id="total-subjects"><?php echo $total_subjects; ?></span> subjects
-            </div>
-            <div class="pagination-controls">
-                <?php if($page > 1): ?>
-                    <button class="pagination-btn" data-page="<?php echo $page - 1; ?>">
-                        <i class="fas fa-chevron-left"></i> Previous
-                    </button>
-                <?php endif; ?>
-                
-                <?php
-                // Calculate range of pages to show
-                $page_range = 3;
-                $start_page = max(1, $page - $page_range);
-                $end_page = min($total_pages, $page + $page_range);
-                
-                if ($start_page > 1): ?>
-                    <button class="pagination-btn" data-page="1">1</button>
-                    <?php if($start_page > 2): ?>
-                        <span class="pagination-ellipsis">...</span>
-                    <?php endif; ?>
-                <?php endif; ?>
-                
-                <?php for($i = $start_page; $i <= $end_page; $i++): ?>
-                    <button class="pagination-btn <?php echo ($i == $page) ? 'active' : ''; ?>" data-page="<?php echo $i; ?>">
-                        <?php echo $i; ?>
-                    </button>
-                <?php endfor; ?>
-                
-                <?php if($end_page < $total_pages): ?>
-                    <?php if($end_page < $total_pages - 1): ?>
-                        <span class="pagination-ellipsis">...</span>
-                    <?php endif; ?>
-                    <button class="pagination-btn" data-page="<?php echo $total_pages; ?>">
-                        <?php echo $total_pages; ?>
-                    </button>
-                <?php endif; ?>
-                
-                <?php if($page < $total_pages): ?>
-                    <button class="pagination-btn" data-page="<?php echo $page + 1; ?>">
-                        Next <i class="fas fa-chevron-right"></i>
-                    </button>
-                <?php endif; ?>
-            </div>
-        </div>
     </div>
 
     <!-- Add Subject Modal -->
@@ -2069,6 +1695,15 @@ $subjects_displayed = 0;
                 <!-- Current Assignments Section -->
                 <div class="current-assignments">
                     <h3>Current Assignments</h3>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="assignment-year-filter">Filter by Academic Year:</label>
+                            <select id="assignment-year-filter" class="form-control" onchange="filterAssignments()">
+                                <option value="current">Current Academic Year Only</option>
+                                <option value="all">All Academic Years</option>
+                            </select>
+                        </div>
+                    </div>
                     <div id="currentAssignmentsList">
                         <!-- Will be populated dynamically -->
                     </div>
@@ -2121,9 +1756,9 @@ $subjects_displayed = 0;
                                 </div>
                             </div>
                             <div class="form-row">
-                                <div class="form-group faculty-select-container">
+                                <div class="form-group">
                                     <label>Faculty</label>
-                                    <select name="faculty_ids[]" class="form-control faculty-select" required>
+                                    <select name="faculty_ids[]" class="form-control select2-faculty" required>
                                         <option value="">Select Faculty</option>
                                         <?php 
                                         mysqli_data_seek($faculty_members, 0);
@@ -2175,7 +1810,7 @@ $subjects_displayed = 0;
                 <div class="form-row">
                     <div class="form-group">
                         <label for="faculty_id">Faculty</label>
-                        <select id="faculty_id" name="facultySelect" class="form-control select2-faculty" required>
+                        <select name="faculty_id" id="facultySelect" class="form-control select2-faculty" required>
                             <option value="">Select Faculty</option>
                             <?php 
                             mysqli_data_seek($faculty_members, 0);
@@ -2252,93 +1887,10 @@ $subjects_displayed = 0;
         </div>
     </div>
 
-    <style>
-        /* ... existing styles ... */
-        
-        /* Pagination styles */
-        .pagination-container {
-            margin-top: 2rem;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 1rem;
-        }
-        
-        .pagination-info {
-            color: var(--text-color);
-            font-size: 0.9rem;
-        }
-        
-        .pagination-controls {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-        
-        .pagination-btn {
-            padding: 0.6rem 1rem;
-            border: none;
-            border-radius: 8px;
-            background: var(--bg-color);
-            color: var(--text-color);
-            cursor: pointer;
-            box-shadow: var(--shadow);
-            transition: all 0.3s ease;
-            font-size: 0.9rem;
-        }
-        
-        .pagination-btn.active {
-            background: var(--primary-color);
-            color: white;
-        }
-        
-        .pagination-btn:hover:not(.active) {
-            transform: translateY(-2px);
-            box-shadow: 6px 6px 10px rgb(163,177,198,0.7), 
-                        -6px -6px 10px rgba(255,255,255, 0.6);
-        }
-        
-        .pagination-ellipsis {
-            padding: 0.6rem 0.5rem;
-            color: var(--text-color);
-        }
-        
-        /* Loading indicator */
-        .loading-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(255, 255, 255, 0.7);
-            display: none;
-            justify-content: center;
-            align-items: center;
-            z-index: 9999;
-        }
-        
-        .loading-spinner {
-            width: 50px;
-            height: 50px;
-            border: 5px solid var(--bg-color);
-            border-top: 5px solid var(--primary-color);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
-        }
-        
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-    </style>
-    
-    <!-- Loading Overlay -->
-    <div class="loading-overlay">
-        <div class="loading-spinner"></div>
-    </div>
-
     <script>
+        // Store assignments globally for filtering
+        let allSubjectAssignments = [];
+        
         // Modal handling functions
         function showAddModal() {
             const modal = document.getElementById('addModal');
@@ -2350,7 +1902,7 @@ $subjects_displayed = 0;
                 placeholder: "Search for faculty by name, ID, or department...",
                 allowClear: true,
                 width: '100%',
-                dropdownParent: $('#addModal .modal-content'),
+                dropdownParent: $('body'),
                 templateResult: formatFacultyOption,
                 templateSelection: formatFacultySelection
             });
@@ -2373,35 +1925,22 @@ $subjects_displayed = 0;
                 creditsInput.value = subject.credits;
             }
 
+            // Reset filter to "Current Academic Year Only"
+            document.getElementById('assignment-year-filter').value = 'current';
+
             // Fetch current assignments
             fetch(`get_subject_assignments.php?subject_id=${subject.id}`)
                 .then(response => response.json())
                 .then(data => {
-                    const assignmentsList = document.getElementById('currentAssignmentsList');
                     if (data.success && data.data) {
-                        const assignments = data.data;
-                        assignmentsList.innerHTML = assignments.map(assignment => `
-                            <div class="current-assignment-item">
-                                <div class="assignment-details">
-                                    <span>Year ${assignment.year}</span>
-                                    <span>Semester ${assignment.semester}</span>
-                                    <span>Section ${assignment.section}</span>
-                                    <span>${assignment.faculty_name}</span>
-                                </div>
-                                <div class="assignment-actions">
-                                    <button type="button" class="btn-action" 
-                                            onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
-                                            <i class="fas fa-${assignment.is_active == 1 ? 'times' : 'check'}"></i>
-                                        </button>
-                                        <button type="button" class="btn-action" 
-                                                onclick="deleteAssignment(${assignment.id})">
-                                        <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </div>
-                    `).join('');
+                        // Store all assignments globally
+                        allSubjectAssignments = data.data;
+                        console.log('Assignments data:', allSubjectAssignments); // Debug log
+                        
+                        // Apply the filter (default to current academic year)
+                        filterAssignments();
                     } else {
-                        assignmentsList.innerHTML = '<p>No assignments found</p>';
+                        document.getElementById('currentAssignmentsList').innerHTML = '<p>No assignments found</p>';
                     }
                 })
                 .catch(error => {
@@ -2411,42 +1950,64 @@ $subjects_displayed = 0;
 
             showModal('editModal');
             
-            // Clean up any existing Select2 instances in the modal
+            // Destroy Select2 if it exists, then reinitialize
             try {
-                $('#editModal .select2-faculty, #editModal .faculty-select').each(function() {
-                    if ($(this).data('select2')) {
-                        $(this).select2('destroy');
-                    }
-                });
-            } catch(e) {
-                console.error('Error destroying select2:', e);
+                $('#editModal .select2-faculty').select2('destroy');
+            } catch(e) {}
+            
+            $('#editModal .select2-faculty').select2({
+                placeholder: "Search for faculty by name, ID, or department...",
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $('body'),
+                templateResult: formatFacultyOption,
+                templateSelection: formatFacultySelection
+            });
+        }
+
+        // Filter assignments based on selected academic year filter
+        function filterAssignments() {
+            const filterValue = document.getElementById('assignment-year-filter').value;
+            const assignmentsList = document.getElementById('currentAssignmentsList');
+            
+            if (!allSubjectAssignments || allSubjectAssignments.length === 0) {
+                assignmentsList.innerHTML = '<p>No assignments found</p>';
+                return;
             }
             
-            // Reinitialize all Select2 elements in the edit modal
-            setTimeout(() => {
-                $('#editModal .select2-faculty, #editModal .faculty-select').select2({
-                    placeholder: "Search for faculty by name, ID, or department...",
-                    allowClear: true,
-                    width: '100%',
-                    dropdownParent: $('body'), // Changed to body
-                    templateResult: formatFacultyOption,
-                    templateSelection: formatFacultySelection
-                });
-                
-                // Add click handlers to ensure dropdowns open
-                $('#editModal .select2-faculty, #editModal .faculty-select').each(function() {
-                    const select = $(this);
-                    select.next('.select2-container').on('click', function() {
-                        setTimeout(() => {
-                            if (!select.data('select2').isOpen()) {
-                                select.select2('open');
-                            }
-                        }, 0);
-                    });
-                });
-                
-                console.log('All select2 elements initialized in edit modal');
-            }, 100);
+            // Filter assignments based on selection
+            let filteredAssignments = allSubjectAssignments;
+            if (filterValue === 'current') {
+                filteredAssignments = allSubjectAssignments.filter(assignment => assignment.is_current == 1);
+            }
+            
+            if (filteredAssignments.length === 0) {
+                assignmentsList.innerHTML = '<p>No assignments found for the selected filter</p>';
+                return;
+            }
+            
+            // Render the filtered assignments
+            assignmentsList.innerHTML = filteredAssignments.map(assignment => `
+                <div class="current-assignment-item">
+                    <div class="assignment-details">
+                        <span>Year ${assignment.year}</span>
+                        <span>Semester ${assignment.semester}</span>
+                        <span>Section ${assignment.section}</span>
+                        <span>${assignment.faculty_name}</span>
+                        <span>${assignment.academic_year}</span>
+                    </div>
+                    <div class="assignment-actions">
+                        <button type="button" class="btn-action" 
+                                onclick="toggleAssignmentStatus(${assignment.id}, ${assignment.is_active})">
+                                <i class="fas fa-${assignment.is_active == 1 ? 'times' : 'check'}"></i>
+                            </button>
+                            <button type="button" class="btn-action" 
+                                    onclick="deleteAssignment(${assignment.id})">
+                                <i class="fas fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
         }
 
         function hideModal(modalId) {
@@ -2840,31 +2401,19 @@ $subjects_displayed = 0;
 
         // Toggle Subject Status
         function toggleSubjectStatus(id, currentStatus) {
-            if (confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this subject?`)) {
-                // Show loading
-                
-                
-                // Create form data
+            if (confirm('Are you sure you want to ' + (currentStatus ? 'deactivate' : 'activate') + ' this subject?')) {
                 const formData = new FormData();
                 formData.append('action', 'toggle_status');
                 formData.append('id', id);
                 formData.append('status', !currentStatus);
-                
-                // Submit via fetch
+
                 fetch('manage_subjects.php', {
                     method: 'POST',
                     body: formData
                 })
-                .then(response => {
-                    // Reload current page
-                    const currentPage = new URLSearchParams(window.location.search).get('page') || 1;
-                    loadPage(currentPage);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error updating subject status. Please try again.');
-                    document.querySelector('.loading-overlay').style.display = 'none';
-                });
+                .then(response => response.text())
+                .then(() => window.location.reload())
+                .catch(error => console.error('Error:', error));
             }
         }
 
@@ -2900,7 +2449,7 @@ $subjects_displayed = 0;
             const assignmentRow = document.createElement('div');
             assignmentRow.className = 'assignment-row';
             assignmentRow.innerHTML = `
-                <button type="button" class="btn-action btn-remove-assignment" onclick="removeAssignmentRow(this)">
+                <button type="button" class="btn-action btn-remove-assignment" onclick="this.parentElement.remove()">
                     <i class="fas fa-times"></i>
                 </button>
                 <div class="form-row">
@@ -2939,9 +2488,10 @@ $subjects_displayed = 0;
                     </div>
                 </div>
                 <div class="form-row">
-                    <div class="form-group faculty-select-container">
+                    <div class="form-group">
                         <label>Faculty</label>
-                        <select name="faculty_ids[]" class="form-control faculty-select" required>
+                        <input type="text" class="form-control faculty-search" placeholder="Search faculty..." onkeyup="filterFacultyInEditModal(this)">
+                        <select name="faculty_ids[]" class="form-control select2-faculty" required>
                             <option value="">Select Faculty</option>
                             <?php 
                             mysqli_data_seek($faculty_members, 0);
@@ -2967,36 +2517,6 @@ $subjects_displayed = 0;
                 </div>
             `;
             container.appendChild(assignmentRow);
-            
-            // Initialize Select2 on the newly added faculty dropdown - use setTimeout for better rendering on mobile
-            const newSelect = assignmentRow.querySelector('.faculty-select');
-            if (newSelect) {
-                setTimeout(() => {
-                    try {
-                        $(newSelect).select2({
-                            placeholder: "Search for faculty by name, ID, or department...",
-                            allowClear: true,
-                            width: '100%',
-                            dropdownParent: $('body'), // Changed to attach to body instead of modal
-                            templateResult: formatFacultyOption,
-                            templateSelection: formatFacultySelection
-                        });
-                        
-                        // Add click handler to ensure dropdown opens
-                        $(newSelect).next('.select2-container').on('click', function() {
-                            setTimeout(() => {
-                                if (!$(newSelect).data('select2').isOpen()) {
-                                    $(newSelect).select2('open');
-                                }
-                            }, 0);
-                        });
-                        
-                        console.log('Select2 initialized for faculty dropdown');
-                    } catch (e) {
-                        console.error('Error initializing select2:', e);
-                    }
-                }, 100);
-            }
         }
 
         // Form Validation
@@ -3013,7 +2533,8 @@ $subjects_displayed = 0;
         }
 
         function showAddAssignmentModal(subjectId) {
-            const form = document.getElementById('newAssignmentForm');
+            const modal = document.getElementById('addAssignmentModal');
+            const form = modal.querySelector('#newAssignmentForm');
             form.onsubmit = function(e) {
                 e.preventDefault();
                 submitNewAssignment(subjectId);
@@ -3021,47 +2542,19 @@ $subjects_displayed = 0;
             form.reset();
             showModal('addAssignmentModal');
             
-            // Add the debug styling class to faculty select container
-            const facultyContainer = form.querySelector('.form-group:has(#facultySelect)');
-            if (facultyContainer) {
-                facultyContainer.classList.add('faculty-select-container');
-            }
-            
             // Destroy Select2 if it exists, then reinitialize
             try {
                 $('#addAssignmentModal .select2-faculty').select2('destroy');
-            } catch(e) {
-                console.error('Error destroying select2:', e);
-            }
+            } catch(e) {}
             
-            setTimeout(() => {
-                try {
-                    $('#addAssignmentModal .select2-faculty').select2({
-                        placeholder: "Search for faculty by name, ID, or department...",
-                        allowClear: true,
-                        width: '100%',
-                        dropdownParent: $('body'), // Changed to attach to body
-                        templateResult: formatFacultyOption,
-                        templateSelection: formatFacultySelection
-                    });
-                    
-                    // Add click handler to ensure dropdown opens
-                    $('#addAssignmentModal .select2-faculty').each(function() {
-                        const select = $(this);
-                        select.next('.select2-container').on('click', function() {
-                            setTimeout(() => {
-                                if (!select.data('select2').isOpen()) {
-                                    select.select2('open');
-                                }
-                            }, 0);
-                        });
-                    });
-                    
-                    console.log('Select2 initialized in add assignment modal');
-                } catch (e) {
-                    console.error('Error initializing select2 in add assignment modal:', e);
-                }
-            }, 100);
+            $('#addAssignmentModal .select2-faculty').select2({
+                placeholder: "Search for faculty by name, ID, or department...",
+                allowClear: true,
+                width: '100%',
+                dropdownParent: $('body'),
+                templateResult: formatFacultyOption,
+                templateSelection: formatFacultySelection
+            });
         }
 
         function submitNewAssignment(subjectId) {
@@ -3194,11 +2687,11 @@ $subjects_displayed = 0;
         // Initialize Select2 for faculty dropdowns
         $(document).ready(function() {
             // Initialize Select2 on faculty dropdowns
-            $('.select2-faculty, .faculty-select').select2({
+            $('.select2-faculty').select2({
                 placeholder: "Search for faculty by name, ID, or department...",
                 allowClear: true,
                 width: '100%',
-                dropdownParent: $('body'), // Changed to body for all select2 instances
+                dropdownParent: $('body'),
                 templateResult: formatFacultyOption,
                 templateSelection: formatFacultySelection,
                 escapeMarkup: function(markup) {
@@ -3231,25 +2724,15 @@ $subjects_displayed = 0;
             });
             
             // For modals that may be added dynamically
-            $('body').on('DOMNodeInserted', '.select2-faculty, .faculty-select', function() {
+            $('body').on('DOMNodeInserted', '.select2-faculty', function() {
                 if (!$(this).hasClass('select2-hidden-accessible')) {
                     $(this).select2({
                         placeholder: "Search for faculty by name, ID, or department...",
                         allowClear: true,
                         width: '100%',
-                        dropdownParent: $('body'), // Changed to use body consistently
+                        dropdownParent: $('body'),
                         templateResult: formatFacultyOption,
                         templateSelection: formatFacultySelection
-                    });
-                    
-                    // Add click handler
-                    const select = $(this);
-                    select.next('.select2-container').on('click', function() {
-                        setTimeout(() => {
-                            if (!select.data('select2').isOpen()) {
-                                select.select2('open');
-                            }
-                        }, 0);
                     });
                 }
             });
@@ -3270,7 +2753,7 @@ $subjects_displayed = 0;
             const deptSection = parts.length > 1 ? parts[1].trim() : '';
             const expSection = parts.length > 2 ? parts[2].trim() : '';
             
-            // Create styled option with better text wrapping
+            // Create styled option
             return $(`
                 <div class="faculty-option">
                     <div class="faculty-name">${nameSection}</div>
@@ -3291,307 +2774,6 @@ $subjects_displayed = 0;
             const nameSection = parts[0].trim();
             
             return nameSection;
-        }
-
-        // Pagination AJAX functionality
-        document.addEventListener('DOMContentLoaded', function() {
-            // Attach event listeners to pagination buttons
-            document.querySelectorAll('.pagination-btn').forEach(button => {
-                button.addEventListener('click', function() {
-                    const page = this.getAttribute('data-page');
-                    loadPage(page);
-                });
-            });
-            
-            // Attach event listeners to filter controls
-            const searchInput = document.getElementById('searchInput');
-            const departmentFilter = document.getElementById('departmentFilter');
-            const facultyFilter = document.getElementById('facultyFilter');
-            const yearFilter = document.getElementById('yearFilter');
-            const semesterFilter = document.getElementById('semesterFilter');
-            const sectionFilter = document.getElementById('sectionFilter');
-            const statusFilter = document.getElementById('statusFilter');
-            
-            // Add delay for search to prevent too many requests while typing
-            let searchTimeout;
-            searchInput.addEventListener('input', function() {
-                clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(function() {
-                    loadPage(1); // Reset to first page when filtering
-                }, 500);
-            });
-            
-            // For select filters, trigger immediately
-            [departmentFilter, facultyFilter, yearFilter, semesterFilter, sectionFilter, statusFilter].forEach(filter => {
-                filter.addEventListener('change', function() {
-                    loadPage(1); // Reset to first page when filtering
-                });
-            });
-            
-            // Reset filters button
-            document.querySelector('.btn-reset').addEventListener('click', function() {
-                resetFilters();
-                loadPage(1);
-            });
-            
-            // Function to reset all filters
-            function resetFilters() {
-                searchInput.value = '';
-                departmentFilter.value = '';
-                facultyFilter.value = '';
-                yearFilter.value = '';
-                semesterFilter.value = '';
-                sectionFilter.value = '';
-                statusFilter.value = '';
-            }
-            
-            // Function to load page via AJAX
-            window.loadPage = function(page) {
-                // Show loading overlay
-                const loadingOverlay = document.querySelector('.loading-overlay');
-                loadingOverlay.style.display = 'flex';
-                
-                // Get current filter values
-                const searchTerm = searchInput.value.trim();
-                const departmentId = departmentFilter.value;
-                const facultyId = facultyFilter.value;
-                const year = yearFilter.value;
-                const semester = semesterFilter.value;
-                const section = sectionFilter.value;
-                const status = statusFilter.value;
-                
-                // Build query string with filters
-                const params = new URLSearchParams();
-                params.append('page', page);
-                params.append('ajax', 1);
-                
-                if (searchTerm) params.append('search', searchTerm);
-                if (departmentId) params.append('department_id', departmentId);
-                if (facultyId) params.append('faculty_id', facultyId);
-                if (year) params.append('year', year);
-                if (semester) params.append('semester', semester);
-                if (section) params.append('section', section);
-                if (status) params.append('status', status);
-                
-                // Make AJAX request
-                fetch(`manage_subjects.php?${params.toString()}`)
-                    .then(response => response.json())
-                    .then(data => {
-                        // Update subject grid
-                        updateSubjectGrid(data.subjects);
-                        
-                        // Update pagination
-                        updatePagination(data.pagination);
-                        
-                        // Update URL without refreshing
-                        const url = new URL(window.location);
-                        url.searchParams.set('page', page);
-                        // Add other filters to URL
-                        if (searchTerm) url.searchParams.set('search', searchTerm);
-                        if (departmentId) url.searchParams.set('department_id', departmentId);
-                        if (facultyId) url.searchParams.set('faculty_id', facultyId);
-                        if (year) url.searchParams.set('year', year);
-                        if (semester) url.searchParams.set('semester', semester);
-                        if (section) url.searchParams.set('section', section);
-                        if (status) url.searchParams.set('status', status);
-                        
-                        window.history.pushState({}, '', url);
-                        
-                        // Hide loading overlay
-                        loadingOverlay.style.display = 'none';
-                    })
-                    .catch(error => {
-                        console.error('Error loading page:', error);
-                        alert('Error loading subjects. Please try again.');
-                        loadingOverlay.style.display = 'none';
-                    });
-            };
-            
-            // Function to update subject grid with new data
-            function updateSubjectGrid(subjects) {
-                const subjectGrid = document.querySelector('.subject-grid');
-                
-                // Clear current subjects
-                subjectGrid.innerHTML = '';
-                
-                // Add new subjects
-                subjects.forEach(subject => {
-                    const subjectCard = document.createElement('div');
-                    subjectCard.className = 'subject-card';
-                    subjectCard.setAttribute('data-department', subject.department_id);
-                    subjectCard.setAttribute('data-faculty', subject.faculty_ids || '');
-                    subjectCard.setAttribute('data-years', subject.years || '');
-                    subjectCard.setAttribute('data-semesters', subject.semesters || '');
-                    subjectCard.setAttribute('data-section', subject.sections || '');
-                    subjectCard.setAttribute('data-status', subject.is_active ? '1' : '0');
-                    
-                    subjectCard.innerHTML = `
-                        <div class="subject-header">
-                            <div class="subject-info">
-                                <h3 class="subject-name">${escapeHtml(subject.name)}</h3>
-                                <span class="subject-code">${escapeHtml(subject.code)}</span>
-                            </div>
-                            <span class="status-badge ${subject.is_active ? 'status-active' : 'status-inactive'}">
-                                ${subject.is_active ? 'Active' : 'Inactive'}
-                            </span>
-                        </div>
-
-                        <div class="subject-details">
-                            <div class="detail-item">
-                                <span class="detail-label">Department</span>
-                                <span class="detail-value">${escapeHtml(subject.department_name)}</span>
-                            </div>
-                            <div class="detail-item">
-                                <span class="detail-label">Credits</span>
-                                <span class="detail-value">${subject.credits}</span>
-                            </div>
-                        </div>
-
-                        <div class="subject-stats">
-                            <div class="stat-item">
-                                <div class="stat-value">${subject.assignment_count}</div>
-                                <div class="stat-label">Assignments</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-value">${subject.feedback_count || 0}</div>
-                                <div class="stat-label">Feedbacks</div>
-                            </div>
-                        </div>
-
-                        <div class="subject-actions">
-                            <button class="btn-action" onclick="showEditModal(${JSON.stringify(subject)})">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn-action" onclick="toggleSubjectStatus(${subject.id}, ${subject.is_active})">
-                                <i class="fas fa-power-off"></i> ${subject.is_active ? 'Deactivate' : 'Activate'}
-                            </button>
-                            <button class="btn-action" onclick="showAddAssignmentModal(${subject.id})">
-                                <i class="fas fa-plus"></i> Add Assignment
-                            </button>
-                        </div>
-                    `;
-                    
-                    subjectGrid.appendChild(subjectCard);
-                });
-                
-                // If no subjects found
-                if (subjects.length === 0) {
-                    subjectGrid.innerHTML = '<div class="no-results">No subjects found matching your criteria.</div>';
-                }
-            }
-            
-            // Function to update pagination controls
-            function updatePagination(pagination) {
-                const paginationControls = document.querySelector('.pagination-controls');
-                const paginationInfo = document.querySelector('.pagination-info');
-                
-                // Update info text
-                const showingStart = ((pagination.current_page - 1) * <?php echo $items_per_page; ?>) + 1;
-                const showingEnd = Math.min(pagination.total_subjects, pagination.current_page * <?php echo $items_per_page; ?>);
-                
-                document.getElementById('showing-start').textContent = showingStart;
-                document.getElementById('showing-end').textContent = showingEnd;
-                document.getElementById('total-subjects').textContent = pagination.total_subjects;
-                
-                // Build pagination buttons
-                let paginationHTML = '';
-                const current_page = parseInt(pagination.current_page);
-                const total_pages = parseInt(pagination.total_pages);
-                
-                // Previous button
-                if (current_page > 1) {
-                    paginationHTML += `<button class="pagination-btn" data-page="${current_page - 1}">
-                        <i class="fas fa-chevron-left"></i> Previous
-                    </button>`;
-                }
-                
-                // Calculate range of pages to show
-                const page_range = 3;
-                const start_page = Math.max(1, current_page - page_range);
-                const end_page = Math.min(total_pages, current_page + page_range);
-                
-                // First page + ellipsis if needed
-                if (start_page > 1) {
-                    paginationHTML += `<button class="pagination-btn" data-page="1">1</button>`;
-                    if (start_page > 2) {
-                        paginationHTML += `<span class="pagination-ellipsis">...</span>`;
-                    }
-                }
-                
-                // Page numbers
-                for (let i = start_page; i <= end_page; i++) {
-                    paginationHTML += `<button class="pagination-btn ${i === current_page ? 'active' : ''}" data-page="${i}">${i}</button>`;
-                }
-                
-                // Last page + ellipsis if needed
-                if (end_page < total_pages) {
-                    if (end_page < total_pages - 1) {
-                        paginationHTML += `<span class="pagination-ellipsis">...</span>`;
-                    }
-                    paginationHTML += `<button class="pagination-btn" data-page="${total_pages}">${total_pages}</button>`;
-                }
-                
-                // Next button
-                if (current_page < total_pages) {
-                    paginationHTML += `<button class="pagination-btn" data-page="${current_page + 1}">
-                        Next <i class="fas fa-chevron-right"></i>
-                    </button>`;
-                }
-                
-                // Update HTML and re-attach event listeners
-                paginationControls.innerHTML = paginationHTML;
-                
-                // Re-attach event listeners to new buttons
-                document.querySelectorAll('.pagination-btn').forEach(button => {
-                    button.addEventListener('click', function() {
-                        const page = this.getAttribute('data-page');
-                        loadPage(page);
-                    });
-                });
-            }
-            
-            // Helper function to escape HTML
-            function escapeHtml(text) {
-                if (typeof text !== 'string') return text;
-                const map = {
-                    '&': '&amp;',
-                    '<': '&lt;',
-                    '>': '&gt;',
-                    '"': '&quot;',
-                    "'": '&#039;'
-                };
-                return text.replace(/[&<>"']/g, m => map[m]);
-            }
-        });
-
-        // Function to toggle subject status
-        function toggleSubjectStatus(id, current_status) {
-            if (confirm(`Are you sure you want to ${current_status ? 'deactivate' : 'activate'} this subject?`)) {
-                // Show loading
-                document.querySelector('.loading-overlay').style.display = 'flex';
-                
-                // Create form data
-                const formData = new FormData();
-                formData.append('action', 'toggle_status');
-                formData.append('id', id);
-                formData.append('status', !current_status);
-                
-                // Submit via fetch
-                fetch('manage_subjects.php', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => {
-                    // Reload current page
-                    const currentPage = new URLSearchParams(window.location.search).get('page') || 1;
-                    loadPage(currentPage);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    alert('Error updating subject status. Please try again.');
-                    document.querySelector('.loading-overlay').style.display = 'none';
-                });
-            }
         }
     </script>
 </body>
