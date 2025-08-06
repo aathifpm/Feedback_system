@@ -26,20 +26,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                   FROM admin_users 
                   WHERE email = ? AND is_active = TRUE";
                  
-        $stmt = mysqli_prepare($conn, $query);
-        mysqli_stmt_bind_param($stmt, "s", $email);
-        mysqli_stmt_execute($stmt);
-        $result = mysqli_stmt_get_result($stmt);
-        $admin = mysqli_fetch_assoc($result);
+        $stmt = $pdo->prepare($query);
+        $stmt->execute([$email]);
+        $admin = $stmt->fetch(PDO::FETCH_ASSOC);
+        $stmt = null; // Close the statement
 
         if ($admin && password_verify($password, $admin['password'])) {
             // Update last login timestamp
             $update_query = "UPDATE admin_users 
                             SET last_login = CURRENT_TIMESTAMP 
                             WHERE id = ?";
-            $update_stmt = mysqli_prepare($conn, $update_query);
-            mysqli_stmt_bind_param($update_stmt, "i", $admin['id']);
-            mysqli_stmt_execute($update_stmt);
+            $update_stmt = $pdo->prepare($update_query);
+            $update_stmt->execute([$admin['id']]);
+            $update_stmt = null; // Close the update statement
 
             // Set session variables
             $_SESSION['user_id'] = $admin['id'];
@@ -64,14 +63,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 'login_type' => 'admin_portal',
                 'admin_type' => $_SESSION['admin_type']
             ]);
-            $log_stmt = mysqli_prepare($conn, $log_query);
-            mysqli_stmt_bind_param($log_stmt, "isss", 
+            $log_stmt = $pdo->prepare($log_query);
+            $log_stmt->execute([
                 $admin['id'], 
                 $log_details,
                 $_SERVER['REMOTE_ADDR'],
                 $_SERVER['HTTP_USER_AGENT']
-            );
-            mysqli_stmt_execute($log_stmt);
+            ]);
+            $log_stmt = null; // Close the log statement
 
             // Ensure proper session handling
             session_write_close();
@@ -88,13 +87,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 'status' => 'failed',
                 'reason' => 'Invalid credentials'
             ]);
-            $log_stmt = mysqli_prepare($conn, $log_query);
-            mysqli_stmt_bind_param($log_stmt, "sss", 
+            $log_stmt = $pdo->prepare($log_query);
+            $log_stmt->execute([
                 $log_details,
                 $_SERVER['REMOTE_ADDR'],
                 $_SERVER['HTTP_USER_AGENT']
-            );
-            mysqli_stmt_execute($log_stmt);
+            ]);
+            $log_stmt = null; // Close the log statement
             
             throw new Exception("Invalid email or password.");
         }
