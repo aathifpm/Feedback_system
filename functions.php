@@ -434,6 +434,125 @@ if (!function_exists('calculateFeedbackAverages')) {
     }
 }
 
+if (!function_exists('get_canonical_url')) {
+    function get_canonical_url($page_name = null) {
+        $protocol = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https" : "http";
+        $host = $_SERVER['HTTP_HOST'];
+        
+        // If no page name provided, use current script name
+        if ($page_name === null) {
+            $page_name = basename($_SERVER['PHP_SELF']);
+        }
+        
+        // Special handling for index.php - always use root
+        if ($page_name === 'index.php' || $page_name === '') {
+            return $protocol . "://" . $host . "/";
+        }
+        
+        // For other pages, use the specific page URL
+        return $protocol . "://" . $host . "/" . $page_name;
+    }
+}
+
+if (!function_exists('check_maintenance_mode')) {
+    function check_maintenance_mode($module, $pdo = null) {
+        global $conn;
+        
+        // Use provided PDO connection or global connection
+        if ($pdo === null) {
+            // Try to use PDO if available, otherwise use mysqli
+            if (isset($GLOBALS['pdo'])) {
+                $pdo = $GLOBALS['pdo'];
+            } else {
+                // Fallback to mysqli
+                $query = "SELECT is_active, message, start_time, end_time FROM maintenance_mode WHERE module = ? OR module = 'global'";
+                $stmt = mysqli_prepare($conn, $query);
+                mysqli_stmt_bind_param($stmt, "s", $module);
+                mysqli_stmt_execute($stmt);
+                $result = mysqli_stmt_get_result($stmt);
+                
+                while ($row = mysqli_fetch_assoc($result)) {
+                    if ($row['is_active']) {
+                        // Check if maintenance is scheduled
+                        $now = date('Y-m-d H:i:s');
+                        $start_time = $row['start_time'];
+                        $end_time = $row['end_time'];
+                        
+                        // If no time restrictions or within maintenance window
+                        if ((!$start_time && !$end_time) || 
+                            (!$start_time && $now <= $end_time) ||
+                            (!$end_time && $now >= $start_time) ||
+                            ($start_time && $end_time && $now >= $start_time && $now <= $end_time)) {
+                            return [
+                                'is_maintenance' => true,
+                                'message' => $row['message'] ?: 'System is under maintenance. Please try again later.'
+                            ];
+                        }
+                    }
+                }
+                return ['is_maintenance' => false];
+            }
+        }
+        
+        try {
+            $query = "SELECT is_active, message, start_time, end_time FROM maintenance_mode WHERE module = ? OR module = 'global'";
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([$module]);
+            
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                if ($row['is_active']) {
+                    // Check if maintenance is scheduled
+                    $now = date('Y-m-d H:i:s');
+                    $start_time = $row['start_time'];
+                    $end_time = $row['end_time'];
+                    
+                    // If no time restrictions or within maintenance window
+                    if ((!$start_time && !$end_time) || 
+                        (!$start_time && $now <= $end_time) ||
+                        (!$end_time && $now >= $start_time) ||
+                        ($start_time && $end_time && $now >= $start_time && $now <= $end_time)) {
+                        return [
+                            'is_maintenance' => true,
+                            'message' => $row['message'] ?: 'System is under maintenance. Please try again later.'
+                        ];
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            // If maintenance table doesn't exist, assume no maintenance
+            return ['is_maintenance' => false];
+        }
+        
+        return ['is_maintenance' => false];
+    }
+}
+
+if (!function_exists('log_maintenance_action')) {
+    function log_maintenance_action($module, $action, $previous_status, $new_status, $message = '', $admin_id = null, $admin_name = '') {
+        global $pdo;
+        
+        try {
+            $query = "INSERT INTO maintenance_logs (module, action, previous_status, new_status, message, admin_id, admin_name, ip_address, user_agent) 
+                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            
+            $stmt = $pdo->prepare($query);
+            $stmt->execute([
+                $module,
+                $action,
+                $previous_status,
+                $new_status,
+                $message,
+                $admin_id,
+                $admin_name,
+                $_SERVER['REMOTE_ADDR'] ?? '',
+                $_SERVER['HTTP_USER_AGENT'] ?? ''
+            ]);
+        } catch (Exception $e) {
+            error_log("Failed to log maintenance action: " . $e->getMessage());
+        }
+    }
+}
+
 // Add any other necessary functions here
 
 ?>

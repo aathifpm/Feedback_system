@@ -77,6 +77,7 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
         margin-bottom: 0.5rem;
         border-radius: 10px;
         transition: all 0.3s ease;
+        position: relative;
     }
 
     .nav-link:hover {
@@ -93,6 +94,92 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
     .nav-link i {
         margin-right: 1rem;
         color: var(--primary-color);
+        width: 20px;
+        text-align: center;
+    }
+
+    /* Submenu Styles */
+    .nav-submenu {
+        margin-bottom: 0.5rem;
+    }
+
+    .nav-submenu-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1rem;
+        color: var(--text-color);
+        text-decoration: none;
+        border-radius: 10px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        background: none;
+        border: none;
+        width: 100%;
+        text-align: left;
+    }
+
+    .nav-submenu-toggle:hover {
+        background: var(--bg-color);
+        box-shadow: var(--shadow);
+        transform: translateY(-2px);
+    }
+
+    .nav-submenu-toggle i.main-icon {
+        margin-right: 1rem;
+        color: var(--primary-color);
+        width: 20px;
+        text-align: center;
+    }
+
+    .nav-submenu-toggle i.arrow {
+        color: #666;
+        transition: transform 0.3s ease;
+        font-size: 0.8rem;
+    }
+
+    .nav-submenu-toggle.active i.arrow {
+        transform: rotate(180deg);
+    }
+
+    .nav-submenu-items {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        background: rgba(0,0,0,0.02);
+        border-radius: 10px;
+        margin-top: 0.5rem;
+    }
+
+    .nav-submenu-items.active {
+        max-height: 200px;
+        padding: 0.5rem 0;
+    }
+
+    .nav-submenu-item {
+        display: flex;
+        align-items: center;
+        padding: 0.8rem 1rem 0.8rem 3rem;
+        color: var(--text-color);
+        text-decoration: none;
+        transition: all 0.3s ease;
+        border-radius: 8px;
+        margin: 0.2rem 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .nav-submenu-item:hover {
+        background: var(--bg-color);
+        box-shadow: var(--shadow);
+        transform: translateX(5px);
+    }
+
+    .nav-submenu-item i {
+        margin-right: 0.8rem;
+        color: var(--primary-color);
+        width: 16px;
+        text-align: center;
+        font-size: 0.9rem;
     }
     
     .sidebar-toggle {
@@ -120,6 +207,24 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
     .main-content {
         margin-left: 280px;
         transition: margin-left 0.3s ease;
+    }
+
+    /* Super Admin Badge */
+    .super-admin-only {
+        position: relative;
+    }
+
+    .super-admin-only::after {
+        content: "SA";
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background: var(--primary-color);
+        color: white;
+        font-size: 0.6rem;
+        padding: 2px 4px;
+        border-radius: 3px;
+        font-weight: bold;
     }
 
     @media (max-width: 768px) {
@@ -166,12 +271,11 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
         
         <?php if ($is_super_admin): ?>
         <!-- Super Admin Options -->
-        <a href="manage_departments.php" class="nav-link">
+        <a href="manage_departments.php" class="nav-link super-admin-only">
             <i class="fas fa-building"></i> Departments
         </a>
         <?php endif; ?>
 
-        
         <a href="manage_faculty.php" class="nav-link">
             <i class="fas fa-chalkboard-teacher"></i> Faculty
         </a>
@@ -224,28 +328,44 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
             <i class="fas fa-chart-bar"></i> Reports
         </a>
         
-        <!-- Email Management -->
-        <div class="nav-item">
-            <a class="nav-link collapsed" href="#" data-toggle="collapse" data-target="#emailSubmenu">
-                <i class="fas fa-envelope"></i>
-                <span>Email Management</span>
-            </a>
-            <div id="emailSubmenu" class="collapse">
-                <div class="bg-white py-2 collapse-inner rounded">
-                    <a href="../admin/email_sender.php" class="collapse-item">
-                        <i class="fas fa-paper-plane"></i> Send Emails
-                    </a>
-                    <a href="../admin/email/manage_mailboxes.php" class="collapse-item">
-                        <i class="fas fa-mail-bulk"></i> Manage Mailboxes
-                    </a>
+        <?php if ($is_super_admin): ?>
+        <!-- Email Management - Super Admin Only -->
+        <div class="nav-submenu">
+            <button class="nav-submenu-toggle super-admin-only" onclick="toggleSubmenu('emailSubmenu')">
+                <div style="display: flex; align-items: center;">
+                    <i class="fas fa-envelope main-icon"></i>
+                    <span>Email Management</span>
                 </div>
+                <i class="fas fa-chevron-down arrow"></i>
+            </button>
+            <div id="emailSubmenu" class="nav-submenu-items">
+                <a href="email_sender.php" class="nav-submenu-item">
+                    <i class="fas fa-paper-plane"></i> Send Emails
+                </a>
+                <a href="email/manage_mailboxes.php" class="nav-submenu-item">
+                    <i class="fas fa-mail-bulk"></i> Manage Mailboxes
+                </a>
             </div>
         </div>
-        
-        <?php if ($is_super_admin): ?>
-        <a href="settings.php" class="nav-link">
-            <i class="fas fa-cog"></i> Settings
-        </a>
+
+        <!-- System Management - Super Admin Only -->
+        <div class="nav-submenu">
+            <button class="nav-submenu-toggle super-admin-only" onclick="toggleSubmenu('systemSubmenu')">
+                <div style="display: flex; align-items: center;">
+                    <i class="fas fa-cogs main-icon"></i>
+                    <span>System Management</span>
+                </div>
+                <i class="fas fa-chevron-down arrow"></i>
+            </button>
+            <div id="systemSubmenu" class="nav-submenu-items">
+                <a href="maintenance_control.php" class="nav-submenu-item">
+                    <i class="fas fa-tools"></i> Maintenance Control
+                </a>
+                <a href="settings.php" class="nav-submenu-item">
+                    <i class="fas fa-cog"></i> System Settings
+                </a>
+            </div>
+        </div>
         <?php endif; ?>
         
         <a href="../logout.php" class="nav-link">
@@ -255,11 +375,47 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
 </div>
 
 <script>
+    // Submenu toggle function
+    function toggleSubmenu(submenuId) {
+        const submenu = document.getElementById(submenuId);
+        const toggle = submenu.previousElementSibling;
+        
+        // Close all other submenus
+        document.querySelectorAll('.nav-submenu-items').forEach(item => {
+            if (item.id !== submenuId) {
+                item.classList.remove('active');
+                item.previousElementSibling.classList.remove('active');
+            }
+        });
+        
+        // Toggle current submenu
+        submenu.classList.toggle('active');
+        toggle.classList.toggle('active');
+    }
+
     // Add active class to current nav link
     document.addEventListener('DOMContentLoaded', function() {
+        const currentPath = window.location.pathname;
+        const currentFile = currentPath.split('/').pop();
+        
+        // Check main nav links
         document.querySelectorAll('.nav-link').forEach(link => {
-            if(link.href === window.location.href) {
+            const linkFile = link.getAttribute('href');
+            if (linkFile === currentFile) {
                 link.classList.add('active');
+            }
+        });
+        
+        // Check submenu items and expand parent if active
+        document.querySelectorAll('.nav-submenu-item').forEach(item => {
+            const itemFile = item.getAttribute('href');
+            if (itemFile === currentFile || itemFile.split('/').pop() === currentFile) {
+                item.classList.add('active');
+                // Expand parent submenu
+                const parentSubmenu = item.closest('.nav-submenu-items');
+                const parentToggle = parentSubmenu.previousElementSibling;
+                parentSubmenu.classList.add('active');
+                parentToggle.classList.add('active');
             }
         });
         
@@ -267,24 +423,26 @@ $is_super_admin = ($_SESSION['admin_type'] === 'super_admin');
         const sidebarToggle = document.getElementById('sidebarToggle');
         const sidebar = document.getElementById('sidebar');
         
-        sidebarToggle.addEventListener('click', function() {
-            sidebar.classList.toggle('active');
-            if (sidebar.classList.contains('active')) {
-                sidebarToggle.innerHTML = '<i class="fas fa-times"></i>';
-            } else {
-                sidebarToggle.innerHTML = '<i class="fas fa-bars"></i>';
-            }
-        });
-        
-        // Close sidebar when clicking outside on mobile
-        document.addEventListener('click', function(event) {
-            if (window.innerWidth <= 768 && 
-                !sidebar.contains(event.target) && 
-                !sidebarToggle.contains(event.target) && 
-                sidebar.classList.contains('active')) {
-                sidebar.classList.remove('active');
-                sidebarToggle.innerHTML = '<i class="fas fa-bars"></i>';
-            }
-        });
+        if (sidebarToggle && sidebar) {
+            sidebarToggle.addEventListener('click', function() {
+                sidebar.classList.toggle('active');
+                if (sidebar.classList.contains('active')) {
+                    sidebarToggle.innerHTML = '<i class="fas fa-times"></i>';
+                } else {
+                    sidebarToggle.innerHTML = '<i class="fas fa-bars"></i>';
+                }
+            });
+            
+            // Close sidebar when clicking outside on mobile
+            document.addEventListener('click', function(event) {
+                if (window.innerWidth <= 768 && 
+                    !sidebar.contains(event.target) && 
+                    !sidebarToggle.contains(event.target) && 
+                    sidebar.classList.contains('active')) {
+                    sidebar.classList.remove('active');
+                    sidebarToggle.innerHTML = '<i class="fas fa-bars"></i>';
+                }
+            });
+        }
     });
 </script>

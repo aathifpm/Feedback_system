@@ -3,6 +3,13 @@ session_start();
 require_once 'functions.php';
 require_once 'db_connection.php';
 
+// Check maintenance mode (admins can still access during maintenance)
+$maintenance = check_maintenance_mode('admin', $pdo);
+if ($maintenance['is_maintenance']) {
+    // Show warning but allow access
+    $maintenance_warning = $maintenance['message'];
+}
+
 $error = '';
 $success = '';
 

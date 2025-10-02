@@ -3,6 +3,14 @@ session_start();
 require_once 'functions.php';
 require_once 'db_connection.php';
 
+// Check maintenance mode
+$maintenance = check_maintenance_mode('student', $pdo);
+if ($maintenance['is_maintenance']) {
+    $_SESSION['maintenance_message'] = $maintenance['message'];
+    header('Location: maintenance.php?module=student');
+    exit();
+}
+
 $error = '';
 $success = '';
 
@@ -95,18 +103,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <meta name="author" content="Panimalar Engineering College">
     
     <!-- Canonical URL -->
-    <link rel="canonical" href="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]"; ?>">
+    <link rel="canonical" href="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]/student_login.php"; ?>">
     
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]"; ?>">
+    <meta property="og:url" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]/student_login.php"; ?>">
     <meta property="og:title" content="Student Login - Panimalar Engineering College">
     <meta property="og:description" content="Student login portal for Panimalar Engineering College. Access attendance records, feedback forms, and academic resources.">
     <meta property="og:image" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]"; ?>/college_logo.png">
     
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image">
-    <meta property="twitter:url" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]"; ?>">
+    <meta property="twitter:url" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]/student_login.php"; ?>">
     <meta property="twitter:title" content="Student Login - Panimalar Engineering College">
     <meta property="twitter:description" content="Student login portal for Panimalar Engineering College. Access attendance records, feedback forms, and academic resources.">
     <meta property="twitter:image" content="<?php echo (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]"; ?>/college_logo.png">
