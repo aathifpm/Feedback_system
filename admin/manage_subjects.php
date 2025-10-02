@@ -1399,7 +1399,7 @@ function getSubjectAssignments($conn, $subject_id) {
                 <div class="filter-group">
                     <select id="sectionFilter" class="form-control">
                         <option value="">All Sections</option>
-                        <?php for($i = 65; $i <= 79; $i++): ?>
+                        <?php for($i = 65; $i <= 81; $i++): ?>
                             <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                         <?php endfor; ?>
                     </select>
@@ -1624,7 +1624,7 @@ function getSubjectAssignments($conn, $subject_id) {
                         <label for="section">Section</label>
                         <select id="section" name="section" class="form-control" required>
                             <option value="">Select Section</option>
-                            <?php for($i = 65; $i <= 79; $i++): ?>
+                            <?php for($i = 65; $i <= 81; $i++): ?>
                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                             <?php endfor; ?>
                         </select>
@@ -1737,7 +1737,7 @@ function getSubjectAssignments($conn, $subject_id) {
                                     <div class="input-group">
                                         <select name="sections[]" class="form-control" required>
                                             <option value="">Select Section</option>
-                                            <?php for($i = 65; $i <= 79; $i++): ?>
+                                            <?php for($i = 65; $i <= 81; $i++): ?>
                                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                                             <?php endfor; ?>
                                         </select>
@@ -1873,7 +1873,7 @@ function getSubjectAssignments($conn, $subject_id) {
                         <label for="section">Section</label>
                         <select name="section" class="form-control" required>
                             <option value="">Select Section</option>
-                            <?php for($i = 65; $i <= 79; $i++): ?>
+                            <?php for($i = 65; $i <= 81; $i++): ?>
                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                             <?php endfor; ?>
                         </select>
@@ -2471,7 +2471,7 @@ function getSubjectAssignments($conn, $subject_id) {
                         <div class="input-group">
                             <select name="sections[]" class="form-control" required>
                             <option value="">Select Section</option>
-                            ${['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
+                            ${['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P'].map(sec => `<option value="${sec}">Section ${sec}</option>`).join('')}
                             </select>
                             <select name="academic_year_ids[]" class="form-control" required>
                                 <option value="">Select Academic Year</option>

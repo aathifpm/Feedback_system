@@ -707,7 +707,7 @@ $feedbacks = mysqli_fetch_all($result, MYSQLI_ASSOC);
                         <label for="export_section">Section</label>
                         <select name="section" id="export_section" class="form-select">
                             <option value="">All Sections</option>
-                            <?php foreach (range('A', 'K') as $section): ?>
+                            <?php foreach (range('A', 'P') as $section): ?>
                                 <option value="<?php echo $section; ?>">
                                     Section <?php echo $section; ?>
                                 </option>

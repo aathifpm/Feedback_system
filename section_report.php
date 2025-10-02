@@ -363,7 +363,7 @@ if (isset($_GET['academic_year']) && isset($_GET['year']) && isset($_GET['semest
                         <select name="section" id="section" class="form-control" required>
                             <option value="">Select Section</option>
                             <?php
-                            $sections = range('A', 'K');
+                            $sections = range('A', 'P');
                             foreach ($sections as $sec) {
                                 echo "<option value='$sec'>Section $sec</option>";
                             }

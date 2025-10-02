@@ -119,10 +119,18 @@ try {
     $feedbacks = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
     // Get non-academic feedback statements
-    $stmt = $pdo->query("SELECT id, statement_number, statement FROM non_academic_feedback_statements WHERE is_active = TRUE ORDER BY statement_number");
+    $stmt = $pdo->query("SELECT id, statement_number, statement, statement_type FROM non_academic_feedback_statements WHERE is_active = TRUE ORDER BY statement_number");
     $statements = [];
+    $rating_statements = [];
+    $comment_statements = [];
+    
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $statements[$row['statement_number']] = $row['statement'];
+        if ($row['statement_type'] === 'rating') {
+            $rating_statements[$row['id']] = $row;
+        } else {
+            $comment_statements[$row['id']] = $row;
+        }
     }
 
     // Get department and academic year info for report header
