@@ -2,6 +2,7 @@
 session_start();
 require_once 'db_connection.php';
 require_once 'functions.php';
+require_once 'feedback_section_helper.php';
 
 // Check login status
 if (!isset($_SESSION['user_id']) || !isset($_SESSION['role'])) {
@@ -174,8 +175,11 @@ switch ($role) {
             }))
         ];
         
-        // Check for exit survey eligibility
-        $data['show_exit_survey'] = ($user['current_year_of_study'] == 4 && $user['current_semester'] == 8);
+        // Check for exit survey eligibility with section control
+        $data['show_exit_survey'] = shouldShowExitSurvey($pdo, $user, $current_academic_year['id']);
+        
+        // Get enabled sections for this student
+        $data['enabled_sections'] = getEnabledSectionsForStudent($pdo, $user, $current_academic_year['id']);
         break;
 
     case 'faculty':
@@ -1836,6 +1840,7 @@ switch ($role) {
 
         <?php if ($role == 'student'): ?>
             <!-- Student Dashboard Content -->
+            <?php if (in_array('regular_feedback', $data['enabled_sections'])): ?>
             <div class="stats-container">
                 <div class="stat-card">
                     <i class="fas fa-book icon"></i>
@@ -1854,6 +1859,7 @@ switch ($role) {
                 </div>
             </div>
 
+            
             <div class="content-section">
                 <div class="subjects-header" onclick="toggleSubjects()">
                     <h2 class="section-title">
@@ -1906,8 +1912,10 @@ switch ($role) {
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <!-- Add Class Committee Meetings Section -->
+            <?php if (in_array('class_committee_feedback', $data['enabled_sections'])): ?>
             <div class="content-section">
                 <h2 class="section-title">
                     <i class="fas fa-users"></i> Class Committee Meetings
@@ -1924,6 +1932,7 @@ switch ($role) {
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
 
             <style>
                 .subjects-header {
@@ -1986,6 +1995,7 @@ switch ($role) {
                 <?php endif; ?>
             </div>
 
+            <?php if (in_array('feedback_history', $data['enabled_sections'])): ?>
             <div class="content-section">
                 <div class="subjects-header" onclick="toggleFeedbackHistory()">
                     <h2 class="section-title">
@@ -2055,6 +2065,7 @@ switch ($role) {
                     <?php endif; ?>
                 </div>
             </div>
+            <?php endif; ?>
 
             <style>
                 .feedback-history-header {
@@ -2249,10 +2260,6 @@ switch ($role) {
                         <a href="manage_faculty.php" class="action-btn">
                             <i class="fas fa-user-tie"></i>
                             <span>Manage Faculty</span>
-                        </a>
-                        <a href="view_feedback_summary.php" class="action-btn">
-                            <i class="fas fa-comments"></i>
-                            <span>Feedback Summary</span>
                         </a>
                         <a href="alumni_survey_analytics.php" class="action-btn">
                             <i class="fas fa-graduation-cap"></i>
@@ -2677,7 +2684,7 @@ switch ($role) {
                         <label>Section</label>
                         <select name="section" class="input-field" required>
                             <option value="">Select Section</option>
-                            <?php for($i = 65; $i <= 79; $i++): ?>
+                            <?php for($i = 65; $i <= 81; $i++): ?>
                                 <option value="<?php echo chr($i); ?>">Section <?php echo chr($i); ?></option>
                             <?php endfor; ?>
                         </select>

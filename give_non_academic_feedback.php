@@ -52,21 +52,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $stmt = null; // Close the statement
     
-    // Get required fields
-    $required_fields_query = "SELECT id FROM non_academic_feedback_statements WHERE is_required = TRUE AND is_active = TRUE";
+    // Get ratings and comments separately
+    $ratings = $_POST['ratings'] ?? [];
+    $comments = $_POST['comments'] ?? [];
+    
+    // Combine ratings and comments into feedback_data
+    $feedback_data = array_merge($ratings, $comments);
+    
+    // Get required fields with their types
+    $required_fields_query = "SELECT id, statement_type FROM non_academic_feedback_statements WHERE is_required = TRUE AND is_active = TRUE";
     $required_fields_stmt = $pdo->query($required_fields_query);
-    $required_field_ids = [];
+    $required_fields = [];
     while ($field = $required_fields_stmt->fetch(PDO::FETCH_ASSOC)) {
-        $required_field_ids[] = $field['id'];
+        $required_fields[] = $field;
     }
     $required_fields_stmt = null; // Close the statement
     
-    // Validate required fields
-    foreach ($required_field_ids as $field_id) {
-        if (!isset($feedback_data[$field_id]) || trim($feedback_data[$field_id]) === '') {
-            $_SESSION['error'] = "Please fill in all required fields.";
-            header('Location: ' . $_SERVER['PHP_SELF']);
-            exit();
+    // Validate required fields based on their type
+    foreach ($required_fields as $field) {
+        $field_id = $field['id'];
+        $field_type = $field['statement_type'];
+        
+        // Check if the field exists in the appropriate array
+        if ($field_type === 'rating') {
+            if (!isset($ratings[$field_id]) || trim($ratings[$field_id]) === '') {
+                $_SESSION['error'] = "Please provide ratings for all required fields.";
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit();
+            }
+        } else { // comment type
+            if (!isset($comments[$field_id]) || trim($comments[$field_id]) === '') {
+                $_SESSION['error'] = "Please fill in all required comment fields.";
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit();
+            }
         }
     }
     
@@ -144,6 +163,19 @@ if (!$statements) {
     die("Error fetching feedback statements: " . implode(", ", $pdo->errorInfo()));
 }
 
+// Separate rating and comment statements
+$rating_statements = [];
+$comment_statements = [];
+$statements_data = $statements->fetchAll(PDO::FETCH_ASSOC);
+
+foreach ($statements_data as $statement) {
+    if ($statement['statement_type'] === 'rating') {
+        $rating_statements[] = $statement;
+    } else {
+        $comment_statements[] = $statement;
+    }
+}
+
 // Check if feedback already submitted for current semester
 $feedback_check_query = "SELECT id FROM non_academic_feedback 
                         WHERE student_id = ? 
@@ -164,7 +196,7 @@ $stmt = null; // Close the statement
     <?php include 'header.php'; ?>
     <style>
         .feedback-form {
-            max-width: 800px;
+            max-width: 1000px;
             margin: 2rem auto;
             padding: 2rem;
             background: var(--bg-color);
@@ -176,10 +208,131 @@ $stmt = null; // Close the statement
             margin-bottom: 2rem;
             padding-bottom: 1rem;
             border-bottom: 2px solid var(--primary-color);
+            text-align: center;
+        }
+
+        .form-header h2 {
+            color: var(--text-color);
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .form-header p {
+            color: #666;
+            font-size: 1rem;
         }
 
         .feedback-section {
             margin-bottom: 2rem;
+        }
+
+        .section-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 1.5rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--primary-color);
+        }
+
+        .rating-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0 15px;
+            margin-bottom: 2rem;
+        }
+
+        .rating-table th {
+            padding: 1rem;
+            text-align: left;
+            color: var(--text-color);
+            font-weight: 600;
+            border-bottom: 2px solid var(--primary-color);
+        }
+
+        .rating-table tr {
+            background: var(--card-bg);
+            box-shadow: var(--shadow);
+            border-radius: 10px;
+        }
+
+        .rating-table td {
+            padding: 1rem;
+            border: none;
+            vertical-align: middle;
+        }
+
+        .rating-table td:first-child {
+            border-top-left-radius: 10px;
+            border-bottom-left-radius: 10px;
+            width: 60px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .rating-table td:last-child {
+            border-top-right-radius: 10px;
+            border-bottom-right-radius: 10px;
+        }
+
+        .statement-cell {
+            width: 60%;
+            color: var(--text-color);
+        }
+
+        .rating-cell {
+            width: 40%;
+        }
+
+        .rating-options {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .rating-option {
+            text-align: center;
+        }
+
+        .rating-option input[type="radio"] {
+            display: none;
+        }
+
+        .rating-option label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--bg-color);
+            box-shadow: var(--shadow);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            color: var(--text-color);
+        }
+
+        .rating-option input[type="radio"]:checked + label {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .rating-option label:hover {
+            transform: translateY(-2px);
+        }
+
+        .scale-info {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: #666;
+            font-size: 0.9rem;
+            padding: 0.8rem;
+            background: var(--bg-color);
+            border-radius: 10px;
+            box-shadow: var(--inner-shadow);
         }
 
         .feedback-item {
@@ -274,6 +427,36 @@ $stmt = null; // Close the statement
             color: #dc3545;
             margin-left: 5px;
         }
+
+        @media (max-width: 768px) {
+            .feedback-form {
+                margin: 1rem;
+                padding: 1.5rem;
+            }
+            
+            .rating-table td {
+                padding: 0.8rem;
+            }
+            
+            .rating-option label {
+                width: 35px;
+                height: 35px;
+                font-size: 0.9rem;
+            }
+            
+            .rating-options {
+                gap: 5px;
+            }
+            
+            .statement-cell {
+                width: 50%;
+                font-size: 0.9rem;
+            }
+            
+            .section-title {
+                font-size: 1.1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -282,6 +465,9 @@ $stmt = null; // Close the statement
             <div class="form-header">
                 <h2>Non-Academic Feedback Form</h2>
                 <p>Semester: <?php echo $student['current_semester']; ?> | Section: <?php echo $student['section']; ?></p>
+                <div style="margin-top: 1rem; padding: 0.8rem; background: var(--bg-color); border-radius: 10px; box-shadow: var(--inner-shadow); color: #666; font-size: 0.9rem;">
+                    <strong>Instructions:</strong> Please rate various aspects of non-academic services and provide your comments and suggestions to help us improve.
+                </div>
             </div>
             
             <?php if (isset($_SESSION['success'])): ?>
@@ -315,18 +501,60 @@ $stmt = null; // Close the statement
                     <input type="hidden" name="student_id" value="<?php echo $user_id; ?>">
                     <input type="hidden" name="semester" value="<?php echo $student['current_semester']; ?>">
 
+                    <?php if (!empty($rating_statements)): ?>
+                    <!-- Rating Section -->
                     <div class="feedback-section">
-                        <?php 
-                        // Get all statements for display
-                        $statements_data = $statements->fetchAll(PDO::FETCH_ASSOC);
-                        $required_fields = [];
+                        <h3 class="section-title">Rate the Following Aspects</h3>
                         
-                        foreach ($statements_data as $statement): 
-                            $field_name = "feedback[{$statement['id']}]";
-                            if ($statement['is_required']) {
-                                $required_fields[] = $field_name;
-                            }
-                        ?>
+                        <div class="scale-info">
+                            5 - Excellent, 4 - Good, 3 - Average, 2 - Below Average, 1 - Poor
+                        </div>
+                        
+                        <table class="rating-table">
+                            <thead>
+                                <tr>
+                                    <th>S.No</th>
+                                    <th>Statement</th>
+                                    <th>Rating</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($rating_statements as $statement): ?>
+                                    <tr>
+                                        <td><?php echo $statement['statement_number']; ?></td>
+                                        <td class="statement-cell">
+                                            <?php echo htmlspecialchars($statement['statement']); ?>
+                                            <?php if ($statement['is_required']): ?>
+                                                <span class="required-marker">*</span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td class="rating-cell">
+                                            <div class="rating-options">
+                                                <?php for ($i = 5; $i >= 1; $i--): ?>
+                                                    <div class="rating-option">
+                                                        <input type="radio" 
+                                                            id="rating_<?php echo $statement['id']; ?>_<?php echo $i; ?>" 
+                                                            name="ratings[<?php echo $statement['id']; ?>]" 
+                                                            value="<?php echo $i; ?>" 
+                                                            <?php echo $statement['is_required'] ? 'required' : ''; ?>>
+                                                        <label for="rating_<?php echo $statement['id']; ?>_<?php echo $i; ?>"><?php echo $i; ?></label>
+                                                    </div>
+                                                <?php endfor; ?>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                    <?php endif; ?>
+
+                    <?php if (!empty($comment_statements)): ?>
+                    <!-- Comments Section -->
+                    <div class="feedback-section">
+                        <h3 class="section-title">Additional Comments and Suggestions</h3>
+                        
+                        <?php foreach ($comment_statements as $statement): ?>
                             <div class="feedback-item">
                                 <div class="feedback-question">
                                     <?php echo htmlspecialchars($statement['statement']); ?>
@@ -336,13 +564,15 @@ $stmt = null; // Close the statement
                                 </div>
                                 <div class="feedback-input">
                                     <textarea 
-                                        name="<?php echo $field_name; ?>"
+                                        name="comments[<?php echo $statement['id']; ?>]"
+                                        placeholder="Please provide your feedback..."
                                         <?php echo $statement['is_required'] ? 'required' : ''; ?>
                                     ></textarea>
                                 </div>
                             </div>
                         <?php endforeach; ?>
                     </div>
+                    <?php endif; ?>
 
                     <div class="form-actions">
                         <button type="submit" class="btn-submit">
@@ -356,19 +586,37 @@ $stmt = null; // Close the statement
 
     <script>
     function validateForm() {
-        const requiredFields = <?php echo json_encode($required_fields); ?>;
-
-        let isValid = true;
-        requiredFields.forEach(field => {
-            const element = document.querySelector(`[name="${field}"]`);
-            if (!element.value.trim()) {
-                isValid = false;
-                alert('Please fill in all required fields.');
+        // Validate required rating fields
+        const requiredRatings = document.querySelectorAll('input[type="radio"][required]');
+        const ratingGroups = {};
+        
+        // Group radios by name
+        requiredRatings.forEach(radio => {
+            if (!ratingGroups[radio.name]) {
+                ratingGroups[radio.name] = [];
+            }
+            ratingGroups[radio.name].push(radio);
+        });
+        
+        // Check if at least one radio in each required group is checked
+        for (const name in ratingGroups) {
+            const checked = ratingGroups[name].some(radio => radio.checked);
+            if (!checked) {
+                alert('Please rate all required statements before submitting.');
                 return false;
             }
-        });
-
-        return isValid;
+        }
+        
+        // Validate required comment fields
+        const requiredComments = document.querySelectorAll('textarea[required]');
+        for (let textarea of requiredComments) {
+            if (!textarea.value.trim()) {
+                alert('Please fill in all required comment fields.');
+                return false;
+            }
+        }
+        
+        return true;
     }
     </script>
 

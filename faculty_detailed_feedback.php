@@ -17,8 +17,9 @@ $faculty_id = $_SESSION['user_id'];
 
 // Get current academic year
 $current_year_query = "SELECT id, year_range FROM academic_years WHERE is_current = TRUE LIMIT 1";
-$current_year_result = mysqli_query($conn, $current_year_query);
-$current_year = mysqli_fetch_assoc($current_year_result);
+$current_year_result = $pdo->query($current_year_query);
+$current_year = $current_year_result->fetch(PDO::FETCH_ASSOC);
+$current_year_result = null; // Close the statement
 
 if (!$current_year) {
     die("Error: No active academic year found.");
@@ -34,11 +35,10 @@ $subject_query = "SELECT s.*, f.name AS faculty_name, f.faculty_id AS faculty_co
                  JOIN faculty f ON sa.faculty_id = f.id
                  JOIN departments d ON s.department_id = d.id
                  WHERE sa.id = ? AND f.id = ? AND sa.academic_year_id = ?";
-$subject_stmt = mysqli_prepare($conn, $subject_query);
-mysqli_stmt_bind_param($subject_stmt, "iii", $assignment_id, $faculty_id, $current_year['id']);
-mysqli_stmt_execute($subject_stmt);
-$subject_result = mysqli_stmt_get_result($subject_stmt);
-$subject = mysqli_fetch_assoc($subject_result);
+$subject_stmt = $pdo->prepare($subject_query);
+$subject_stmt->execute([$assignment_id, $faculty_id, $current_year['id']]);
+$subject = $subject_stmt->fetch(PDO::FETCH_ASSOC);
+$subject_stmt = null; // Close the statement
 
 if (!$subject) {
     die("Error: Invalid assignment ID or unauthorized access.");
@@ -49,9 +49,10 @@ $feedback_statements_query = "SELECT id, statement, section
                             FROM feedback_statements 
                             WHERE is_active = TRUE 
                             ORDER BY section, id";
-$stmt = mysqli_prepare($conn, $feedback_statements_query);
-mysqli_stmt_execute($stmt);
-$feedback_statements_result = mysqli_stmt_get_result($stmt);
+$stmt = $pdo->prepare($feedback_statements_query);
+$stmt->execute();
+$feedback_statements_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt = null; // Close the statement
 
 $feedback_statements = [
     'COURSE_EFFECTIVENESS' => [],
@@ -61,7 +62,7 @@ $feedback_statements = [
     'COURSE_OUTCOMES' => []
 ];
 
-while ($row = mysqli_fetch_assoc($feedback_statements_result)) {
+foreach ($feedback_statements_result as $row) {
     $feedback_statements[$row['section']][] = [
         'id' => $row['id'],
         'statement' => $row['statement']
@@ -121,14 +122,14 @@ JOIN feedback_statements fs ON fr.statement_id = fs.id
 WHERE f.assignment_id = ?
 ORDER BY fs.section, fs.id";
 
-$stmt = mysqli_prepare($conn, $feedback_query);
-mysqli_stmt_bind_param($stmt, "i", $assignment_id);
-mysqli_stmt_execute($stmt);
-$feedback_result = mysqli_stmt_get_result($stmt);
+$stmt = $pdo->prepare($feedback_query);
+$stmt->execute([$assignment_id]);
+$feedback_result = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$stmt = null; // Close the statement
 
 // Organize feedback by section
 $feedback_by_section = [];
-while ($row = mysqli_fetch_assoc($feedback_result)) {
+foreach ($feedback_result as $row) {
     if (!isset($feedback_by_section[$row['section']])) {
         $feedback_by_section[$row['section']] = [];
     }
@@ -149,10 +150,10 @@ $stats_query = "SELECT
 FROM feedback f
 WHERE f.assignment_id = ?";
 
-$stats_stmt = mysqli_prepare($conn, $stats_query);
-mysqli_stmt_bind_param($stats_stmt, "i", $assignment_id);
-mysqli_stmt_execute($stats_stmt);
-$stats = mysqli_fetch_assoc(mysqli_stmt_get_result($stats_stmt));
+$stats_stmt = $pdo->prepare($stats_query);
+$stats_stmt->execute([$assignment_id]);
+$stats = $stats_stmt->fetch(PDO::FETCH_ASSOC);
+$stats_stmt = null; // Close the statement
 
 // Fetch student comments
 $comments_query = "SELECT comments, submitted_at
@@ -162,10 +163,10 @@ $comments_query = "SELECT comments, submitted_at
                   AND comments != ''
                   ORDER BY submitted_at DESC";
 
-$comments_stmt = mysqli_prepare($conn, $comments_query);
-mysqli_stmt_bind_param($comments_stmt, "i", $assignment_id);
-mysqli_stmt_execute($comments_stmt);
-$comments = mysqli_fetch_all(mysqli_stmt_get_result($comments_stmt), MYSQLI_ASSOC);
+$comments_stmt = $pdo->prepare($comments_query);
+$comments_stmt->execute([$assignment_id]);
+$comments = $comments_stmt->fetchAll(PDO::FETCH_ASSOC);
+$comments_stmt = null; // Close the statement
 
 // Include the same HTML/CSS from view_faculty_feedback.php
 ?>
