@@ -2,6 +2,8 @@
 session_start();
 require_once 'functions.php';
 require_once 'db_connection.php';
+require_once 'PasswordResetMailboxManager.php';
+require_once 'vendor/autoload.php';
 
 // If already logged in, redirect to dashboard
 if (isset($_SESSION['user_id'])) {
@@ -13,11 +15,6 @@ if (isset($_SESSION['user_id'])) {
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\SMTP;
 use PHPMailer\PHPMailer\Exception;
-
-// Load Composer's autoloader
-if (file_exists('vendor/autoload.php')) {
-    require 'vendor/autoload.php';
-}
 
 $error = '';
 $success = '';
@@ -108,8 +105,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                           dirname($_SERVER['PHP_SELF']) . 
                           "/reset_password.php?token=" . $token;
             
-            // Send email with the reset link
-            if (sendResetEmail($email, $user_name, $reset_link)) {
+            // Send email with the reset link using mailbox manager
+            $mailboxManager = new PasswordResetMailboxManager($conn);
+            if ($mailboxManager->sendPasswordResetEmail($email, $user_name, $reset_link, $user_id, $user_type, $token)) {
                 $success = "A password reset link has been sent to your email. Please check your inbox and spam folder.";
                 $email_sent = true;
             } else {
@@ -123,141 +121,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// Helper function to send reset email using PHPMailer
+// Legacy function kept for backward compatibility - now uses mailbox manager
 function sendResetEmail($email, $name, $reset_link) {
-    try {
-        // Create a new PHPMailer instance
-        $mail = new PHPMailer(true);
-        
-        // Server settings
-        $mail->SMTPDebug = SMTP::DEBUG_SERVER;  // Enable debugging
-        // Start output buffering to capture debug output
-        ob_start();
-        $mail->isSMTP();
-        $mail->Host       =   // Hostinger SMTP server
-        $mail->SMTPAuth   = true;
-        $mail->Username   =   // Your Hostinger email address
-        $mail->Password   =     // Your email password
-        $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS; // Use SSL for port 465
-        $mail->Port       = 
-        $mail->Timeout   = 10; // Timeout in seconds
-        $mail->SMTPOptions = [
-            'ssl' => [
-                'verify_peer' => false,
-                'verify_peer_name' => false,
-                'allow_self_signed' => true
-            ]
-        ];
-        
-        // Recipients
-        $mail->setFrom('no-reply-passwordreset@ads-panimalar.in', 'Panimalar Engineering College');
-        $mail->addAddress($email, $name);
-        
-        // Content
-        $mail->isHTML(true);
-        $mail->Subject = 'Password Reset Request - Panimalar Engineering College';
-        
-        // Create email body
-        $mail->Body = '
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    line-height: 1.6;
-                    color: #333;
-                }
-                .container {
-                    max-width: 600px;
-                    margin: 0 auto;
-                    padding: 20px;
-                    border: 1px solid #ddd;
-                    border-radius: 5px;
-                }
-                .header {
-                    text-align: center;
-                    padding-bottom: 10px;
-                    border-bottom: 1px solid #eee;
-                    margin-bottom: 20px;
-                }
-                .logo {
-                    max-width: 150px;
-                    height: auto;
-                }
-                .button {
-                    display: inline-block;
-                    padding: 10px 20px;
-                    background-color: #2ecc71;
-                    color: white;
-                    text-decoration: none;
-                    border-radius: 5px;
-                    margin: 20px 0;
-                }
-                .footer {
-                    margin-top: 30px;
-                    font-size: 12px;
-                    text-align: center;
-                    color: #777;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <div class="header">
-                    <h2>Panimalar Engineering College</h2>
-                </div>
-                
-                <p>Dear ' . htmlspecialchars($name) . ',</p>
-                
-                <p>We received a request to reset your password. If you didn\'t make this request, you can safely ignore this email.</p>
-                
-                <p>To reset your password, please click the button below:</p>
-                
-                <p style="text-align: center;">
-                    <a href="' . $reset_link . '" class="button">Reset Password</a>
-                </p>
-                
-                <p>Alternatively, you can copy and paste the following link into your browser:</p>
-                
-                <p style="word-break: break-all;">' . $reset_link . '</p>
-                
-                <p>This link will expire in 24 hours for security reasons.</p>
-                
-                <p>If you need any assistance, please contact our support team.</p>
-                
-                <p>Regards,<br>Panimalar Engineering College</p>
-                
-                <div class="footer">
-                    <p>This is an automated email. Please do not reply to this message.</p>
-                    <p>Panimalar Engineering College, Bangalore Trunk Road, Varadharajapuram, Poonamallee, Chennai – 600 123</p>
-                </div>
-            </div>
-        </body>
-        </html>
-        ';
-        
-        // Plain text version for non-HTML mail clients
-        $mail->AltBody = "Dear " . $name . ",\n\n" .
-                        "We received a request to reset your password. If you didn't make this request, you can safely ignore this email.\n\n" .
-                        "To reset your password, please copy and paste the following link into your browser:\n" .
-                        $reset_link . "\n\n" .
-                        "This link will expire in 24 hours for security reasons.\n\n" .
-                        "If you need any assistance, please contact our support team.\n\n" .
-                        "Regards,\nPanimalar Engineering College";
-        
-        $mail->send();
-        // Get and clear debug output
-        $smtp_debug = ob_get_clean();
-        error_log("SMTP Debug: " . $smtp_debug);
-        return true;
-    } catch (Exception $e) {
-        // Get and clear debug output
-        $smtp_debug = ob_get_clean();
-        error_log("SMTP Debug: " . $smtp_debug);
-        error_log("Email sending failed: " . $mail->ErrorInfo);
-        return false;
-    }
+    global $conn;
+    $mailboxManager = new PasswordResetMailboxManager($conn);
+    return $mailboxManager->sendPasswordResetEmail($email, $name, $reset_link, 0, 'legacy', 'legacy_token');
 }
 ?>
 
