@@ -40,13 +40,29 @@ foreach ($student_ids as $student_id) {
     ];
 }
 
-// Query to get feedback stats
-$feedback_query = "SELECT fb.student_id, 
-                     COUNT(DISTINCT fb.id) as feedback_count,
-                     ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
-                   FROM feedback fb
-                   WHERE fb.student_id IN ($id_list)
-                   GROUP BY fb.student_id";
+// Query to get combined feedback stats (regular feedback + class committee responses)
+$feedback_query = "SELECT 
+                     s.id as student_id,
+                     COALESCE(fb_count.feedback_count, 0) + COALESCE(cc_count.committee_count, 0) as feedback_count,
+                     COALESCE(fb_count.avg_rating, 'N/A') as avg_rating
+                   FROM students s
+                   LEFT JOIN (
+                       SELECT fb.student_id, 
+                              COUNT(DISTINCT fb.id) as feedback_count,
+                              ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
+                       FROM feedback fb
+                       WHERE fb.student_id IN ($id_list)
+                       GROUP BY fb.student_id
+                   ) fb_count ON s.id = fb_count.student_id
+                   LEFT JOIN (
+                       SELECT ccr.student_id,
+                              COUNT(DISTINCT ccr.id) as committee_count
+                       FROM class_committee_responses ccr
+                       WHERE ccr.student_id IN ($id_list)
+                       GROUP BY ccr.student_id
+                   ) cc_count ON s.id = cc_count.student_id
+                   WHERE s.id IN ($id_list)
+                   AND (fb_count.feedback_count > 0 OR cc_count.committee_count > 0)";
 
 // Department access check for department admins
 if (!is_super_admin() && isset($_SESSION['department_id'])) {
@@ -77,12 +93,28 @@ if (!is_super_admin() && isset($_SESSION['department_id'])) {
     
     // Update the ID list with only the valid IDs
     $id_list = implode(',', $valid_student_ids);
-    $feedback_query = "SELECT fb.student_id, 
-                         COUNT(DISTINCT fb.id) as feedback_count,
-                         ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
-                       FROM feedback fb
-                       WHERE fb.student_id IN ($id_list)
-                       GROUP BY fb.student_id";
+    $feedback_query = "SELECT 
+                         s.id as student_id,
+                         COALESCE(fb_count.feedback_count, 0) + COALESCE(cc_count.committee_count, 0) as feedback_count,
+                         COALESCE(fb_count.avg_rating, 'N/A') as avg_rating
+                       FROM students s
+                       LEFT JOIN (
+                           SELECT fb.student_id, 
+                                  COUNT(DISTINCT fb.id) as feedback_count,
+                                  ROUND(AVG(fb.cumulative_avg), 2) as avg_rating
+                           FROM feedback fb
+                           WHERE fb.student_id IN ($id_list)
+                           GROUP BY fb.student_id
+                       ) fb_count ON s.id = fb_count.student_id
+                       LEFT JOIN (
+                           SELECT ccr.student_id,
+                                  COUNT(DISTINCT ccr.id) as committee_count
+                           FROM class_committee_responses ccr
+                           WHERE ccr.student_id IN ($id_list)
+                           GROUP BY ccr.student_id
+                       ) cc_count ON s.id = cc_count.student_id
+                       WHERE s.id IN ($id_list)
+                       AND (fb_count.feedback_count > 0 OR cc_count.committee_count > 0)";
 }
 
 // Execute the query

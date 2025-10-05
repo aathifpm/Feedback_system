@@ -154,6 +154,14 @@ try {
         $subjects[$row['id']] = $row['subject'];
     }
 
+    // Get batch years
+    $batch_years = [];
+    $batch_query = "SELECT id, batch_name FROM batch_years WHERE is_active = TRUE ORDER BY batch_name DESC";
+    $stmt = $pdo->query($batch_query);
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $batch_years[$row['id']] = $row['batch_name'];
+    }
+
     // Get semesters
     $semesters = [1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -269,6 +277,18 @@ include 'header.php';
                         
                         <div class="form-row">
                             <div class="form-group">
+                                <label for="batch_id">
+                                    <i class="fas fa-users me-2"></i>Batch Year
+                                </label>
+                                <select class="form-control" id="batch_id" name="batch_id">
+                                    <option value="">All Batches</option>
+                                    <?php foreach ($batch_years as $id => $name): ?>
+                                        <option value="<?= $id ?>"><?= $name ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            
+                            <div class="form-group">
                                 <label for="semester">
                                     <i class="fas fa-list-ol me-2"></i>Semester
                                 </label>
@@ -342,6 +362,18 @@ include 'header.php';
                         </div>
                         
                         <div class="form-row">
+                            <div class="form-group">
+                                <label for="na_batch_id">
+                                    <i class="fas fa-users me-2"></i>Batch Year
+                                </label>
+                                <select class="form-control" id="na_batch_id" name="batch_id">
+                                    <option value="">All Batches</option>
+                                    <?php foreach ($batch_years as $id => $name): ?>
+                                        <option value="<?= $id ?>"><?= $name ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            
                             <div class="form-group">
                                 <label for="na_semester">
                                     <i class="fas fa-list-ol me-2"></i>Semester

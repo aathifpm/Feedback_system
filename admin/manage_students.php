@@ -144,7 +144,7 @@ $total_pages = ceil($total_students / $items_per_page);
 // Modified query with LIMIT and OFFSET for pagination - Optimized for performance
 $students_query = "SELECT s.id, s.roll_number, s.register_number, s.name, s.email, s.department_id, 
                         s.batch_id, s.section, s.phone, s.address, s.is_active, s.last_login, 
-                        s.password_changed_at, s.created_at, d.name as department_name, 
+                        s.password_changed_at, s.created_at, s.profile_image_path, d.name as department_name, 
                         b.batch_name, CONCAT(b.admission_year, '-', b.graduation_year) as batch_years,
                         b.current_year_of_study
                     FROM students s 
@@ -652,9 +652,91 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             border-radius: 15px;
             box-shadow: var(--shadow);
             width: 90%;
-            max-width: 600px;
+            max-width: 650px;
             max-height: 90vh;
             overflow-y: auto;
+        }
+
+        /* Profile Info Section Styles */
+        .profile-info-section {
+            display: flex;
+            gap: 2rem;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: var(--bg-color);
+            border-radius: 12px;
+            box-shadow: var(--inner-shadow);
+        }
+
+        .profile-photo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .profile-photo {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid var(--primary-color);
+            box-shadow: var(--shadow);
+        }
+
+        .profile-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: var(--primary-color);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            font-weight: 500;
+            box-shadow: var(--shadow);
+            text-transform: uppercase;
+        }
+
+        .profile-photo-label {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .login-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+        }
+
+        .info-label {
+            font-size: 0.8rem;
+            color: #666;
+            font-weight: 500;
+        }
+
+        .info-value {
+            font-size: 0.95rem;
+            color: var(--text-color);
+            font-weight: 400;
+        }
+
+        @media (max-width: 768px) {
+            .profile-info-section {
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                gap: 1rem;
+            }
         }
 
         .form-group {
@@ -934,6 +1016,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             background: var(--bg-color);
             border-radius: 10px;
             box-shadow: var(--inner-shadow);
+            cursor: help;
+            position: relative;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-1px);
         }
 
         .stat-value {
@@ -1145,11 +1233,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     </div>
 
                     <div class="student-stats">
-                        <div class="stat-item">
+                        <div class="stat-item" title="Includes subject feedback and class committee responses">
                             <div class="stat-value feedback-count">0</div>
-                            <div class="stat-label">Feedbacks</div>
+                            <div class="stat-label">Total Feedbacks</div>
                         </div>
-                        <div class="stat-item">
+                        <div class="stat-item" title="Average rating from subject feedback only">
                             <div class="stat-value avg-rating">N/A</div>
                             <div class="stat-label">Avg Rating</div>
                         </div>
@@ -1343,6 +1431,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 <input type="hidden" name="action" value="edit">
                 <input type="hidden" name="id" id="edit_id">
                 
+                <!-- Profile Photo and Last Login Section -->
+                <div class="profile-info-section">
+                    <div class="profile-photo-container">
+                        <img id="edit_profile_photo" src="../assets/images/default-avatar.png" alt="Profile Photo" class="profile-photo" style="display: none;">
+                        <div id="edit_profile_avatar" class="profile-avatar" style="display: none;"></div>
+                        <div class="profile-photo-label">Profile Photo</div>
+                    </div>
+                    <div class="login-info">
+                        <div class="info-item">
+                            <span class="info-label">Last Login:</span>
+                            <span id="edit_last_login" class="info-value">Never logged in</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="info-label">Account Created:</span>
+                            <span id="edit_created_at" class="info-value">-</span>
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="form-group">
                     <label for="edit_roll_number">Roll Number</label>
                     <input type="text" id="edit_roll_number" name="roll_number" class="form-control" required>
@@ -1440,6 +1547,58 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             document.getElementById('edit_section').value = student.section;
             document.getElementById('edit_phone').value = student.phone;
             document.getElementById('edit_address').value = student.address;
+            
+            // Set profile photo or avatar
+            const profilePhoto = document.getElementById('edit_profile_photo');
+            const profileAvatar = document.getElementById('edit_profile_avatar');
+            
+            // Reset both elements
+            profilePhoto.style.display = 'none';
+            profileAvatar.style.display = 'none';
+            
+            if (student.profile_image_path && student.profile_image_path.trim() !== '') {
+                profilePhoto.src = '../' + student.profile_image_path + '?v=' + new Date().getTime();
+                profilePhoto.style.display = 'block';
+                profilePhoto.onerror = function() {
+                    // Hide image and show avatar instead
+                    this.style.display = 'none';
+                    profileAvatar.textContent = student.name.charAt(0).toUpperCase();
+                    profileAvatar.style.display = 'flex';
+                };
+            } else {
+                // Show avatar with first letter of name
+                profileAvatar.textContent = student.name.charAt(0).toUpperCase();
+                profileAvatar.style.display = 'flex';
+            }
+            
+            // Set last login info
+            const lastLoginElement = document.getElementById('edit_last_login');
+            if (student.last_login && student.last_login !== null) {
+                const lastLoginDate = new Date(student.last_login);
+                lastLoginElement.textContent = lastLoginDate.toLocaleString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+            } else {
+                lastLoginElement.textContent = 'Never logged in';
+            }
+            
+            // Set created date
+            const createdAtElement = document.getElementById('edit_created_at');
+            if (student.created_at) {
+                const createdDate = new Date(student.created_at);
+                createdAtElement.textContent = createdDate.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+            } else {
+                createdAtElement.textContent = '-';
+            }
+            
             document.getElementById('editModal').style.display = 'flex';
         }
 
@@ -1614,6 +1773,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
 
         // JavaScript for AJAX loading of feedback statistics
+        // Note: Feedback count includes both regular subject feedback and class committee responses
         function loadFeedbackStats(retryCount = 0) {
             const studentCards = document.querySelectorAll('.student-card');
             const studentIds = Array.from(studentCards).map(card => card.dataset.studentId);
