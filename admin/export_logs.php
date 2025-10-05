@@ -96,11 +96,19 @@ if (!empty($date_to)) {
 }
 
 if (!empty($search)) {
-    $query .= " AND (ul.action LIKE ? OR JSON_EXTRACT(ul.details, '$.*') LIKE ?)";
+    $query .= " AND (ul.action LIKE ? OR JSON_EXTRACT(ul.details, '$.*') LIKE ? OR 
+                    CASE 
+                        WHEN ul.role = 'student' THEN s.name
+                        WHEN ul.role = 'faculty' THEN f.name
+                        WHEN ul.role = 'hod' THEN h.name
+                        WHEN ul.role = 'admin' THEN a.username
+                        ELSE 'Unknown'
+                    END LIKE ?)";
     $search_param = "%$search%";
     $params[] = $search_param;
     $params[] = $search_param;
-    $param_types .= "ss";
+    $params[] = $search_param;
+    $param_types .= "sss";
 }
 
 if (!empty($department_filter)) {

@@ -523,6 +523,7 @@ include_once "includes/sidebar.php";
         @media (max-width: 768px) {
             .main-content {
                 margin-left: 0;
+                padding: 1rem;
             }
 
             .chart-grid {
@@ -532,10 +533,68 @@ include_once "includes/sidebar.php";
             .activity-item {
                 grid-template-columns: 1fr;
                 gap: 0.5rem;
+                padding: 0.8rem;
             }
             
             .activity-time {
                 text-align: left;
+            }
+
+            .activity-user {
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+            }
+
+            .activity-action {
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+            }
+
+            .details-preview {
+                white-space: normal;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                max-width: 100%;
+                line-height: 1.3;
+            }
+
+            .department-name {
+                display: block;
+                margin-top: 5px;
+                word-wrap: break-word;
+            }
+
+            .ip-address {
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+            }
+
+            .dashboard-header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+
+            .header-actions {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 0.5rem;
+                justify-content: center;
+            }
+
+            .btn {
+                padding: 0.6rem 1rem;
+                font-size: 0.9rem;
+            }
+
+            .stats-container {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .stat-details {
+                grid-template-columns: 1fr;
+                gap: 0.3rem;
             }
         }
 
@@ -785,20 +844,19 @@ include_once "includes/sidebar.php";
                 <button onclick="location.href='import_data.php'" class="btn">
                     <i class="fas fa-file-import"></i> Import Data
                 </button>
+                <?php if (!isset($_SESSION['department_id']) || $_SESSION['department_id'] === NULL): ?>
                 <button onclick="location.href='settings.php'" class="btn">
                     <i class="fas fa-cog"></i> Settings
                 </button>
-                <button onclick="location.href='generate_report.php'" class="btn">
-                    <i class="fas fa-file-alt"></i> Generate Report
-                </button>
+                <?php endif; ?>
             </div>
         </div>
 
         <!-- Statistics Cards -->
         <div class="stats-container">
-            <!-- Previous stat cards with enhanced information -->
+            <!-- Students Statistics -->
             <div class="stat-card">
-                <h3>Students</h3>
+                <h3>Students Active</h3>
                 <div class="number"><?php echo $stats['students']['active']; ?> / <?php echo $stats['students']['total']; ?></div>
                 <div class="stat-details">
                     <?php foreach ($stats['students']['by_year'] as $year => $count): ?>
@@ -806,7 +864,49 @@ include_once "includes/sidebar.php";
                     <?php endforeach; ?>
                 </div>
             </div>
-            <!-- Add more enhanced stat cards -->
+
+            <!-- Faculty Statistics -->
+            <div class="stat-card">
+                <h3>Faculty Active</h3>
+                <div class="number"><?php echo $stats['faculty']['active']; ?> / <?php echo $stats['faculty']['total']; ?></div>
+                <div class="stat-details">
+                    <span>Professors: <?php echo $stats['faculty']['professors']; ?></span>
+                    <span>Assoc. Prof: <?php echo $stats['faculty']['associate_professors']; ?></span>
+                    <span>Asst. Prof: <?php echo $stats['faculty']['assistant_professors']; ?></span>
+                    <span>Avg Experience: <?php echo $stats['faculty']['avg_experience']; ?> yrs</span>
+                </div>
+            </div>
+
+            <!-- Feedback Statistics -->
+            <div class="stat-card">
+                <h3>Feedback Status</h3>
+                <div class="number"><?php echo $stats['feedback']['completion_rate']; ?>%</div>
+                <div class="stat-details">
+                    <span>Completed: <?php echo $stats['feedback']['completed']; ?></span>
+                    <span>Pending: <?php echo $stats['feedback']['pending']; ?></span>
+                    <span>Total: <?php echo $stats['feedback']['total']; ?></span>
+                    <span>Rate: <?php echo $stats['feedback']['completion_rate']; ?>%</span>
+                </div>
+            </div>
+
+            <!-- Departments Statistics -->
+            <div class="stat-card">
+                <h3>Departments</h3>
+                <div class="number"><?php echo count($stats['faculty']['by_department']); ?></div>
+                <div class="stat-details">
+                    <?php 
+                    $dept_count = 0;
+                    foreach ($stats['faculty']['by_department'] as $dept_name => $dept_data): 
+                        if ($dept_count < 4): // Show only first 4 departments
+                    ?>
+                        <span><?php echo substr($dept_name, 0, 15); ?>: <?php echo $dept_data['active']; ?></span>
+                    <?php 
+                        endif;
+                        $dept_count++;
+                    endforeach; 
+                    ?>
+                </div>
+            </div>
         </div>
 
         <!-- Charts -->

@@ -38,7 +38,7 @@ while ($batch = mysqli_fetch_assoc($batch_result)) {
 }
 
 // Initialize sections with common values
-$sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O'];
+$sections = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O','P'];
 
 // Process form submission
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
